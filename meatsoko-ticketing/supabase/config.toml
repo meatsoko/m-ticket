@@ -1,0 +1,22 @@
+project_id = "meatsoko-ticketing"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "storage", "graphql_public"]
+
+[functions]
+[functions.stk-push]
+verify_jwt = false
+[functions.daraja-callback]
+verify_jwt = false
+[functions.order-status]
+verify_jwt = false
+[functions.lookup]
+verify_jwt = false
+[functions.ticket-by-token]
+verify_jwt = false
+[functions.redeem]
+verify_jwt = true
+[functions.sync-tokens]
+verify_jwt = true

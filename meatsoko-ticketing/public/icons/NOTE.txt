@@ -1,0 +1,3 @@
+Add real PNG icons here (192x192 and 512x512). The PWA install prompt
+and home-screen icon for gate staff require these two files.
+Generate quickly from any logo via https://realfavicongenerator.net or similar.
