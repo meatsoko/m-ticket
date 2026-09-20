@@ -7,7 +7,10 @@ import { normalizePhone, serviceClient } from "../_shared/supabase.ts";
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
-    const { event_id, phone, items, buyer_email, channel = "web" } = await req.json();
+    const body = await req.json();
+    const { event_id, phone, items, channel = "web" } = body;
+    // Accept both spellings — the checkout form posts `email`.
+    const buyerEmail = body.buyer_email ?? body.email ?? null;
     const buyerPhone = normalizePhone(phone ?? "");
     if (!buyerPhone) return json({ error: "invalid_phone" }, 400);
     if (!Array.isArray(items) || items.length === 0) return json({ error: "no_items" }, 400);
@@ -21,7 +24,7 @@ Deno.serve(async (req) => {
       return json({ error: "event_not_live" }, 400);
 
     // Resolve prices server-side — never trust client amounts (FR-P2)
-    const ids = items.map((i: any) => i.ticket_type_id);
+    const ids = [...new Set(items.map((i: any) => i.ticket_type_id))];
     const { data: types, error: tErr } = await db
       .from("ticket_types").select("*").in("id", ids).eq("event_id", event_id).eq("is_active", true);
     if (tErr || !types || types.length !== ids.length) return json({ error: "bad_items" }, 400);
@@ -33,9 +36,13 @@ Deno.serve(async (req) => {
       amount += Number(t.price_kes) * qty;
       return { ticket_type_id: t.id, qty, unit_price_kes: t.price_kes };
     });
+    // Daraja only accepts whole shillings >= 1; confirm_payment compares the callback
+    // amount against orders.amount_kes, so both must be the rounded figure.
+    amount = Math.round(amount);
+    if (amount < 1) return json({ error: "zero_amount" }, 400);
 
     const { data: order, error: oErr } = await db.from("orders").insert({
-      event_id, buyer_phone: buyerPhone, buyer_email: buyer_email || null,
+      event_id, buyer_phone: buyerPhone, buyer_email: buyerEmail || null,
       channel, amount_kes: amount, status: "pending",
     }).select().single();
     if (oErr || !order) return json({ error: "order_create_failed" }, 500);
@@ -52,11 +59,19 @@ Deno.serve(async (req) => {
         accountRef: order.id.slice(0, 12).toUpperCase(),
         description: `${event.name} ticket`.replace(/[^a-zA-Z0-9 ]/g, ""),
       });
-      await db.from("orders")
+      // The callback is correlated solely by checkout id, so an order that never gets one
+      // is unreconcilable money. Flag it rather than leaving it silently pending.
+      const { error: uErr } = await db.from("orders")
         .update({ mpesa_checkout_request_id: stk.checkoutRequestId })
         .eq("id", order.id);
-      return json({ checkoutRequestId: stk.checkoutRequestId });
+      if (uErr) {
+        console.error("checkout id not persisted", order.id, uErr);
+        await db.from("orders").update({ status: "flagged" }).eq("id", order.id);
+        return json({ error: "order_correlation_failed" }, 500);
+      }
+      return json({ checkoutRequestId: stk.checkoutRequestId, orderId: order.id });
     } catch (e) {
+      console.error("stk initiation failed", order.id, e);
       await db.from("orders").update({ status: "failed" }).eq("id", order.id);
       return json({ error: "stk_failed", detail: String(e) }, 502);
     }

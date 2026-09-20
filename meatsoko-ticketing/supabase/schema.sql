@@ -135,7 +135,9 @@ create or replace function public.confirm_payment(
   p_checkout_request_id text, p_receipt text, p_amount numeric
 ) returns jsonb
 language plpgsql security definer
-set search_path = public as $$
+-- `extensions` is required: Supabase installs pgcrypto there, and gen_random_bytes()
+-- below mints the QR tokens. Without it every confirmation aborts with 42883.
+set search_path = public, extensions as $$
 declare
   v_order public.orders%rowtype;
   v_item  record;

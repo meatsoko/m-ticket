@@ -23,7 +23,7 @@ export default function EventCheckout({ event, types }: { event: Event; types: T
     setError("");
     setState("pending");
     const { data, error: fnErr } = await supabase.functions.invoke("stk-push", {
-      body: { event_id: event.id, phone, email: email || undefined, items },
+      body: { event_id: event.id, phone, buyer_email: email || undefined, items },
     });
     if (fnErr || !data?.checkoutRequestId) {
       setError(fnErr?.message ?? data?.error ?? "Could not start payment. Try again.");

@@ -30,7 +30,7 @@ export async function cacheTokens(tokens: CachedToken[], eventId: string) {
   await idb("readwrite", (s) => s.put({ tokens, eventId, syncedAt: new Date().toISOString() }, "tokenCache"));
 }
 
-export async function getCachedTokens(): Promise<{ tokens: CachedToken[]; syncedAt: string } | null> {
+export async function getCachedTokens(): Promise<{ tokens: CachedToken[]; eventId: string; syncedAt: string } | null> {
   return (await idb("readonly", (s) => s.get("tokenCache"))) ?? null;
 }
 
@@ -42,9 +42,12 @@ export async function markLocalRedeemed(token: string) {
   await cacheTokens(cache.tokens, cache.eventId);
 }
 
-export async function enqueueRedemption(item: OutboxItem) {
+// Accepts one scan or a batch: the outbox re-queues whole groups of failed syncs.
+export async function enqueueRedemption(item: OutboxItem | OutboxItem[]) {
+  const incoming = Array.isArray(item) ? item : [item];
+  if (!incoming.length) return;
   const existing: OutboxItem[] = (await idb("readonly", (s) => s.get("outbox"))) ?? [];
-  await idb("readwrite", (s) => s.put([...existing, item], "outbox"));
+  await idb("readwrite", (s) => s.put([...existing, ...incoming], "outbox"));
 }
 
 export async function drainOutbox(): Promise<OutboxItem[]> {
