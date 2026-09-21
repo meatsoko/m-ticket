@@ -1,7 +1,7 @@
 // Minimal IndexedDB wrapper for the scanner: token cache + redemption outbox (FR-S4/S5).
 // Runs client-side only.
 
-type CachedToken = { token: string; status: string; redeemedAt?: string };
+type CachedToken = { token: string; status: string; redeemed_at?: string | null };
 type OutboxItem = { token: string; station: string; scannedAt: string };
 
 const DB = "ms-ticketing";
@@ -34,11 +34,11 @@ export async function getCachedTokens(): Promise<{ tokens: CachedToken[]; eventI
   return (await idb("readonly", (s) => s.get("tokenCache"))) ?? null;
 }
 
-export async function markLocalRedeemed(token: string) {
+export async function markLocalRedeemed(token: string, scannedAt: string) {
   const cache = await getCachedTokens();
   if (!cache) return;
   const t = cache.tokens.find((x) => x.token === token);
-  if (t) t.status = "redeemed";
+  if (t) { t.status = "redeemed"; t.redeemed_at = scannedAt; }
   await cacheTokens(cache.tokens, cache.eventId);
 }
 

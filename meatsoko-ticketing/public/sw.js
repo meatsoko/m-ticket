@@ -1,9 +1,17 @@
 // Scanner shell offline support (FR-S4 companion): cache app shell, network-first pages.
-const CACHE = "ms-tickets-v1";
-const SHELL = ["/scan", "/gate", "/manifest.json"];
+// Bump CACHE whenever the shell changes so staff devices pick it up on next load.
+const CACHE = "ms-tickets-v2";
+const SHELL = [
+  "/scan", "/gate", "/manifest.json",
+  "/icons/icon-192.png", "/icons/icon-512.png", "/icons/icon-maskable-512.png",
+];
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));
+  e.waitUntil(
+    caches.open(CACHE).then((c) =>
+      Promise.all(SHELL.map((u) => c.add(u).catch((err) => console.warn("sw: skip", u, err))))
+    )
+  );
   self.skipWaiting();
 });
 

@@ -6,7 +6,20 @@ import type { Event, TicketType, OrderTicket } from "@/lib/types";
 
 const APP_URL = () => process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin;
 
-export default function EventCheckout({ event, types }: { event: Event; types: TicketType[] }) {
+export default function EventCheckout({
+  event, types, remaining = {},
+}: {
+  event: Event;
+  types: TicketType[];
+  remaining?: Record<string, number | null>;
+}) {
+  // null cap means unlimited; 0 means sold out.
+  const left = (t: TicketType) => remaining[t.id] ?? null;
+  const soldOut = (t: TicketType) => left(t) === 0;
+  const maxQty = (t: TicketType) => {
+    const r = left(t);
+    return r === null ? 8 : Math.min(8, Math.floor(r / (t.bundle_qty || 1)));
+  };
   const supabase = createClient();
   const [qty, setQty] = useState<Record<string, number>>({});
   const [phone, setPhone] = useState("");
@@ -14,6 +27,8 @@ export default function EventCheckout({ event, types }: { event: Event; types: T
   const [state, setState] = useState<"form" | "pending" | "success" | "failed">("form");
   const [tickets, setTickets] = useState<OrderTicket[]>([]);
   const [error, setError] = useState("");
+  // FR-P6: a retry reuses this order row with a fresh checkout id.
+  const [orderId, setOrderId] = useState<string | null>(null);
 
   const total = types.reduce((s, t) => s + (qty[t.id] || 0) * Number(t.price_kes), 0);
   const items = types.filter((t) => (qty[t.id] || 0) > 0)
@@ -23,10 +38,14 @@ export default function EventCheckout({ event, types }: { event: Event; types: T
     setError("");
     setState("pending");
     const { data, error: fnErr } = await supabase.functions.invoke("stk-push", {
-      body: { event_id: event.id, phone, buyer_email: email || undefined, items },
+      body: {
+        event_id: event.id, phone, buyer_email: email || undefined, items,
+        ...(orderId ? { order_id: orderId } : {}),
+      },
     });
+    if (data?.orderId) setOrderId(data.orderId);
     if (fnErr || !data?.checkoutRequestId) {
-      setError(fnErr?.message ?? data?.error ?? "Could not start payment. Try again.");
+      setError(explain(data));
       setState("failed");
       return;
     }
@@ -37,10 +56,36 @@ export default function EventCheckout({ event, types }: { event: Event; types: T
         body: { checkoutRequestId: data.checkoutRequestId },
       });
       if (st?.status === "paid") { setTickets(st.tickets ?? []); setState("success"); return; }
-      if (st?.status === "failed" || st?.status === "flagged" || st?.status === "unknown") break;
+      if (st?.status === "failed") {
+        setError("Payment was cancelled or timed out. Tap below to try again.");
+        setState("failed");
+        return;
+      }
+      if (st?.status === "flagged") {
+        setError("Payment received but the ticket could not be issued. Our team has been alerted — contact us with your M-Pesa message.");
+        setState("failed");
+        return;
+      }
+      if (st?.status === "unknown") break;
     }
     setError("Payment not completed in time. If you were charged, use ticket lookup with your phone number.");
     setState("failed");
+  }
+
+  function explain(data: any): string {
+    switch (data?.error) {
+      case "rate_limited":
+        return `Too many payment attempts. Wait ${Math.ceil((data.retry_after ?? 60) / 60)} minute(s) and try again.`;
+      case "sold_out":
+        return `${data.ticket_type ?? "That ticket"} is sold out${
+          data.remaining ? ` — only ${data.remaining} left` : ""}.`;
+      case "event_not_live":
+        return "Ticket sales for this event are closed.";
+      case "invalid_phone":
+        return "That phone number doesn't look right. Use the format 07XX XXX XXX.";
+      default:
+        return "Could not start payment. Please try again.";
+    }
   }
 
   if (state === "success") {
@@ -68,17 +113,32 @@ export default function EventCheckout({ event, types }: { event: Event; types: T
 
   return (
     <div className="card">
-      {types.map((t) => (
-        <div className="row" key={t.id} style={{ padding: "8px 0" }}>
-          <div>
-            <strong>{t.name}</strong>{t.bundle_qty > 1 ? ` (admits ${t.bundle_qty})` : ""}
-            <div className="price">KSh {Number(t.price_kes).toLocaleString()}</div>
+      {types.map((t) => {
+        const r = left(t);
+        return (
+          <div className="row" key={t.id} style={{ padding: "8px 0" }}>
+            <div>
+              <strong>{t.name}</strong>{t.bundle_qty > 1 ? ` (admits ${t.bundle_qty})` : ""}
+              <div className="price">KSh {Number(t.price_kes).toLocaleString()}</div>
+              {soldOut(t)
+                ? <span className="badge bad">Sold out</span>
+                : r !== null && r <= 20 && <span className="small">Only {r} left</span>}
+            </div>
+            {soldOut(t) ? (
+              <span className="small">—</span>
+            ) : (
+              <select
+                value={qty[t.id] || 0}
+                onChange={(e) => setQty({ ...qty, [t.id]: parseInt(e.target.value) })}
+              >
+                {Array.from({ length: maxQty(t) + 1 }, (_, n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+            )}
           </div>
-          <select value={qty[t.id] || 0} onChange={(e) => setQty({ ...qty, [t.id]: parseInt(e.target.value) })}>
-            {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((n) => <option key={n} value={n}>{n}</option>)}
-          </select>
-        </div>
-      ))}
+        );
+      })}
 
       {state === "pending" ? (
         <p><strong>Check your phone…</strong><br />Enter your M-Pesa PIN to complete payment. This page updates automatically.</p>
@@ -88,7 +148,7 @@ export default function EventCheckout({ event, types }: { event: Event; types: T
           <input placeholder="Email (optional)" value={email} onChange={(e) => setEmail(e.target.value)} />
           {error && <p style={{ color: "var(--red)" }}>{error}</p>}
           <button disabled={items.length === 0 || phone.length < 9} onClick={pay} style={{ width: "100%" }}>
-            Pay KSh {total.toLocaleString()} via M-Pesa
+            {state === "failed" ? "Retry" : "Pay"} KSh {total.toLocaleString()} via M-Pesa
           </button>
         </>
       )}

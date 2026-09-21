@@ -1,70 +1,145 @@
 "use client";
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+
+type Sale = {
+  id: string;
+  checkoutRequestId: string;
+  phone: string;
+  typeName: string;
+  qty: number;
+  amount: number;
+  state: "pending" | "admitted" | "failed";
+  note?: string;
+};
 
 export default function GateMode({ eventId, types }: { eventId: string; types: any[] }) {
   const supabase = createClient();
   const [typeId, setTypeId] = useState(types[0]?.id ?? "");
   const [qty, setQty] = useState(1);
   const [phone, setPhone] = useState("");
-  const [phase, setPhase] = useState<"form" | "pending" | "admitted" | "failed">("form");
-  const [sale, setSale] = useState<any>(null);
   const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  // FR-G4: sales are tracked as a list polled in the background, so a buyer fumbling
+  // their PIN never blocks the next customer or the scanner.
+  const [sales, setSales] = useState<Sale[]>([]);
+  const seq = useRef(0);
 
   const type = types.find((t) => t.id === typeId);
   const amount = type ? Number(type.price_kes) * qty : 0;
 
-  async function sell() {
-    setErr(""); setPhase("pending");
-    const { data, error } = await supabase.functions.invoke("stk-push", {
-      body: {
-        event_id: eventId, phone, channel: "gate",
-        items: [{ ticket_type_id: typeId, qty }],
-      },
-    });
-    if (error || !data?.checkoutRequestId) {
-      setErr("STK failed. Try again."); setPhase("failed"); return;
-    }
-    for (let i = 0; i < 30; i++) {
+  const update = useCallback((id: string, patch: Partial<Sale>) => {
+    setSales((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+  }, []);
+
+  const poll = useCallback(async (sale: Sale) => {
+    for (let i = 0; i < 40; i++) {
       await new Promise((r) => setTimeout(r, 3000));
       const { data: st } = await supabase.functions.invoke("order-status", {
-        body: { checkoutRequestId: data.checkoutRequestId },
+        body: { checkoutRequestId: sale.checkoutRequestId },
       });
-      if (st?.status === "paid") { setSale({ type: type?.name, qty, amount }); setPhase("admitted"); return; }
-      if (st?.status === "failed" || st?.status === "unknown") break;
+      if (st?.status === "paid") return update(sale.id, { state: "admitted" });
+      if (st?.status === "failed") return update(sale.id, { state: "failed", note: "Cancelled or timed out" });
+      if (st?.status === "flagged") return update(sale.id, { state: "failed", note: "Paid but no ticket — see admin" });
     }
-    setErr("Payment not completed. Buyer can retry."); setPhase("failed");
+    update(sale.id, { state: "failed", note: "No response — buyer can retry" });
+  }, [supabase, update]);
+
+  async function sell() {
+    if (!type) return;
+    setErr("");
+    setBusy(true);
+    const { data, error } = await supabase.functions.invoke("stk-push", {
+      body: { event_id: eventId, phone, channel: "gate", items: [{ ticket_type_id: typeId, qty }] },
+    });
+    setBusy(false);
+
+    if (error || !data?.checkoutRequestId) {
+      setErr(
+        data?.error === "sold_out"
+          ? `${data.ticket_type ?? "That ticket"} is sold out.`
+          : data?.error === "invalid_phone"
+          ? "Check the phone number."
+          : "STK failed. Try again."
+      );
+      return;
+    }
+
+    const sale: Sale = {
+      id: `s${++seq.current}`,
+      checkoutRequestId: data.checkoutRequestId,
+      phone,
+      typeName: type.name,
+      qty,
+      amount,
+      state: "pending",
+    };
+    setSales((prev) => [sale, ...prev]);
+    setPhone(""); // ready for the next customer immediately
+    poll(sale);
   }
 
-  if (phase === "admitted")
-    return (
-      <div className="card" style={{ textAlign: "center" }}>
-        <h1 style={{ color: "var(--green)" }}>✓ ADMITTED</h1>
-        <p>{sale.qty} × {sale.type} — KSh {sale.amount.toLocaleString()}</p>
-        <button onClick={() => { setPhase("form"); setPhone(""); }} style={{ width: "100%" }}>Next customer</button>
-      </div>
-    );
-
   return (
-    <div className="card">
-      <h1>Gate sale</h1>
-      <select value={typeId} onChange={(e) => setTypeId(e.target.value)}>
-        {types.map((t) => <option key={t.id} value={t.id}>{t.name} — KSh {Number(t.price_kes).toLocaleString()}</option>)}
-      </select>
-      <select value={qty} onChange={(e) => setQty(parseInt(e.target.value))}>
-        {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => <option key={n} value={n}>{n}</option>)}
-      </select>
-      {phase === "pending" ? (
-        <p><strong>Buyer: enter M-Pesa PIN…</strong><br />You can keep scanning prebooked tickets meanwhile.</p>
-      ) : (
-        <>
-          <input placeholder="Buyer M-Pesa phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
-          {err && <p style={{ color: "var(--red)" }}>{err}</p>}
-          <button onClick={sell} disabled={!type || phone.length < 9} style={{ width: "100%" }}>
-            Charge KSh {amount.toLocaleString()} & admit
-          </button>
-        </>
-      )}
+    <div>
+      <div className="card">
+        <h1>Gate sale</h1>
+        <select value={typeId} onChange={(e) => setTypeId(e.target.value)}>
+          {types.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name} — KSh {Number(t.price_kes).toLocaleString()}
+            </option>
+          ))}
+        </select>
+        <select value={qty} onChange={(e) => setQty(parseInt(e.target.value))}>
+          {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+            <option key={n} value={n}>{n}</option>
+          ))}
+        </select>
+        <input
+          placeholder="Buyer M-Pesa phone"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+        />
+        {err && <p style={{ color: "var(--red)" }}>{err}</p>}
+        <button onClick={sell} disabled={busy || !type || phone.length < 9} style={{ width: "100%" }}>
+          Charge KSh {amount.toLocaleString()} &amp; admit
+        </button>
+        <p className="small">
+          Payments confirm in the background — start the next customer straight away, or{" "}
+          <a href="/scan">go back to scanning</a>.
+        </p>
+      </div>
+
+      {sales.map((s) => (
+        <div
+          key={s.id}
+          className="card"
+          style={{
+            borderLeft: `4px solid var(--${
+              s.state === "admitted" ? "green" : s.state === "failed" ? "red" : "muted"
+            })`,
+          }}
+        >
+          <div className="row">
+            <strong>
+              {s.state === "admitted" ? "✓ ADMITTED" : s.state === "failed" ? "✗ NOT PAID" : "⏳ Waiting for PIN…"}
+            </strong>
+            <span className="small">{s.phone}</span>
+          </div>
+          <p className="small">
+            {s.qty} × {s.typeName} — KSh {s.amount.toLocaleString()}
+            {s.note ? ` · ${s.note}` : ""}
+          </p>
+          {s.state !== "pending" && (
+            <button
+              onClick={() => setSales((prev) => prev.filter((x) => x.id !== s.id))}
+              style={{ padding: "6px 12px" }}
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

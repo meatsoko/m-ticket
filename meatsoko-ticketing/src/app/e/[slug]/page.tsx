@@ -12,6 +12,11 @@ export default async function EventPage({ params }: { params: { slug: string } }
   const { data: types } = await supabase.from("ticket_types").select("*")
     .eq("event_id", ev.id).eq("is_active", true).order("position");
 
+  // FR-E1: remaining availability (cap minus sold and in-flight holds).
+  const { data: avail } = await supabase.rpc("availability", { p_event_id: ev.id });
+  const remaining: Record<string, number | null> = {};
+  for (const a of (avail ?? []) as any[]) remaining[a.ticket_type_id] = a.remaining;
+
   return (
     <div className="container">
       <h1>{ev.name}</h1>
@@ -19,7 +24,7 @@ export default async function EventPage({ params }: { params: { slug: string } }
         {new Date(ev.starts_at).toLocaleString()} — {ev.venue}
       </p>
       {ev.description && <p>{ev.description}</p>}
-      <EventCheckout event={ev as Event} types={(types ?? []) as TicketType[]} />
+      <EventCheckout event={ev as Event} types={(types ?? []) as TicketType[]} remaining={remaining} />
       <p className="small"><a href="/lookup">Already bought? Find your tickets</a></p>
     </div>
   );
