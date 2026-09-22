@@ -3,7 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import AppShell from "@/components/AppShell";
 import Icon from "@/components/Icon";
 import EventCheckout from "@/components/EventCheckout";
-import type { Event, TicketType } from "@/lib/types";
+import ReservationForm from "@/components/ReservationForm";
+import type { Event, TicketType, PreorderItem } from "@/lib/types";
 
 /** Nairobi, always — the buyer and the venue are both there. */
 const KE = "Africa/Nairobi";
@@ -16,16 +17,28 @@ export default async function EventPage({ params }: { params: { slug: string } }
     .eq("slug", params.slug).eq("status", "live").maybeSingle();
   if (!ev) notFound();
 
-  const { data: types } = await supabase.from("ticket_types").select("*")
+  // How an event sells is configuration: a ticketed event renders the checkout,
+  // a reservation event renders the RSVP form. Same page, same shell.
+  const reservationMode = ev.reservation_mode ?? "off";
+  const isReservation = reservationMode !== "off";
+
+  const { data: types } = isReservation ? { data: [] } : await supabase.from("ticket_types").select("*")
     .eq("event_id", ev.id).eq("is_active", true).order("position");
 
+  const { data: preorderItems } = isReservation
+    ? await supabase.from("preorder_items").select("*")
+        .eq("event_id", ev.id).eq("is_active", true).order("position")
+    : { data: [] };
+
   // FR-E1: remaining availability (cap minus sold and in-flight holds).
-  const { data: avail } = await supabase.rpc("availability", { p_event_id: ev.id });
   const remaining: Record<string, number | null> = {};
   const sold: Record<string, number> = {};
-  for (const a of (avail ?? []) as any[]) {
-    remaining[a.ticket_type_id] = a.remaining;
-    sold[a.ticket_type_id] = a.sold;
+  if (!isReservation) {
+    const { data: avail } = await supabase.rpc("availability", { p_event_id: ev.id });
+    for (const a of (avail ?? []) as any[]) {
+      remaining[a.ticket_type_id] = a.remaining;
+      sold[a.ticket_type_id] = a.sold;
+    }
   }
 
   // A conference/expo sells on what's inside, not on a lineup. Until zones are
@@ -46,6 +59,7 @@ export default async function EventPage({ params }: { params: { slug: string } }
             {ev.format === "conference_expo" ? "Expo" : "Festival"}
           </span>
           <h1>{ev.name}</h1>
+          {ev.tagline && <p className="small" style={{ color: "rgba(255,255,255,.88)" }}>{ev.tagline}</p>}
           <div className="meta">
             <span className="pill glass">
               <Icon name="pin" size={13} /> {ev.venue || "Nairobi"}
@@ -89,12 +103,19 @@ export default async function EventPage({ params }: { params: { slug: string } }
 
         {blurb && <p className="small">{blurb}</p>}
 
-        <EventCheckout
-          event={ev as Event}
-          types={(types ?? []) as TicketType[]}
-          remaining={remaining}
-          sold={sold}
-        />
+        {isReservation ? (
+          <ReservationForm
+            event={ev as Event}
+            items={(preorderItems ?? []) as PreorderItem[]}
+          />
+        ) : (
+          <EventCheckout
+            event={ev as Event}
+            types={(types ?? []) as TicketType[]}
+            remaining={remaining}
+            sold={sold}
+          />
+        )}
 
         <div className="bottom-gap" />
       </div>
