@@ -21,6 +21,54 @@ config change.
 
 ---
 
+## ⛔ Current blocker: "The shortcode does not support the API product selected"
+
+This is where provisioning is stuck right now. It is **not** a code or credentials
+problem — Safaricom is saying the shortcode you submitted is not enabled for the API
+product you picked.
+
+Almost always one of three things:
+
+| Cause | Fix |
+|---|---|
+| The shortcode is a **Buy Goods till**, but you selected **Lipa Na M-Pesa Online / M-Pesa Express**, which is a **Paybill** product | Either register a Paybill, or ask Safaricom to enable M-Pesa Express on the till and use `CustomerBuyGoodsOnline` |
+| It is a Paybill, but **M-Pesa Express was never activated** on it | Ask your Safaricom account manager to enable *"Lipa Na M-Pesa Online / M-Pesa Express"* on shortcode `<number>`. This is a switch on their side |
+| The shortcode belongs to a different organisation than the Daraja account | The shortcode and the Daraja account must match. Apply from the account that owns it |
+
+**What to ask for, in their words:**
+
+> "Please enable the **Lipa Na M-Pesa Online (M-Pesa Express / STK Push)** API product on
+> shortcode `<number>`, and issue the **Lipa Na M-Pesa Online passkey** for it."
+
+Say *M-Pesa Express* — that is the name the provisioning team uses internally, and asking
+for "STK push" sometimes gets routed to the wrong desk.
+
+Until that is resolved, **launch without payments** — see the next section. Nothing else is
+blocked by it.
+
+---
+
+## Launching before M-Pesa is ready
+
+There is a per-event switch for exactly this. In the admin panel, under **Event settings →
+Payments**, untick **"Preorders can be paid for"**.
+
+With it off:
+
+- guests reserve normally and get a number, a QR and a confirmation
+- the platters are still **shown**, with their prices, tagged **Coming soon** and not
+  selectable — so guests know what is coming
+- no order is created and **no STK push is attempted**, so nothing can get stuck in
+  `pending_payment` waiting on a payment that cannot happen
+- the server refuses a preorder even if someone crafts the request by hand
+
+Both NyamaFest events are currently in this state.
+
+When the shortcode is provisioned: set the production secrets, tick the box again, and
+preorders go live. **No migration, no redeploy, no code change.**
+
+---
+
 ## What you need to collect
 
 | Value | Where it comes from | Looks like |
@@ -155,6 +203,7 @@ message.
 | `Bad Request - Invalid TransactionType` | Till/paybill mismatch — see above |
 | `Unable to lock subscriber` | That number has an unresolved prompt. Wait a minute |
 | *no response at all* | Whitespace in `DARAJA_CALLBACK_URL` |
+| `The shortcode does not support the API product selected` | M-Pesa Express not enabled on that shortcode — see the top of this document |
 
 ---
 

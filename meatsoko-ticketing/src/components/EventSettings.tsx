@@ -53,6 +53,7 @@ export default function EventSettings({ event }: { event: any }) {
     ends_at: toLocalInput(event.ends_at),
     doors_open_at: toLocalInput(event.doors_open_at),
     reservation_mode: (event.reservation_mode ?? "off") as ReservationMode,
+    payments_enabled: event.payments_enabled !== false,
     reservation_prefix: event.reservation_prefix ?? "RSV",
     capacity: event.capacity ?? "",
     max_party_size: event.max_party_size ?? 10,
@@ -78,6 +79,7 @@ export default function EventSettings({ event }: { event: any }) {
       ends_at: fromLocalInput(f.ends_at),
       doors_open_at: fromLocalInput(f.doors_open_at),
       reservation_mode: f.reservation_mode,
+      payments_enabled: f.payments_enabled,
       reservation_prefix: f.reservation_prefix.toUpperCase().slice(0, 5) || "RSV",
       capacity: f.capacity === "" ? null : Number(f.capacity),
       max_party_size: Number(f.max_party_size) || 10,
@@ -124,6 +126,21 @@ export default function EventSettings({ event }: { event: any }) {
 
           {isReservation && (
             <>
+              <span className="eyebrow">Payments</span>
+              <label className="card quiet" style={{ padding: 12, cursor: "pointer", gap: 4 }}>
+                <div className="row">
+                  <strong style={{ fontSize: ".95rem" }}>Preorders can be paid for</strong>
+                  <input type="checkbox" checked={f.payments_enabled}
+                    onChange={(e) => set("payments_enabled", e.target.checked)}
+                    style={{ width: 20, height: 20, margin: 0, flex: "0 0 auto" }} />
+                </div>
+                <span className="small">
+                  Turn this off while M-Pesa is still being provisioned. Guests can still
+                  reserve free; platters are shown as &ldquo;Coming soon&rdquo; and no STK
+                  push is attempted.
+                </span>
+              </label>
+
               <span className="eyebrow">Reservation rules</span>
               <div className="row" style={{ gap: 8 }}>
                 <label className="field" style={{ flex: 1 }}>

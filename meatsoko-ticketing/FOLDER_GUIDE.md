@@ -165,8 +165,11 @@ message. Use `invokeFn()` from `src/lib/invoke.ts`, which always returns the par
   are no accounts by default and no sign-up page, so nobody can open the scanner until
   someone follows it.
 - `DARAJA_PRODUCTION.md` — why STK works in sandbox but never prompts a real phone, the
-  five values to get from Safaricom, how to apply them without the whitespace trap, and
-  a one-shilling verification run.
+  five values to get from Safaricom, the "shortcode does not support the API product
+  selected" blocker and exactly what to ask them to enable, and how to launch without
+  payments in the meantime.
+- `LAUNCH_CHECKLIST.md` — what is actually blocking launch right now, what is verified
+  working, and the order to do things in. Start here on any given day.
 
 ## 3c. Before any of this — collect the inputs
 

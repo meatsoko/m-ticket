@@ -39,9 +39,15 @@ export default function ReservationForm({
   const [phase, setPhase] = useState<Phase>("form");
   const [error, setError] = useState("");
   const [done, setDone] = useState<Confirmed | null>(null);
+  const [emailed, setEmailed] = useState(false);
   const [fieldErr, setFieldErr] = useState<{ name?: string; phone?: string; email?: string }>({});
 
-  const offersPreorders = event.reservation_mode !== "free" && items.length > 0;
+  // Payments may be switched off while M-Pesa provisioning is pending. The
+  // platters still show — guests should know what is coming — but they cannot
+  // be added, and nothing is ever sent to Daraja.
+  const paymentsOn = event.payments_enabled !== false;
+  const showPreorders = event.reservation_mode !== "free" && items.length > 0;
+  const offersPreorders = showPreorders && paymentsOn;
   const selected = types.find((t) => t.id === typeId) ?? null;
   // A type that fixes the party size owns it; only a "group" asks the guest.
   const fixed = selected?.fixed_party_size ?? null;
@@ -112,6 +118,7 @@ export default function ReservationForm({
       return;
     }
 
+    setEmailed(!!res.data.emailed);
     const confirmed: Confirmed = {
       reservation_number: res.data.reservation_number,
       access_token: res.data.access_token,
@@ -181,6 +188,8 @@ export default function ReservationForm({
         return "This event requires a preorder. Select at least one item.";
       case "stk_failed":
         return "M-Pesa did not accept the payment request. Your place is held — try paying again.";
+      case "payments_unavailable":
+        return "Preordering isn't open yet. Your place can still be reserved for free.";
       default:
         return `Could not complete your reservation${d.stage ? ` (failed at: ${d.stage})` : ""}. Please try again.`;
     }
@@ -194,7 +203,11 @@ export default function ReservationForm({
         <div className="card" style={{ alignItems: "center", textAlign: "center" }}>
           <span className="pill ok">Reservation confirmed</span>
           <h2>See you there, {name.split(" ")[0]}.</h2>
-          <p className="small">Show this at the door. Screenshot it — it works offline.</p>
+          <p className="small">
+            {emailed
+              ? `Show this at the door. We've also emailed it to ${email.trim()}.`
+              : "Show this at the door. Screenshot it — it works offline."}
+          </p>
           <QrImage value={url} />
           <strong style={{ fontSize: "1.3rem", letterSpacing: "0.04em" }}>{done.reservation_number}</strong>
           <span className="pill ember">
@@ -320,29 +333,40 @@ export default function ReservationForm({
         </label>
       </div>
 
-      {offersPreorders && (
+      {showPreorders && (
         <>
-          <span className="eyebrow">Preorder <span className="small">(optional)</span></span>
+          <div className="row">
+            <span className="eyebrow">
+              Preorder <span className="small">{paymentsOn ? "(optional)" : ""}</span>
+            </span>
+            {!paymentsOn && <span className="pill warn">Coming soon</span>}
+          </div>
           <p className="small">
-            Add food to any reservation. Paid now by M-Pesa; refunds are handled manually.
+            {paymentsOn
+              ? "Add food to any reservation. Paid now by M-Pesa; refunds are handled manually."
+              : "Food preorders open shortly. Reserve your place now — you'll be able to add a platter before the event."}
           </p>
           <div className="card flush">
             {items.map((i) => (
-              <div className="tt" key={i.id}>
+              <div className={`tt${paymentsOn ? "" : " sold-out"}`} key={i.id}>
                 <div className="row">
                   <div className="stack tight" style={{ minWidth: 0 }}>
                     <strong>{i.name}</strong>
                     {i.description && <span className="small">{i.description}</span>}
                     <span className="price">KSh {Number(i.price_kes).toLocaleString()}</span>
                   </div>
-                  <div className="stepper">
-                    <button onClick={() => bump(i, -1)} disabled={!qty[i.id]}
-                      aria-label={`One fewer ${i.name}`}>−</button>
-                    <span className="qty">{qty[i.id] || 0}</span>
-                    <button onClick={() => bump(i, 1)}
-                      disabled={(qty[i.id] || 0) >= i.max_per_reservation}
-                      aria-label={`One more ${i.name}`}>+</button>
-                  </div>
+                  {paymentsOn ? (
+                    <div className="stepper">
+                      <button onClick={() => bump(i, -1)} disabled={!qty[i.id]}
+                        aria-label={`One fewer ${i.name}`}>−</button>
+                      <span className="qty">{qty[i.id] || 0}</span>
+                      <button onClick={() => bump(i, 1)}
+                        disabled={(qty[i.id] || 0) >= i.max_per_reservation}
+                        aria-label={`One more ${i.name}`}>+</button>
+                    </div>
+                  ) : (
+                    <span className="pill">Soon</span>
+                  )}
                 </div>
               </div>
             ))}

@@ -12,6 +12,8 @@ export type Event = {
   doors_open_at?: string | null;
   contact_phone?: string | null;
   contact_email?: string | null;
+  /** False while M-Pesa provisioning is pending: preorders show but can't be bought. */
+  payments_enabled?: boolean;
 };
 
 export type TicketType = {

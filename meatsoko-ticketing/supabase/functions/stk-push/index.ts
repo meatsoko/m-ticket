@@ -97,9 +97,12 @@ Deno.serve(async (req) => {
     // ---- event ----
     stage = "event";
     const { data: event, error: evErr } = await db
-      .from("events").select("id,name,status").eq("id", event_id).single();
+      .from("events").select("id,name,status,payments_enabled").eq("id", event_id).single();
     if (evErr || !event) return fail("event_not_found", 400, { detail: evErr?.message });
     if (event.status !== "live") return fail("event_not_live", 400, { status: event.status });
+    // Kill switch while M-Pesa provisioning is pending. Refuse before creating
+    // an order, so nothing is left pending that can never be paid.
+    if (event.payments_enabled === false) return fail("payments_unavailable", 409);
     log("event ok", { event: event.name });
 
     // ---- ticket types: resolve prices server-side, never trust client amounts ----

@@ -95,7 +95,8 @@ Deno.serve(async (req) => {
     const ok = res?.result === "created" || res?.result === "updated";
     if (!ok) {
       // Business rejections are 409/400, never 500: the caller can act on these.
-      const status = ["full", "preorder_sold_out", "closed", "not_open_yet"].includes(res?.result) ? 409 : 400;
+      const status = ["full", "preorder_sold_out", "closed", "not_open_yet",
+                      "payments_unavailable"].includes(res?.result) ? 409 : 400;
       return fail(res?.result ?? "reservation_rejected", status, res ?? {});
     }
     log("reserved", { number: res.reservation_number, phone: maskPhone(guestPhone), amount: res.amount_kes });
@@ -110,10 +111,15 @@ Deno.serve(async (req) => {
       // The guest's own confirmation, with the QR attached. Never blocks or
       // fails the reservation — a mail problem is logged, not surfaced.
       const appUrl = (Deno.env.get("APP_URL") ?? "").trim();
+      // Awaited, not fire-and-forget: the guest is told whether their pass was
+      // actually emailed, so the confirmation screen never promises a message
+      // that is not coming (e.g. when no mail provider is configured).
+      let emailed = false;
       if (appUrl) {
-        buildAndSend(db, res.reservation_id, appUrl)
-          .then((out) => log("guest email", out))
-          .catch((e) => console.error("guest email failed", e));
+        const out = await buildAndSend(db, res.reservation_id, appUrl)
+          .catch((e) => ({ sent: false, reason: String(e).slice(0, 120) }));
+        log("guest email", out);
+        emailed = !!out.sent;
       }
       await notifyOrganizer(
         { email: ev?.notify_email ?? null, whatsapp: ev?.notify_whatsapp ?? null },
@@ -132,6 +138,7 @@ Deno.serve(async (req) => {
         status: res.status,
         amount_kes: 0,
         payment_required: false,
+        emailed,
         request_id: rid,
       });
     }
