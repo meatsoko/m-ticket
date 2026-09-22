@@ -214,7 +214,7 @@ message.
 | `NEXT_PUBLIC_APP_URL` | Vercel | Baked into **every QR code and WhatsApp link**. Still `http://localhost:3000` — get this wrong and passes you have already issued point nowhere |
 | `APP_URL` | Supabase secret | Same value. Edge Functions cannot read `NEXT_PUBLIC_*`, and this builds the link inside the confirmation email |
 | `RESEND_API_KEY` | Supabase secret | **Email is now mandatory for guests** — without this key no confirmation is sent at all |
-| `TICKET_EMAIL_FROM` | Supabase secret | Must be a domain verified with Resend, or mail silently bounces |
+| `TICKET_EMAIL_FROM` | Supabase secret | Set to `info@meatsokogroup.com`. The domain must be **verified with Resend** or mail silently bounces |
 
 That third one matters more than it used to: guests are now required to give an email
 precisely so they receive their pass. If Resend is not configured, they are asked for an

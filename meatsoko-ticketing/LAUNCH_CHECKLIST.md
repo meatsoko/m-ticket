@@ -1,7 +1,7 @@
-# Launch checklist
+  # Launch checklist
 
 Where NyamaFest actually stands, last verified **2026-09-22** against the live Supabase
-project. Payments are deliberately parked — everything below is the path to launching
+project. The database is empty of test data: 0 reservations, 0 orders, full capacity. Payments are deliberately parked — everything below is the path to launching
 without them.
 
 ---
@@ -10,25 +10,34 @@ without them.
 
 ### 1. Guests are asked for an email and receive nothing
 
-`RESEND_API_KEY` and `TICKET_EMAIL_FROM` are **not set**. Email is now mandatory at
-checkout precisely so guests get their pass — with no mail provider configured they hand
+Passes are sent **from `info@meatsokogroup.com`** — that is set. What is still missing is
+the mail provider itself: `RESEND_API_KEY` is not configured, so nothing sends. Email is
+mandatory at checkout precisely so guests get their pass; without a provider they hand
 over an address and get silence.
 
-The confirmation screen is honest about it (it only claims "we've emailed it" when the send
-actually succeeded, and otherwise says "screenshot this"), so nothing lies to the guest.
-But a reservation with no durable copy is the main way someone turns up at a gate with
-nothing to show.
+The app is honest about it in the meantime: `reserve` reports whether the send actually
+succeeded, and the confirmation screen only says "we've also emailed it to …" when it did,
+otherwise "screenshot this". Nothing lies to the guest. But a reservation with no durable
+copy is the main way someone turns up at a gate with nothing to show.
+
+**Two steps left:**
+
+1. **Verify `meatsokogroup.com` with Resend.** Create an account, add the domain, and add
+   the DNS records it gives you (SPF and DKIM `TXT`, usually a `CNAME` too). Until the
+   domain shows *Verified*, mail from that address is rejected or silently dropped —
+   sending from an unverified domain is the most common reason "email just doesn't work".
+2. **Set the key:**
 
 ```bash
-supabase secrets set \
-  RESEND_API_KEY="$(printf %s 're_xxx')" \
-  TICKET_EMAIL_FROM="$(printf %s 'tickets@yourdomain.co.ke')"
+supabase secrets set RESEND_API_KEY="$(printf %s 're_xxx')"
 supabase functions deploy reserve
 supabase functions deploy daraja-callback
 ```
 
-The from-domain must be **verified with Resend** first, or mail silently bounces.
-Free tier covers 3,000 emails/month, which is well beyond this event.
+Free tier covers 3,000 emails/month, well beyond this event.
+
+Verify it end to end by reserving once with your own address: the response carries
+`"emailed": true` when the send succeeded.
 
 ### 2. Every QR points at `localhost`
 
@@ -95,14 +104,6 @@ becomes real the moment you run a ticketed event again. The fix is to key the lo
 `orderId` (already returned, already an unguessable UUID) and never return tokens for a
 checkout-id query. Reservations are unaffected: `reservation-status` keys on the 128-bit
 `access_token`.
-
-### One stuck reservation
-`NF-6P5AWZ` ("amina", `254759403402`, created 07:56) is `pending_payment` for KSh 800 with
-**no email**. It predates both the mandatory-email rule and the payments switch, so it can
-never be paid and its guest can never be emailed. It still counts toward expected
-attendance.
-
-Either confirm it by hand or delete it — your call, which is why it has been left alone.
 
 ### Dev-server cache
 If the local dev server starts behaving strangely (`Cannot find module
