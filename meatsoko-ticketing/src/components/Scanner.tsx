@@ -146,7 +146,7 @@ export default function Scanner({ userId }: { userId: string }) {
       {flash && <div className={`flash ${flash.kind}`}>{flash.text}</div>}
       <div className="row" style={{ margin: "12px 0" }}>
         <h1 style={{ margin: 0 }}>Gate Scanner</h1>
-        <span className={`badge ${online ? "ok" : "bad"}`}>{online ? "ONLINE" : "OFFLINE"}{pending > 0 ? ` · ${pending} queued` : ""}</span>
+        <span className={`pill ${online ? "ok" : "danger"}`}>{online ? "ONLINE" : "OFFLINE"}{pending > 0 ? ` · ${pending} queued` : ""}</span>
       </div>
 
       <div id="qr-reader" style={{ width: "100%", minHeight: cameraOn ? undefined : 0 }} />

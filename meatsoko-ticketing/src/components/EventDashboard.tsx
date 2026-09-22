@@ -88,7 +88,7 @@ export default function EventDashboard({ event, types, orders, tickets }: any) {
     <div>
       <div className="row">
         <h1>{event.name}</h1>
-        <span className={`badge ${event.status === "live" ? "ok" : ""}`}>{event.status}</span>
+        <span className={`pill ${event.status === "live" ? "ok" : ""}`}>{event.status}</span>
       </div>
       <div className="card">
         <div className="row"><span>Revenue (paid)</span><strong>KSh {revenue.toLocaleString()}</strong></div>
