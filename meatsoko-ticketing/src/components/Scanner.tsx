@@ -37,10 +37,18 @@ export default function Scanner({ userId }: { userId: string }) {
 
   // A reservation admits a named party; a ticket admits a holder we never named.
   // The door needs both facts large and immediately (FR-S7).
-  const admitText = (r: any) =>
-    r.kind === "reservation"
-      ? `✓ ADMIT\n${r.holder_name ?? ""}${r.party_size > 1 ? `\nParty of ${r.party_size}` : ""}`
-      : "✓ ADMIT";
+  const admitText = (r: any) => {
+    if (r.kind !== "reservation") return "✓ ADMIT";
+    const lines = ["✓ ADMIT", r.holder_name ?? ""];
+    if (r.party_size > 1) lines.push(`Party of ${r.party_size}`);
+    // Staff must be able to hand over exactly what was paid for.
+    const pre = Array.isArray(r.preorder) ? r.preorder : [];
+    if (pre.length) {
+      lines.push(pre.map((p: any) => `${p.qty}x ${p.name}`).join(", "));
+      if (r.amount_kes) lines.push(`PAID KSh ${Number(r.amount_kes).toLocaleString()}`);
+    }
+    return lines.filter(Boolean).join("\n");
+  };
 
   const show = (kind: "ok" | "bad", text: string) => {
     setFlash({ kind, text });

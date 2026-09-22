@@ -4,7 +4,7 @@ import AppShell from "@/components/AppShell";
 import Icon from "@/components/Icon";
 import EventCheckout from "@/components/EventCheckout";
 import ReservationForm from "@/components/ReservationForm";
-import type { Event, TicketType, PreorderItem } from "@/lib/types";
+import type { Event, TicketType, PreorderItem, ReservationType } from "@/lib/types";
 
 /** Nairobi, always — the buyer and the venue are both there. */
 const KE = "Africa/Nairobi";
@@ -27,6 +27,11 @@ export default async function EventPage({ params }: { params: { slug: string } }
 
   const { data: preorderItems } = isReservation
     ? await supabase.from("preorder_items").select("*")
+        .eq("event_id", ev.id).eq("is_active", true).order("position")
+    : { data: [] };
+
+  const { data: reservationTypes } = isReservation
+    ? await supabase.from("reservation_types").select("*")
         .eq("event_id", ev.id).eq("is_active", true).order("position")
     : { data: [] };
 
@@ -107,6 +112,7 @@ export default async function EventPage({ params }: { params: { slug: string } }
           <ReservationForm
             event={ev as Event}
             items={(preorderItems ?? []) as PreorderItem[]}
+            types={(reservationTypes ?? []) as ReservationType[]}
           />
         ) : (
           <EventCheckout

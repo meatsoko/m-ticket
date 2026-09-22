@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
 import QrImage from "@/components/QrImage";
 import Icon from "@/components/Icon";
-import type { Event, PreorderItem } from "@/lib/types";
+import type { Event, PreorderItem, ReservationType } from "@/lib/types";
 
 const APP_URL = () => process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin;
 
@@ -18,16 +18,18 @@ type Confirmed = {
 };
 
 export default function ReservationForm({
-  event, items,
+  event, items, types = [],
 }: {
   event: Event;
   items: PreorderItem[];
+  types?: ReservationType[];
 }) {
   const supabase = createClient();
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [accompanying, setAccompanying] = useState(0);
+  const [typeId, setTypeId] = useState<string>(types[0]?.id ?? "");
   const [arrival, setArrival] = useState("");
   const [qty, setQty] = useState<Record<string, number>>({});
   const [phase, setPhase] = useState<Phase>("form");
@@ -35,12 +37,20 @@ export default function ReservationForm({
   const [done, setDone] = useState<Confirmed | null>(null);
 
   const offersPreorders = event.reservation_mode !== "free" && items.length > 0;
+  const selected = types.find((t) => t.id === typeId) ?? null;
+  // A type that fixes the party size owns it; only a "group" asks the guest.
+  const fixed = selected?.fixed_party_size ?? null;
+  const asksForCount = types.length === 0 || fixed === null;
   const preorders = items
     .filter((i) => (qty[i.id] || 0) > 0)
     .map((i) => ({ preorder_item_id: i.id, qty: qty[i.id] }));
   const total = items.reduce((s, i) => s + (qty[i.id] || 0) * Number(i.price_kes), 0);
-  const partySize = 1 + accompanying;
-  const maxParty = event.max_party_size ?? 10;
+  const partySize = fixed ?? 1 + accompanying;
+  const maxParty = Math.min(
+    event.max_party_size ?? 10,
+    selected?.max_party_size ?? event.max_party_size ?? 10
+  );
+  const minParty = selected?.min_party_size ?? 1;
 
   const bump = (i: PreorderItem, d: number) =>
     setQty({ ...qty, [i.id]: Math.max(0, Math.min(i.max_per_reservation, (qty[i.id] || 0) + d)) });
@@ -57,6 +67,7 @@ export default function ReservationForm({
       accompanying_guests: accompanying,
       expected_arrival: arrival || undefined,
       preorders,
+      ...(typeId ? { reservation_type_id: typeId } : {}),
     });
 
     if (!res.data?.reservation_number) {
@@ -112,7 +123,11 @@ export default function ReservationForm({
       case "full":
         return `Sorry — the guest list is full${d.remaining ? `. Only ${d.remaining} place(s) left` : ""}.`;
       case "party_too_large":
-        return `Parties are limited to ${d.max_party_size} people.`;
+        return `${d.type ?? "This option"} is limited to ${d.max_party_size} people.`;
+      case "party_too_small":
+        return `${d.type ?? "This option"} needs at least ${d.min_party_size} people.`;
+      case "bad_reservation_type":
+        return "That option is no longer available. Pick another.";
       case "preorder_sold_out":
         return `${d.item ?? "That item"} is sold out${d.remaining ? ` — ${d.remaining} left` : ""}.`;
       case "closed":
@@ -201,21 +216,53 @@ export default function ReservationForm({
             value={email} onChange={(e) => setEmail(e.target.value)} />
         </label>
 
-        <div className="row">
-          <div className="stack tight" style={{ minWidth: 0 }}>
-            <strong>Anyone coming with you?</strong>
-            <span className="small">
-              {partySize} {partySize === 1 ? "person" : "people"} in total, including you
-            </span>
+        {types.length > 0 && (
+          <div className="stack tight">
+            <span className="eyebrow">Reservation type</span>
+            {types.map((t) => (
+              <label key={t.id} className="card quiet"
+                style={{ padding: 12, cursor: "pointer", gap: 4 }}>
+                <div className="row">
+                  <div className="stack tight" style={{ minWidth: 0 }}>
+                    <strong style={{ fontSize: ".95rem" }}>{t.name}</strong>
+                    <span className="small">
+                      {t.fixed_party_size
+                        ? `Admits ${t.fixed_party_size}`
+                        : `You choose — ${t.min_party_size} to ${t.max_party_size ?? maxParty} people`}
+                      {t.description ? ` · ${t.description}` : ""}
+                    </span>
+                  </div>
+                  <input type="radio" name="reservation_type" checked={typeId === t.id}
+                    onChange={() => { setTypeId(t.id); setAccompanying(0); }}
+                    style={{ width: 20, height: 20, margin: 0, flex: "0 0 auto" }} />
+                </div>
+              </label>
+            ))}
           </div>
-          <div className="stepper">
-            <button onClick={() => setAccompanying(Math.max(0, accompanying - 1))}
-              disabled={accompanying === 0} aria-label="One fewer guest">−</button>
-            <span className="qty" aria-live="polite">{accompanying}</span>
-            <button onClick={() => setAccompanying(Math.min(maxParty - 1, accompanying + 1))}
-              disabled={partySize >= maxParty} aria-label="One more guest">+</button>
+        )}
+
+        {asksForCount ? (
+          <div className="row">
+            <div className="stack tight" style={{ minWidth: 0 }}>
+              <strong>How many of you?</strong>
+              <span className="small">
+                {partySize} {partySize === 1 ? "person" : "people"} in total, including you
+              </span>
+            </div>
+            <div className="stepper">
+              <button onClick={() => setAccompanying(Math.max(0, accompanying - 1))}
+                disabled={partySize <= minParty} aria-label="One fewer guest">−</button>
+              <span className="qty" aria-live="polite">{partySize}</span>
+              <button onClick={() => setAccompanying(accompanying + 1)}
+                disabled={partySize >= maxParty} aria-label="One more guest">+</button>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="row">
+            <strong>Party size</strong>
+            <span className="pill ember">{partySize} {partySize === 1 ? "guest" : "guests"}</span>
+          </div>
+        )}
 
         <label className="field">
           <span>What time do you expect to arrive? <span className="small">(optional)</span></span>
@@ -226,6 +273,9 @@ export default function ReservationForm({
       {offersPreorders && (
         <>
           <span className="eyebrow">Preorder <span className="small">(optional)</span></span>
+          <p className="small">
+            Add food to any reservation. Paid now by M-Pesa; refunds are handled manually.
+          </p>
           <div className="card flush">
             {items.map((i) => (
               <div className="tt" key={i.id}>

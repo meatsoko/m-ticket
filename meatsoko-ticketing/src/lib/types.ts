@@ -47,3 +47,11 @@ export type Reservation = {
   checked_in_at: string | null;
   arrived_party_size: number | null;
 };
+
+export type ReservationType = {
+  id: string; event_id: string; name: string; description: string;
+  /** null means the guest enters the number (a "group"). */
+  fixed_party_size: number | null;
+  min_party_size: number; max_party_size: number | null;
+  position: number; is_active: boolean;
+};

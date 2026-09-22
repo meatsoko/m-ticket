@@ -12,6 +12,7 @@ import { json, preflight } from "../_shared/cors.ts";
 import { initiateStk } from "../_shared/daraja.ts";
 import { clientIp, normalizePhone, rateLimit, serviceClient } from "../_shared/supabase.ts";
 import { notifyOrganizer } from "../_shared/notify.ts";
+import { buildAndSend } from "../_shared/reservation-email.ts";
 
 // NFR-5. A reservation is cheap to submit, so the abuse surface is real; a
 // genuine guest correcting their party size needs a few attempts.
@@ -45,6 +46,7 @@ Deno.serve(async (req) => {
     const {
       event_id, guest_name, phone, email,
       accompanying_guests = 0, expected_arrival, preorders = [],
+      reservation_type_id,
     } = body;
 
     const guestName = String(guest_name ?? "").trim();
@@ -80,6 +82,7 @@ Deno.serve(async (req) => {
       p_arrival: arrival,
       p_preorders: preorders,
       p_source: "web",
+      p_reservation_type_id: reservation_type_id ?? null,
     });
     if (rErr) return fail("reservation_failed", 500, { detail: rErr.message });
 
@@ -99,6 +102,14 @@ Deno.serve(async (req) => {
     // ---- Free reservation: confirmed already, Daraja is never contacted ----
     if (!res.order_id || amount < 1) {
       stage = "notify";
+      // The guest's own confirmation, with the QR attached. Never blocks or
+      // fails the reservation — a mail problem is logged, not surfaced.
+      const appUrl = (Deno.env.get("APP_URL") ?? "").trim();
+      if (email && appUrl) {
+        buildAndSend(db, res.reservation_id, appUrl)
+          .then((out) => log("guest email", out))
+          .catch((e) => console.error("guest email failed", e));
+      }
       await notifyOrganizer(
         { email: ev?.notify_email ?? null, whatsapp: ev?.notify_whatsapp ?? null },
         {

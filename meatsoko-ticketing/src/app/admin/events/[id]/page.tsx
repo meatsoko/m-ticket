@@ -5,7 +5,8 @@ import EventSettings from "@/components/EventSettings";
 import EventStatusControls from "@/components/EventStatusControls";
 import ReservationsPanel from "@/components/ReservationsPanel";
 import PreorderItemsPanel from "@/components/PreorderItemsPanel";
-import type { PreorderItem } from "@/lib/types";
+import ReservationTypesPanel from "@/components/ReservationTypesPanel";
+import type { PreorderItem, ReservationType } from "@/lib/types";
 
 const MODE_LABEL: Record<string, string> = {
   free: "Free RSVP",
@@ -24,12 +25,13 @@ export default async function AdminEventPage({ params }: { params: { id: string 
   const isReservation = (ev.reservation_mode ?? "off") !== "off";
 
   if (isReservation) {
-    const [{ data: rows }, { data: stats }, { data: items }] = await Promise.all([
+    const [{ data: rows }, { data: stats }, { data: items }, { data: resTypes }] = await Promise.all([
       supabase.from("reservations")
         .select("*,orders(status,amount_kes)")
         .eq("event_id", ev.id).order("created_at", { ascending: false }),
       supabase.rpc("expected_attendance", { p_event_id: ev.id }),
       supabase.from("preorder_items").select("*").eq("event_id", ev.id).order("position"),
+      supabase.from("reservation_types").select("*").eq("event_id", ev.id).order("position"),
     ]);
 
     return (
@@ -43,6 +45,7 @@ export default async function AdminEventPage({ params }: { params: { id: string 
         <EventSettings event={ev} />
         <EventStatusControls eventId={ev.id} status={ev.status} />
         <ReservationsPanel eventId={ev.id} reservations={rows ?? []} stats={stats} />
+        <ReservationTypesPanel eventId={ev.id} types={(resTypes ?? []) as ReservationType[]} />
         {ev.reservation_mode !== "free" && (
           <PreorderItemsPanel eventId={ev.id} items={(items ?? []) as PreorderItem[]} />
         )}
