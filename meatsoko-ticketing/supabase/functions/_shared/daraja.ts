@@ -46,6 +46,46 @@ function callbackUrl(): string {
   return parsed.toString();
 }
 
+/**
+ * Config health for logging: presence, length and mode only — never a value, not even
+ * truncated. A missing or blank secret is the difference between "Daraja rejected us" and
+ * "we never had credentials", and that distinction is otherwise invisible in the logs.
+ */
+export function describeDarajaConfig(): {
+  mode: string;
+  callback_host: string | null;
+  lengths: Record<string, number>;
+  missing: string[];
+} {
+  const required = [
+    "DARAJA_CONSUMER_KEY",
+    "DARAJA_CONSUMER_SECRET",
+    "DARAJA_SHORTCODE",
+    "DARAJA_PASSKEY",
+    "DARAJA_CALLBACK_URL",
+  ];
+  const lengths: Record<string, number> = {};
+  const missing: string[] = [];
+  for (const name of required) {
+    const v = (Deno.env.get(name) ?? "").trim();
+    lengths[name] = v.length;
+    if (!v) missing.push(name);
+  }
+
+  let callbackHost: string | null = null;
+  const rawCb = (Deno.env.get("DARAJA_CALLBACK_URL") ?? "").trim();
+  if (rawCb) {
+    try { callbackHost = new URL(rawCb).host; } catch { callbackHost = "invalid-url"; }
+  }
+
+  return {
+    mode: (Deno.env.get("DARAJA_ENV") ?? "sandbox").trim(),
+    callback_host: callbackHost,
+    lengths,
+    missing,
+  };
+}
+
 /** Daraja tokens live ~3600s. Cache per isolate so the gate isn't paying for an extra round trip. */
 let cachedToken: { value: string; expiresAt: number } | null = null;
 

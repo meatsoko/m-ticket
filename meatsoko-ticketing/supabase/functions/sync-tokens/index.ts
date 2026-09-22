@@ -1,11 +1,11 @@
 // FR-S4: scanner offline cache. Staff JWT required.
 // Returns every non-refunded ticket for the live event WITH its redemption state, so an
 // offline device can tell "already redeemed at 14:32" apart from "not a real ticket".
-import { corsHeaders, json } from "../_shared/cors.ts";
+import { json, preflight } from "../_shared/cors.ts";
 import { requireStaff } from "../_shared/supabase.ts";
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") return preflight();
 
   const auth = await requireStaff(req);
   if (!auth.ok) return json({ error: auth.error }, auth.status);

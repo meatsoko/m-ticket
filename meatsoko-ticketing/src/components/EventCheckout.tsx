@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { invokeFn } from "@/lib/invoke";
 import QrImage from "@/components/QrImage";
 import type { Event, TicketType, OrderTicket } from "@/lib/types";
 
@@ -37,24 +38,22 @@ export default function EventCheckout({
   async function pay() {
     setError("");
     setState("pending");
-    const { data, error: fnErr } = await supabase.functions.invoke("stk-push", {
-      body: {
-        event_id: event.id, phone, buyer_email: email || undefined, items,
-        ...(orderId ? { order_id: orderId } : {}),
-      },
+    const res = await invokeFn(supabase, "stk-push", {
+      event_id: event.id, phone, buyer_email: email || undefined, items,
+      ...(orderId ? { order_id: orderId } : {}),
     });
-    if (data?.orderId) setOrderId(data.orderId);
-    if (fnErr || !data?.checkoutRequestId) {
-      setError(explain(data));
+    // Keep the order id from either a success or a failure so the retry reuses the row.
+    if (res.data?.orderId) setOrderId(res.data.orderId);
+    if (!res.data?.checkoutRequestId) {
+      setError(explain(res));
       setState("failed");
       return;
     }
+    const checkoutRequestId = res.data.checkoutRequestId;
     // Poll order status (FR-P3), up to ~100s
     for (let i = 0; i < 34; i++) {
       await new Promise((r) => setTimeout(r, 3000));
-      const { data: st } = await supabase.functions.invoke("order-status", {
-        body: { checkoutRequestId: data.checkoutRequestId },
-      });
+      const { data: st } = await invokeFn(supabase, "order-status", { checkoutRequestId });
       if (st?.status === "paid") { setTickets(st.tickets ?? []); setState("success"); return; }
       if (st?.status === "failed") {
         setError("Payment was cancelled or timed out. Tap below to try again.");
@@ -72,19 +71,32 @@ export default function EventCheckout({
     setState("failed");
   }
 
-  function explain(data: any): string {
-    switch (data?.error) {
+  function explain(res: { data: any; status: number | null; errorCode: string | null; transportError: boolean }): string {
+    if (res.transportError) {
+      return "Could not reach the payment service. Check your connection and try again.";
+    }
+    const d = res.data ?? {};
+    switch (res.errorCode) {
       case "rate_limited":
-        return `Too many payment attempts. Wait ${Math.ceil((data.retry_after ?? 60) / 60)} minute(s) and try again.`;
+        return `Too many payment attempts. Wait ${Math.ceil((d.retry_after ?? 60) / 60)} minute(s) and try again.`;
       case "sold_out":
-        return `${data.ticket_type ?? "That ticket"} is sold out${
-          data.remaining ? ` — only ${data.remaining} left` : ""}.`;
+        return `${d.ticket_type ?? "That ticket"} is sold out${
+          d.remaining ? ` — only ${d.remaining} left` : ""}.`;
       case "event_not_live":
+      case "event_not_found":
         return "Ticket sales for this event are closed.";
       case "invalid_phone":
         return "That phone number doesn't look right. Use the format 07XX XXX XXX.";
+      case "no_items":
+        return "Choose at least one ticket first.";
+      case "stk_failed":
+        return "M-Pesa did not accept the request. Check the number and try again.";
+      case "daraja_misconfigured":
+        return "Payments are temporarily unavailable. Please try again shortly.";
       default:
-        return "Could not start payment. Please try again.";
+        // `stage` says exactly how far the request got; worth showing so a support
+        // message identifies the failure instead of describing a blank wall.
+        return `Could not start payment${d.stage ? ` (failed at: ${d.stage})` : ""}. Please try again.`;
     }
   }
 

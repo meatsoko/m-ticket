@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { invokeFn } from "@/lib/invoke";
 
 type Sale = {
   id: string;
@@ -35,8 +36,8 @@ export default function GateMode({ eventId, types }: { eventId: string; types: a
   const poll = useCallback(async (sale: Sale) => {
     for (let i = 0; i < 40; i++) {
       await new Promise((r) => setTimeout(r, 3000));
-      const { data: st } = await supabase.functions.invoke("order-status", {
-        body: { checkoutRequestId: sale.checkoutRequestId },
+      const { data: st } = await invokeFn(supabase, "order-status", {
+        checkoutRequestId: sale.checkoutRequestId,
       });
       if (st?.status === "paid") return update(sale.id, { state: "admitted" });
       if (st?.status === "failed") return update(sale.id, { state: "failed", note: "Cancelled or timed out" });
@@ -49,21 +50,27 @@ export default function GateMode({ eventId, types }: { eventId: string; types: a
     if (!type) return;
     setErr("");
     setBusy(true);
-    const { data, error } = await supabase.functions.invoke("stk-push", {
-      body: { event_id: eventId, phone, channel: "gate", items: [{ ticket_type_id: typeId, qty }] },
+    const res = await invokeFn(supabase, "stk-push", {
+      event_id: eventId, phone, channel: "gate", items: [{ ticket_type_id: typeId, qty }],
     });
     setBusy(false);
 
-    if (error || !data?.checkoutRequestId) {
+    if (!res.data?.checkoutRequestId) {
+      const d = res.data ?? {};
       setErr(
-        data?.error === "sold_out"
-          ? `${data.ticket_type ?? "That ticket"} is sold out.`
-          : data?.error === "invalid_phone"
+        res.transportError
+          ? "No connection to the payment service."
+          : res.errorCode === "sold_out"
+          ? `${d.ticket_type ?? "That ticket"} is sold out.`
+          : res.errorCode === "invalid_phone"
           ? "Check the phone number."
-          : "STK failed. Try again."
+          : res.errorCode === "stk_failed"
+          ? "M-Pesa rejected the request. Check the number."
+          : `STK failed${d.stage ? ` at ${d.stage}` : ""}. Try again.`
       );
       return;
     }
+    const data = res.data;
 
     const sale: Sale = {
       id: `s${++seq.current}`,

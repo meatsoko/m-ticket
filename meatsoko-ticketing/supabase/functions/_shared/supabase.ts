@@ -58,12 +58,14 @@ export async function rateLimit(
   db: ReturnType<typeof serviceClient>,
   bucket: string,
   limit: number,
-  windowSeconds: number
+  windowSeconds: number,
+  opts: { increment?: boolean } = {}
 ): Promise<{ allowed: boolean; retryAfter: number }> {
   const { data, error } = await db.rpc("rate_limit_hit", {
     p_bucket: bucket,
     p_limit: limit,
     p_window_seconds: windowSeconds,
+    p_increment: opts.increment ?? true,
   });
   // Fail open: a throttle outage must not take checkout down with it.
   if (error) {

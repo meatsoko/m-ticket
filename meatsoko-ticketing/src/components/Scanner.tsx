@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { invokeFn } from "@/lib/invoke";
 import {
   cacheTokens, drainOutbox, enqueueRedemption, getCachedTokens,
   markLocalRedeemed, outboxCount,
@@ -41,8 +42,11 @@ export default function Scanner({ userId }: { userId: string }) {
 
   // ---- Offline cache sync (FR-S4) ----
   async function syncCache() {
-    const { data, error } = await supabase.functions.invoke("sync-tokens");
-    if (error || !data?.tokens) { show("bad", "Sync failed"); return; }
+    const { data, errorCode, transportError } = await invokeFn(supabase, "sync-tokens");
+    if (!data?.tokens) {
+      show("bad", transportError ? "Sync failed — no connection" : `Sync failed (${errorCode ?? "error"})`);
+      return;
+    }
     await cacheTokens(data.tokens, "live");
     const active = data.tokens.filter((t: any) => t.status === "active").length;
     show("ok", `Synced ${data.tokens.length} tickets (${active} unused)`);
@@ -52,11 +56,11 @@ export default function Scanner({ userId }: { userId: string }) {
   const flushOutbox = useCallback(async () => {
     const items = await drainOutbox();
     if (!items.length) { setPending(0); return; }
-    const { data, error } = await supabase.functions.invoke("redeem", {
-      body: { redemptions: items.map((i) => ({ ...i, station, scanned_at: i.scannedAt })) },
+    const { data } = await invokeFn(supabase, "redeem", {
+      redemptions: items.map((i) => ({ ...i, station, scanned_at: i.scannedAt })),
     });
     // A transport failure must not swallow the queue — put every item back.
-    if (error || !data?.results) {
+    if (!data?.results) {
       await enqueueRedemption(items);
       setPending(await outboxCount());
       return;
@@ -85,7 +89,7 @@ export default function Scanner({ userId }: { userId: string }) {
 
       if (navigator.onLine) {
         await flushOutbox();
-        const { data } = await supabase.functions.invoke("redeem", { body: { token, station } });
+        const { data } = await invokeFn(supabase, "redeem", { token, station });
         const r = data?.results?.[0];
         if (!r || r.result === "error") show("bad", "Server error — try again");
         else if (r.result === "admitted") show("ok", "✓ ADMIT");

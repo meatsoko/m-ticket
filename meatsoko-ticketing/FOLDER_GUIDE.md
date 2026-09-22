@@ -138,6 +138,26 @@ createClient(url, SERVICE_ROLE_KEY, { global: { headers: { Authorization: userJw
 `requireStaff(req)` from `_shared/supabase.ts`: it verifies the token explicitly via
 `auth.getUser(token)` and hands back a clean service-role client.
 
+## 3b. CORS — the other thing not to get wrong
+
+`supabase-js` sends `apikey` and `x-client-info` on **every** `functions.invoke()` call.
+Any header missing from `Access-Control-Allow-Headers` makes the browser reject the
+preflight and never send the real request. The symptom is deeply misleading:
+
+- the browser shows only a generic failure (the `fetch` never completed);
+- the function logs show a **successful boot followed by EarlyDrop with no application
+  logs** — that is the isolate answering the `OPTIONS` and exiting. The `POST` never ran;
+- nothing is written to the database and no rate-limit bucket moves;
+- `curl` works perfectly, because curl does not preflight.
+
+Keep `_shared/cors.ts` as the single source of allowed headers, and reply to `OPTIONS`
+with `preflight()` from that module.
+
+Relatedly, on the client: `functions.invoke()` sets `data: null` for any non-2xx response
+and puts the `Response` on `error.context`. Reading only `data` throws away the server's
+error code, collapsing throttles, sold-out types and Daraja rejections into one generic
+message. Use `invokeFn()` from `src/lib/invoke.ts`, which always returns the parsed body.
+
 ## 4. One-time setup tasks
 
 1. **Admin user**: Supabase Dashboard → Authentication → add user (email/password).

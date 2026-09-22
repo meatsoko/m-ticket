@@ -1,10 +1,10 @@
 // FR-S2/S3/S5, FR-L3. Staff JWT required. Supports single + bulk (offline outbox sync).
 // Duplicate protection: unique(ticket_id, redemption_type) — 23505 → already_redeemed.
-import { corsHeaders, json } from "../_shared/cors.ts";
+import { json, preflight } from "../_shared/cors.ts";
 import { requireStaff } from "../_shared/supabase.ts";
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") return preflight();
 
   const auth = await requireStaff(req);
   if (!auth.ok) return json({ error: auth.error }, auth.status);
