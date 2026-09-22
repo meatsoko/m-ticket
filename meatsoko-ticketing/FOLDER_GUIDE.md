@@ -158,6 +158,16 @@ and puts the `Response` on `error.context`. Reading only `data` throws away the 
 error code, collapsing throttles, sold-out types and Daraja rejections into one generic
 message. Use `invokeFn()` from `src/lib/invoke.ts`, which always returns the parsed body.
 
+## 3c. Before any of this — collect the inputs
+
+`INTAKE.md` lists everything that must be decided, gathered or requested before the
+system can sell a real ticket: event fields and their limits, ticket-type maths (caps
+count *admissions*, not tickets), production Daraja credentials, staff accounts, brand
+assets and the operational decisions the system assumes someone has made. It ends with a
+blank template to send to the event owner.
+
+Start with its section C — Safaricom's Go Live has a human approval step.
+
 ## 4. One-time setup tasks
 
 1. **Admin user**: Supabase Dashboard → Authentication → add user (email/password).
