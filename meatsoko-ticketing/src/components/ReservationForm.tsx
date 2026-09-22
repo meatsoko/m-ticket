@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
+import { normalizePhone, PHONE_HINT } from "@/lib/phone";
 import QrImage from "@/components/QrImage";
 import Icon from "@/components/Icon";
 import type { Event, PreorderItem, ReservationType } from "@/lib/types";
@@ -28,13 +29,17 @@ export default function ReservationForm({
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
-  const [accompanying, setAccompanying] = useState(0);
+  // A type's smallest legal party, expressed as "people besides you".
+  const startingExtra = (t?: ReservationType | null) =>
+    Math.max(0, (t?.fixed_party_size ?? t?.min_party_size ?? 1) - 1);
   const [typeId, setTypeId] = useState<string>(types[0]?.id ?? "");
+  const [accompanying, setAccompanying] = useState(() => startingExtra(types[0]));
   const [arrival, setArrival] = useState("");
   const [qty, setQty] = useState<Record<string, number>>({});
   const [phase, setPhase] = useState<Phase>("form");
   const [error, setError] = useState("");
   const [done, setDone] = useState<Confirmed | null>(null);
+  const [fieldErr, setFieldErr] = useState<{ name?: string; phone?: string }>({});
 
   const offersPreorders = event.reservation_mode !== "free" && items.length > 0;
   const selected = types.find((t) => t.id === typeId) ?? null;
@@ -55,8 +60,32 @@ export default function ReservationForm({
   const bump = (i: PreorderItem, d: number) =>
     setQty({ ...qty, [i.id]: Math.max(0, Math.min(i.max_per_reservation, (qty[i.id] || 0) + d)) });
 
+  /**
+   * The primary action is never disabled. A greyed-out button with no
+   * explanation is a dead end — the guest cannot tell whether the app is broken
+   * or they have missed something. Validate on press and say what is wrong,
+   * next to the field that is wrong.
+   */
+  function validate(): boolean {
+    const e: { name?: string; phone?: string } = {};
+    if (name.trim().length < 2) e.name = "Please enter your full name.";
+    if (!normalizePhone(phone)) {
+      e.phone = phone.trim()
+        ? `That number doesn't look right. ${PHONE_HINT}.`
+        : `We need your M-Pesa number. ${PHONE_HINT}.`;
+    }
+    setFieldErr(e);
+    const first = e.name ? "name" : e.phone ? "phone" : null;
+    if (first) {
+      document.querySelector<HTMLInputElement>(`[data-field="${first}"]`)?.focus();
+      return false;
+    }
+    return true;
+  }
+
   async function submit() {
     setError("");
+    if (!validate()) return;
     setPhase("submitting");
 
     const res = await invokeFn(supabase, "reserve", {
@@ -202,13 +231,19 @@ export default function ReservationForm({
       <div className="card">
         <label className="field">
           <span>Full name</span>
-          <input autoComplete="name" placeholder="Amina Wanjiru"
-            value={name} onChange={(e) => setName(e.target.value)} />
+          <input data-field="name" autoComplete="name" placeholder="Amina Wanjiru"
+            aria-invalid={!!fieldErr.name}
+            value={name}
+            onChange={(e) => { setName(e.target.value); setFieldErr({ ...fieldErr, name: undefined }); }} />
+          {fieldErr.name && <span className="field-error">{fieldErr.name}</span>}
         </label>
         <label className="field">
           <span>Phone number</span>
-          <input type="tel" inputMode="numeric" autoComplete="tel" placeholder="07XX XXX XXX"
-            value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <input data-field="phone" type="tel" inputMode="numeric" autoComplete="tel"
+            placeholder="07XX XXX XXX" aria-invalid={!!fieldErr.phone}
+            value={phone}
+            onChange={(e) => { setPhone(e.target.value); setFieldErr({ ...fieldErr, phone: undefined }); }} />
+          {fieldErr.phone && <span className="field-error">{fieldErr.phone}</span>}
         </label>
         <label className="field">
           <span>Email <span className="small">(optional)</span></span>
@@ -233,7 +268,7 @@ export default function ReservationForm({
                     </span>
                   </div>
                   <input type="radio" name="reservation_type" checked={typeId === t.id}
-                    onChange={() => { setTypeId(t.id); setAccompanying(0); }}
+                    onChange={() => { setTypeId(t.id); setAccompanying(startingExtra(t)); }}
                     style={{ width: 20, height: 20, margin: 0, flex: "0 0 auto" }} />
                 </div>
               </label>
@@ -249,8 +284,8 @@ export default function ReservationForm({
                 {partySize} {partySize === 1 ? "person" : "people"} in total, including you
               </span>
             </div>
-            <div className="stepper">
-              <button onClick={() => setAccompanying(Math.max(0, accompanying - 1))}
+            <div className="stepper" data-stepper="party">
+              <button onClick={() => setAccompanying(Math.max(startingExtra(selected), accompanying - 1))}
                 disabled={partySize <= minParty} aria-label="One fewer guest">−</button>
               <span className="qty" aria-live="polite">{partySize}</span>
               <button onClick={() => setAccompanying(accompanying + 1)}
@@ -311,11 +346,7 @@ export default function ReservationForm({
         <button
           className={total > 0 ? "btn-pay btn-block" : "btn-primary btn-block"}
           onClick={submit}
-          disabled={
-            phase === "submitting" ||
-            name.trim().length < 2 ||
-            phone.replace(/\D/g, "").length < 9
-          }
+          disabled={phase === "submitting"}
         >
           {phase === "submitting"
             ? "Reserving…"

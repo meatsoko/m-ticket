@@ -326,6 +326,8 @@ button:focus-visible, a:focus-visible {
 ::placeholder { color: var(--muted); }
 label.field { display: flex; flex-direction: column; gap: 6px; }
 label.field > span { font-size: .8rem; font-weight: 600; color: var(--ink-2); }
+.field-error { font-size: .8rem; font-weight: 500; color: var(--danger); }
+input[aria-invalid="true"], select[aria-invalid="true"] { border-color: var(--danger); }
 
 button, .btn {
   appearance: none; border: 0; cursor: pointer;

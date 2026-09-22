@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
+import { normalizePhone, PHONE_HINT } from "@/lib/phone";
 import QrImage from "@/components/QrImage";
 import Icon from "@/components/Icon";
 import type { Event, TicketType, OrderTicket } from "@/lib/types";
@@ -29,6 +30,7 @@ export default function EventCheckout({
   const [error, setError] = useState("");
   // FR-P6: a retry reuses this order row with a fresh checkout id.
   const [orderId, setOrderId] = useState<string | null>(null);
+  const [fieldErr, setFieldErr] = useState<{ phone?: string; items?: string }>({});
 
   const left = (t: TicketType) => remaining[t.id] ?? null;
   const soldOut = (t: TicketType) => left(t) === 0;
@@ -47,8 +49,23 @@ export default function EventCheckout({
     setQty({ ...qty, [t.id]: next });
   };
 
+  // Same rule as the reservation form: never hand the buyer a dead button.
+  function validate(): boolean {
+    const e: { phone?: string; items?: string } = {};
+    if (items.length === 0) e.items = "Choose at least one ticket first.";
+    if (!normalizePhone(phone)) {
+      e.phone = phone.trim()
+        ? `That number doesn't look right. ${PHONE_HINT}.`
+        : `We need your M-Pesa number. ${PHONE_HINT}.`;
+    }
+    setFieldErr(e);
+    if (e.phone) { document.querySelector<HTMLInputElement>('[data-field="phone"]')?.focus(); }
+    return !e.items && !e.phone;
+  }
+
   async function pay() {
     setError("");
+    if (!validate()) return;
     setState("pending");
     const res = await invokeFn(supabase, "stk-push", {
       event_id: event.id, phone, buyer_email: email || undefined, items,
@@ -209,10 +226,12 @@ export default function EventCheckout({
         <label className="field">
           <span>M-Pesa number</span>
           <input
-            type="tel" inputMode="numeric" autoComplete="tel"
-            placeholder="07XX XXX XXX"
-            value={phone} onChange={(e) => setPhone(e.target.value)}
+            data-field="phone" type="tel" inputMode="numeric" autoComplete="tel"
+            placeholder="07XX XXX XXX" aria-invalid={!!fieldErr.phone}
+            value={phone}
+            onChange={(e) => { setPhone(e.target.value); setFieldErr({ ...fieldErr, phone: undefined }); }}
           />
+          {fieldErr.phone && <span className="field-error">{fieldErr.phone}</span>}
         </label>
         <label className="field">
           <span>Email <span className="small">(optional)</span></span>
@@ -225,13 +244,10 @@ export default function EventCheckout({
 
         {error && <p className="small" style={{ color: "var(--danger)" }}>{error}</p>}
 
-        <button
-          className="btn-pay btn-block"
-          disabled={items.length === 0 || phone.replace(/\D/g, "").length < 9}
-          onClick={pay}
-        >
+        {fieldErr.items && <p className="small" style={{ color: "var(--danger)" }}>{fieldErr.items}</p>}
+        <button className="btn-pay btn-block" onClick={pay}>
           {items.length === 0
-            ? "Select a ticket"
+            ? "Pay with M-Pesa"
             : `${state === "failed" ? "Retry —" : "Pay"} KSh ${total.toLocaleString()}`}
         </button>
         <p className="small" style={{ textAlign: "center" }}>
