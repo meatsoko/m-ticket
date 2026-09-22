@@ -56,6 +56,11 @@ Deno.serve(async (req) => {
     if (!guestPhone) return fail("invalid_phone", 400, { hint: "expected 07XXXXXXXX or 2547XXXXXXXX" });
     if (!event_id || typeof event_id !== "string") return fail("missing_event_id", 400);
 
+    // Mandatory for web reservations: the pass, QR and order summary are
+    // delivered by email, and without one the guest keeps no copy of it.
+    const guestEmail = String(email ?? "").trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(guestEmail)) return fail("email_required", 400);
+
     const accompanying = Math.max(0, Math.min(50, parseInt(accompanying_guests) || 0));
     // HH:MM or HH:MM:SS, or nothing.
     const arrival = typeof expected_arrival === "string" && /^\d{2}:\d{2}(:\d{2})?$/.test(expected_arrival)
@@ -77,7 +82,7 @@ Deno.serve(async (req) => {
       p_event_id: event_id,
       p_guest_name: guestName,
       p_phone: guestPhone,
-      p_email: email ?? null,
+      p_email: guestEmail,
       p_accompanying: accompanying,
       p_arrival: arrival,
       p_preorders: preorders,
@@ -105,7 +110,7 @@ Deno.serve(async (req) => {
       // The guest's own confirmation, with the QR attached. Never blocks or
       // fails the reservation — a mail problem is logged, not surfaced.
       const appUrl = (Deno.env.get("APP_URL") ?? "").trim();
-      if (email && appUrl) {
+      if (appUrl) {
         buildAndSend(db, res.reservation_id, appUrl)
           .then((out) => log("guest email", out))
           .catch((e) => console.error("guest email failed", e));
@@ -114,7 +119,7 @@ Deno.serve(async (req) => {
         { email: ev?.notify_email ?? null, whatsapp: ev?.notify_whatsapp ?? null },
         {
           reservationNumber: res.reservation_number, guestName, phone: guestPhone,
-          email: email ?? null, partySize: res.party_size, expectedArrival: arrival,
+          email: guestEmail, partySize: res.party_size, expectedArrival: arrival,
           amountKes: 0, paid: true, eventName: ev?.name ?? "Event",
         }
       ).catch((e) => console.error("notify failed", e));

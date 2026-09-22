@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
-import { normalizePhone, PHONE_HINT } from "@/lib/phone";
+import { normalizePhone, looksLikeEmail, PHONE_HINT, EMAIL_HINT } from "@/lib/phone";
 import QrImage from "@/components/QrImage";
 import Icon from "@/components/Icon";
 import type { Event, TicketType, OrderTicket } from "@/lib/types";
@@ -30,7 +30,7 @@ export default function EventCheckout({
   const [error, setError] = useState("");
   // FR-P6: a retry reuses this order row with a fresh checkout id.
   const [orderId, setOrderId] = useState<string | null>(null);
-  const [fieldErr, setFieldErr] = useState<{ phone?: string; items?: string }>({});
+  const [fieldErr, setFieldErr] = useState<{ phone?: string; items?: string; email?: string }>({});
 
   const left = (t: TicketType) => remaining[t.id] ?? null;
   const soldOut = (t: TicketType) => left(t) === 0;
@@ -51,16 +51,23 @@ export default function EventCheckout({
 
   // Same rule as the reservation form: never hand the buyer a dead button.
   function validate(): boolean {
-    const e: { phone?: string; items?: string } = {};
+    const e: { phone?: string; items?: string; email?: string } = {};
     if (items.length === 0) e.items = "Choose at least one ticket first.";
     if (!normalizePhone(phone)) {
       e.phone = phone.trim()
         ? `That number doesn't look right. ${PHONE_HINT}.`
         : `We need your M-Pesa number. ${PHONE_HINT}.`;
     }
+    // Mandatory: the ticket QR is delivered here.
+    if (!looksLikeEmail(email)) {
+      e.email = email.trim()
+        ? "That email doesn't look right."
+        : "We need your email — your ticket is sent there.";
+    }
     setFieldErr(e);
-    if (e.phone) { document.querySelector<HTMLInputElement>('[data-field="phone"]')?.focus(); }
-    return !e.items && !e.phone;
+    const first = e.phone ? "phone" : e.email ? "email" : null;
+    if (first) document.querySelector<HTMLInputElement>(`[data-field="${first}"]`)?.focus();
+    return !e.items && !e.phone && !e.email;
   }
 
   async function pay() {
@@ -68,7 +75,7 @@ export default function EventCheckout({
     if (!validate()) return;
     setState("pending");
     const res = await invokeFn(supabase, "stk-push", {
-      event_id: event.id, phone, buyer_email: email || undefined, items,
+      event_id: event.id, phone, buyer_email: email.trim(), items,
       ...(orderId ? { order_id: orderId } : {}),
     });
     if (res.data?.orderId) setOrderId(res.data.orderId);
@@ -113,6 +120,9 @@ export default function EventCheckout({
         return "That phone number doesn't look right. Use the format 07XX XXX XXX.";
       case "no_items":
         return "Choose at least one ticket first.";
+      case "email_required":
+      case "invalid_email":
+        return "We need a valid email — your ticket is sent there.";
       case "stk_failed":
         return "M-Pesa did not accept the request. Check the number and try again.";
       case "daraja_misconfigured":
@@ -234,12 +244,16 @@ export default function EventCheckout({
           {fieldErr.phone && <span className="field-error">{fieldErr.phone}</span>}
         </label>
         <label className="field">
-          <span>Email <span className="small">(optional)</span></span>
+          <span>Email</span>
           <input
-            type="email" inputMode="email" autoComplete="email"
-            placeholder="you@example.com"
-            value={email} onChange={(e) => setEmail(e.target.value)}
+            data-field="email" type="email" inputMode="email" autoComplete="email"
+            placeholder="you@example.com" aria-invalid={!!fieldErr.email}
+            value={email}
+            onChange={(e) => { setEmail(e.target.value); setFieldErr({ ...fieldErr, email: undefined }); }}
           />
+          {fieldErr.email
+            ? <span className="field-error">{fieldErr.email}</span>
+            : <span className="small">{EMAIL_HINT}.</span>}
         </label>
 
         {error && <p className="small" style={{ color: "var(--danger)" }}>{error}</p>}

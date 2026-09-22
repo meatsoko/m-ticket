@@ -158,6 +158,16 @@ and puts the `Response` on `error.context`. Reading only `data` throws away the 
 error code, collapsing throttles, sold-out types and Daraja rejections into one generic
 message. Use `invokeFn()` from `src/lib/invoke.ts`, which always returns the parsed body.
 
+## 3d. Operating it
+
+- `ADMIN_ACCESS.md` — how to create the first admin and the gate staff, what each role
+  can reach, what every admin screen is for, and how to revoke access. Start here: there
+  are no accounts by default and no sign-up page, so nobody can open the scanner until
+  someone follows it.
+- `DARAJA_PRODUCTION.md` — why STK works in sandbox but never prompts a real phone, the
+  five values to get from Safaricom, how to apply them without the whitespace trap, and
+  a one-shilling verification run.
+
 ## 3c. Before any of this — collect the inputs
 
 `INTAKE.md` lists everything that must be decided, gathered or requested before the

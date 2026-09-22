@@ -14,3 +14,15 @@ export function normalizePhone(raw: string): string | null {
 }
 
 export const PHONE_HINT = "Use the format 07XX XXX XXX";
+
+/**
+ * Mirror of looks_like_email() in the database. Deliberately loose: real
+ * deliverability is proven by the mail arriving, not by a regex. This only
+ * catches obvious typing errors while the guest is still looking at the field.
+ */
+export function looksLikeEmail(raw: string): boolean {
+  const v = (raw ?? "").trim();
+  return v !== "" && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v);
+}
+
+export const EMAIL_HINT = "We send your pass and QR code here";

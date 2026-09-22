@@ -62,6 +62,10 @@ Deno.serve(async (req) => {
     }
     if (!event_id || typeof event_id !== "string") return fail("missing_event_id", 400);
     if (!Array.isArray(items) || items.length === 0) return fail("no_items", 400);
+    // Web buyers must give an email: the ticket QR is delivered there.
+    if (channel === "web" && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(buyerEmail ?? "").trim())) {
+      return fail("email_required", 400);
+    }
     if (channel !== "web" && channel !== "gate") return fail("bad_channel", 400);
     log("validated", { phone: maskPhone(buyerPhone), channel, item_count: items.length });
 

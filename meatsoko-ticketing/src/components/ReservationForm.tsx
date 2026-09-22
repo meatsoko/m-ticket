@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
-import { normalizePhone, PHONE_HINT } from "@/lib/phone";
+import { normalizePhone, looksLikeEmail, PHONE_HINT, EMAIL_HINT } from "@/lib/phone";
 import QrImage from "@/components/QrImage";
 import Icon from "@/components/Icon";
 import type { Event, PreorderItem, ReservationType } from "@/lib/types";
@@ -39,7 +39,7 @@ export default function ReservationForm({
   const [phase, setPhase] = useState<Phase>("form");
   const [error, setError] = useState("");
   const [done, setDone] = useState<Confirmed | null>(null);
-  const [fieldErr, setFieldErr] = useState<{ name?: string; phone?: string }>({});
+  const [fieldErr, setFieldErr] = useState<{ name?: string; phone?: string; email?: string }>({});
 
   const offersPreorders = event.reservation_mode !== "free" && items.length > 0;
   const selected = types.find((t) => t.id === typeId) ?? null;
@@ -67,15 +67,22 @@ export default function ReservationForm({
    * next to the field that is wrong.
    */
   function validate(): boolean {
-    const e: { name?: string; phone?: string } = {};
+    const e: { name?: string; phone?: string; email?: string } = {};
     if (name.trim().length < 2) e.name = "Please enter your full name.";
     if (!normalizePhone(phone)) {
       e.phone = phone.trim()
         ? `That number doesn't look right. ${PHONE_HINT}.`
         : `We need your M-Pesa number. ${PHONE_HINT}.`;
     }
+    // Mandatory: the pass, the QR and the order summary are delivered here.
+    // Without it the guest has no durable copy of their reservation.
+    if (!looksLikeEmail(email)) {
+      e.email = email.trim()
+        ? "That email doesn't look right."
+        : "We need your email — your pass and QR are sent there.";
+    }
     setFieldErr(e);
-    const first = e.name ? "name" : e.phone ? "phone" : null;
+    const first = e.name ? "name" : e.phone ? "phone" : e.email ? "email" : null;
     if (first) {
       document.querySelector<HTMLInputElement>(`[data-field="${first}"]`)?.focus();
       return false;
@@ -92,7 +99,7 @@ export default function ReservationForm({
       event_id: event.id,
       guest_name: name.trim(),
       phone,
-      email: email.trim() || undefined,
+      email: email.trim(),
       accompanying_guests: accompanying,
       expected_arrival: arrival || undefined,
       preorders,
@@ -167,6 +174,9 @@ export default function ReservationForm({
         return "That phone number doesn't look right. Use the format 07XX XXX XXX.";
       case "invalid_name":
         return "Please enter your full name.";
+      case "email_required":
+      case "invalid_email":
+        return "We need a valid email — your pass and QR are sent there.";
       case "preorder_required":
         return "This event requires a preorder. Select at least one item.";
       case "stk_failed":
@@ -246,9 +256,14 @@ export default function ReservationForm({
           {fieldErr.phone && <span className="field-error">{fieldErr.phone}</span>}
         </label>
         <label className="field">
-          <span>Email <span className="small">(optional)</span></span>
-          <input type="email" inputMode="email" autoComplete="email" placeholder="you@example.com"
-            value={email} onChange={(e) => setEmail(e.target.value)} />
+          <span>Email</span>
+          <input data-field="email" type="email" inputMode="email" autoComplete="email"
+            placeholder="you@example.com" aria-invalid={!!fieldErr.email}
+            value={email}
+            onChange={(e) => { setEmail(e.target.value); setFieldErr({ ...fieldErr, email: undefined }); }} />
+          {fieldErr.email
+            ? <span className="field-error">{fieldErr.email}</span>
+            : <span className="small">{EMAIL_HINT}.</span>}
         </label>
 
         {types.length > 0 && (
