@@ -48,10 +48,14 @@ have already issued point nowhere.
 Set it in **Vercel** and as a **Supabase secret** (`APP_URL`), to the same value. Edge
 Functions cannot read `NEXT_PUBLIC_*`, which is why there are two.
 
-### 3. Nobody can sign in
+### 3. Only a demo account exists
 
-`admin_users` is empty, so the scanner, Gate Mode and the admin dashboard are unreachable.
-See `ADMIN_ACCESS.md` — about five minutes, but nothing works until it is done.
+A demo admin has been created so the admin side can be looked at — credentials are in
+`ADMIN_LOGIN.local.md`, which is **excluded from git** on purpose.
+
+Real per-person accounts still need creating, one per device, before the event: the
+redemption log records `scanned_by`, and a shared credential makes that field worthless.
+See `ADMIN_ACCESS.md`. Delete the demo account before going live.
 
 ### 4. Not deployed
 
