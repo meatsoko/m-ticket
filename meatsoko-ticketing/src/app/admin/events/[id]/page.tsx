@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import EventDashboard from "@/components/EventDashboard";
+import ReservationsPanel from "@/components/ReservationsPanel";
 
 export default async function AdminEventPage({ params }: { params: { id: string } }) {
   const supabase = createClient();
@@ -17,6 +18,34 @@ export default async function AdminEventPage({ params }: { params: { id: string 
   const { data: tickets } = await supabase.from("tickets")
     .select("id,status,qr_token,order_id,ticket_type_id,redeemed_at")
     .in("order_id", (orders ?? []).map((o: any) => o.id).concat(["00000000-0000-0000-0000-000000000000"]));
+
+  // Reservation events get the reservations panel; ticketed events keep the
+  // existing dashboard untouched.
+  const isReservation = (ev.reservation_mode ?? "off") !== "off";
+  let reservations: any[] = [];
+  let stats: any = null;
+  if (isReservation) {
+    const [{ data: rows }, { data: s }] = await Promise.all([
+      supabase.from("reservations")
+        .select("*,orders(status,amount_kes)")
+        .eq("event_id", ev.id).order("created_at", { ascending: false }),
+      supabase.rpc("expected_attendance", { p_event_id: ev.id }),
+    ]);
+    reservations = rows ?? [];
+    stats = s;
+  }
+
+  if (isReservation) {
+    return (
+      <div className="stack">
+        <div className="row">
+          <h1>{ev.name}</h1>
+          <span className={`pill ${ev.status === "live" ? "ok" : ""}`}>{ev.status}</span>
+        </div>
+        <ReservationsPanel eventId={ev.id} reservations={reservations} stats={stats} />
+      </div>
+    );
+  }
 
   return (
     <EventDashboard
