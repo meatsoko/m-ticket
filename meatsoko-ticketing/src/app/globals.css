@@ -318,6 +318,7 @@ input, select, textarea {
   font-size: 16px; /* never below 16: iOS zooms the viewport otherwise */
   font-family: inherit;
 }
+textarea { resize: vertical; min-height: 80px; line-height: 1.5; }
 input:focus-visible, select:focus-visible, textarea:focus-visible,
 button:focus-visible, a:focus-visible {
   outline: 2px solid var(--ember); outline-offset: 2px;
