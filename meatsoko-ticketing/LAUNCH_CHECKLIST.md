@@ -1,8 +1,42 @@
   # Launch checklist
 
-Where NyamaFest actually stands, last verified **2026-09-22** against the live Supabase
-project. The database is empty of test data: 0 reservations, 0 orders, full capacity. Payments are deliberately parked — everything below is the path to launching
-without them.
+**NyamaFest is 4 days out — Sunday 27 September, doors 08:00.** Re-verified
+**2026-09-23** against the live Supabase project, the deployed secrets, and a clean
+production build.
+
+## Readiness: not launchable today
+
+Nothing in the code is in the way — `npm run lint` and `npm run build` are both clean
+as of today, and every guest-facing flow was verified end to end yesterday. What is
+missing is infrastructure, and it has an order to it:
+
+| | Status |
+|---|---|
+| Mail provider | ❌ No `RESEND_API_KEY` in Supabase secrets (checked today) |
+| Public URL | ❌ `NEXT_PUBLIC_APP_URL` is still `http://localhost:3000`; no Vercel project exists |
+| Staff accounts | ❌ Demo admin only |
+| Deployment | ❌ Never deployed |
+| Event data | ⚠️ 27 Sep is live at capacity 500, payments off — correct. See *Content still needed* |
+| Code | ✅ Lint and build clean, today |
+
+**The critical path is DNS, and it is the one thing you do not control.** Resend will
+not send from `info@meatsokogroup.com` until the domain verifies, and that waits on
+records propagating — hours, occasionally longer. With 4 days left this is the item to
+start within the hour; everything else on this list is an afternoon of setup that can
+happen while DNS settles.
+
+The two URL items are also order-dependent: a QR code bakes in whatever
+`NEXT_PUBLIC_APP_URL` says at the moment it is generated, so any pass issued before the
+real domain is set points at `localhost` forever and cannot be fixed from the guest's
+side. Deploy and set the domain **before** opening reservations, not after.
+
+> **On "the database is empty":** 0 reservations and 0 orders was verified on 2026-09-22
+> with database access. It has **not** been re-checked today — there is no service-role
+> key on disk and the database password is not stored here. Be careful how you re-check
+> it: `reservations` and `orders` are both staff-read-only under RLS, so querying them
+> with the anon key returns 0 whatever is actually in the tables. That zero is not
+> evidence. Use `./scripts/db.sh "select count(*) from reservations;"`, which connects
+> as `postgres` and sees through RLS.
 
 ---
 
@@ -47,6 +81,10 @@ have already issued point nowhere.
 
 Set it in **Vercel** and as a **Supabase secret** (`APP_URL`), to the same value. Edge
 Functions cannot read `NEXT_PUBLIC_*`, which is why there are two.
+
+`APP_URL` **already exists** as a Supabase secret (confirmed in `supabase secrets list`
+today). Its value cannot be read back — the CLI shows only a digest — so assume it still
+points at localhost and set it again with the real domain rather than trusting it.
 
 ### 3. Only a demo account exists
 
@@ -109,6 +147,17 @@ becomes real the moment you run a ticketed event again. The fix is to key the lo
 checkout-id query. Reservations are unaffected: `reservation-status` keys on the 128-bit
 `access_token`.
 
+### NyamaFest Launch is inconsistent, and unreachable from the admin UI
+The third event — closed, dated 2026-09-06 — still has `payments_enabled = true` and
+`capacity = null`, unlike the two live events. Harmless as it stands: it is closed, its
+date has passed, and `reservation_mode = 'off'`, so nothing can transact against it.
+
+It cannot be fixed from **Event settings**: `EventSettings.tsx` renders the payments
+checkbox and the capacity field only for reservation modes, and this event is Ticketed.
+The update is written and committed but **not applied** —
+`./scripts/db.sh < scripts/fix-nyamafest-launch.sql` sets payments off and capacity 500
+once `SUPABASE_DB_PASSWORD` is in `.env.local`.
+
 ### Dev-server cache
 If the local dev server starts behaving strangely (`Cannot find module
 ./vendor-chunks/@supabase.js`), `rm -rf .next` and restart. It renders an error page that
@@ -118,7 +167,11 @@ makes every UI check fail for unrelated reasons.
 
 ## Verified working
 
-Confirmed end-to-end against the live project and in a real headless browser at 390×844:
+Re-confirmed **today (2026-09-23)**: `npm run lint` clean, `npm run build` clean across
+all 13 routes, and the three events return the expected state from the live project.
+
+Confirmed **2026-09-22** end-to-end against the live project and in a real headless
+browser at 390×844, and not re-run today:
 
 - poster → line-up → reserve; only the open event is clickable
 - three events render with the right state: **Closed / Open / Coming soon**
@@ -137,11 +190,21 @@ Confirmed end-to-end against the live project and in a real headless browser at 
 
 ## Order to do things
 
-1. **Ask Safaricom to enable M-Pesa Express** — days of lead time, start it now
-2. Set up Resend, set the two secrets *(blocker 1)*
-3. Deploy to Vercel, set the domain and both app-URL variables *(blockers 2 and 4)*
-4. Create the admin and staff accounts *(blocker 3)*
-5. Add the poster and real copy
-6. Reserve once yourself, end to end, and scan your own QR at the gate
-7. Open reservations
-8. When M-Pesa clears: set the secrets, tick the payments box, test with one shilling
+With 4 days to the gate, the first two are today's work — both start clocks you cannot
+speed up afterwards.
+
+1. **Add `meatsokogroup.com` to Resend and publish the DNS records** *(blocker 1)* —
+   propagation is the critical path; start it before anything else on this list
+2. **Ask Safaricom to enable M-Pesa Express** — days of lead time and it does not block
+   launch, but it only gets slower by waiting
+3. Deploy to Vercel, set the domain and both app-URL variables *(blockers 2 and 4)* —
+   before any pass is issued, or its QR points at localhost permanently
+4. Set `RESEND_API_KEY` once the domain shows *Verified*, redeploy `reserve` *(blocker 1)*
+5. Create the admin and staff accounts, delete the demo account *(blocker 3)*
+6. Add the poster, real copy, and a contact number
+7. Reserve once yourself, end to end, and scan your own QR at the gate — this is the
+   check that proves mail, domain, QR and scanner all agree
+8. Open reservations
+9. When M-Pesa clears: set the secrets, tick the payments box, test with one shilling
+
+Tidy-up, any time: apply `scripts/fix-nyamafest-launch.sql`.
