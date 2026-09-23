@@ -31,3 +31,6 @@ yarn-error.log*
 
 # deno (byproduct of `deno check` on edge functions)
 deno.lock
+
+# local-only notes (credentials etc) — never commit
+*.local.md

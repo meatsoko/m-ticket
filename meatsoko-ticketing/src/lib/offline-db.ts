@@ -1,7 +1,18 @@
 // Minimal IndexedDB wrapper for the scanner: token cache + redemption outbox (FR-S4/S5).
 // Runs client-side only.
 
-type CachedToken = { token: string; status: string; redeemed_at?: string | null };
+// Shape returned by sync-tokens for BOTH pass kinds, so the offline gate can
+// show a guest's name and party size and refuse an unpaid preorder exactly as
+// the server would.
+type CachedToken = {
+  token: string;
+  status: string;
+  kind?: "ticket" | "reservation";
+  redeemed_at?: string | null;
+  holder_name?: string | null;
+  party_size?: number;
+  paid?: boolean;
+};
 type OutboxItem = { token: string; station: string; scannedAt: string };
 
 const DB = "ms-ticketing";
