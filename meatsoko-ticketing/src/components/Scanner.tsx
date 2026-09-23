@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { invokeFn } from "@/lib/invoke";
 import {
   cacheTokens, drainOutbox, enqueueRedemption, getCachedTokens,
   markLocalRedeemed, outboxCount,
@@ -41,23 +42,41 @@ export default function Scanner({ userId }: { userId: string }) {
 
   // ---- Offline cache sync (FR-S4) ----
   async function syncCache() {
-    const { data, error } = await supabase.functions.invoke("sync-tokens");
-    if (error || !data?.tokens) { show("bad", "Sync failed"); return; }
+    const { data, errorCode, transportError } = await invokeFn(supabase, "sync-tokens");
+    if (!data?.tokens) {
+      show("bad", transportError ? "Sync failed — no connection" : `Sync failed (${errorCode ?? "error"})`);
+      return;
+    }
     await cacheTokens(data.tokens, "live");
-    show("ok", `Synced ${data.tokens.length} tickets`);
+    const active = data.tokens.filter((t: any) => t.status === "active").length;
+    show("ok", `Synced ${data.tokens.length} tickets (${active} unused)`);
   }
 
   // ---- Outbox flush (FR-S5) ----
   const flushOutbox = useCallback(async () => {
     const items = await drainOutbox();
     if (!items.length) { setPending(0); return; }
-    const { data } = await supabase.functions.invoke("redeem", {
-      body: { redemptions: items.map((i) => ({ ...i, station })) },
+    const { data } = await invokeFn(supabase, "redeem", {
+      redemptions: items.map((i) => ({ ...i, station, scanned_at: i.scannedAt })),
     });
-    const failed = (data?.results ?? []).filter((r: any) => r.result === "error");
-    if (failed.length) await enqueueRedemption(items.filter((_, i) => data.results[i]?.result === "error"));
+    // A transport failure must not swallow the queue — put every item back.
+    if (!data?.results) {
+      await enqueueRedemption(items);
+      setPending(await outboxCount());
+      return;
+    }
+    const results: any[] = data.results;
+    const retry = items.filter((_, i) => results[i]?.result === "error");
+    if (retry.length) await enqueueRedemption(retry);
     setPending(await outboxCount());
-    if ((data?.results ?? []).some((r: any) => r.result === "admitted")) show("ok", "Offline scans synced");
+
+    // Cache staleness reconciliation (SRS §5.4): a ticket admitted offline that the
+    // server rejects is something staff must hear about, not a silent discrepancy.
+    const rejected = results.filter(
+      (r) => r.result === "already_redeemed" || r.result === "refunded" || r.result === "not_found"
+    ).length;
+    if (rejected) show("bad", `${rejected} queued scan(s) rejected on sync — check with staff`);
+    else if (results.some((r) => r.result === "admitted")) show("ok", "Offline scans synced");
   }, [station, supabase]);
 
   // ---- Core scan handling ----
@@ -70,24 +89,29 @@ export default function Scanner({ userId }: { userId: string }) {
 
       if (navigator.onLine) {
         await flushOutbox();
-        const { data } = await supabase.functions.invoke("redeem", { body: { token, station } });
+        const { data } = await invokeFn(supabase, "redeem", { token, station });
         const r = data?.results?.[0];
         if (!r || r.result === "error") show("bad", "Server error — try again");
         else if (r.result === "admitted") show("ok", "✓ ADMIT");
         else if (r.result === "already_redeemed")
           show("bad", `✗ Already redeemed\n${new Date(r.first_scanned_at).toLocaleTimeString()} @ ${r.station}`);
         else if (r.result === "refunded") show("bad", "✗ Refunded ticket");
+        else if (r.result === "event_closed") show("bad", "✗ Event is closed");
         else show("bad", "✗ Ticket not found");
       } else {
         // Offline path: validate against cache, queue redemption
         const cache = await getCachedTokens();
         if (!cache) { show("bad", "Offline — no cache. Sync while online first."); return; }
         const t = cache.tokens.find((x) => x.token === token);
-        if (!t) show("bad", "✗ Not in cache");
-        else if (t.status !== "active") show("bad", "✗ Already redeemed (cached)");
-        else {
-          await enqueueRedemption({ token, station, scannedAt: new Date().toISOString() });
-          await markLocalRedeemed(token);
+        if (!t) show("bad", "✗ Unknown ticket (not in cache)");
+        else if (t.status === "refunded") show("bad", "✗ Refunded ticket");
+        else if (t.status !== "active") {
+          const at = t.redeemed_at ? new Date(t.redeemed_at).toLocaleTimeString() : "earlier";
+          show("bad", `✗ Already redeemed\n${at}`);
+        } else {
+          const scannedAt = new Date().toISOString();
+          await enqueueRedemption({ token, station, scannedAt });
+          await markLocalRedeemed(token, scannedAt);
           setPending(await outboxCount());
           show("ok", "✓ ADMIT (offline — will sync)");
         }
@@ -122,7 +146,7 @@ export default function Scanner({ userId }: { userId: string }) {
       {flash && <div className={`flash ${flash.kind}`}>{flash.text}</div>}
       <div className="row" style={{ margin: "12px 0" }}>
         <h1 style={{ margin: 0 }}>Gate Scanner</h1>
-        <span className={`badge ${online ? "ok" : "bad"}`}>{online ? "ONLINE" : "OFFLINE"}{pending > 0 ? ` · ${pending} queued` : ""}</span>
+        <span className={`pill ${online ? "ok" : "danger"}`}>{online ? "ONLINE" : "OFFLINE"}{pending > 0 ? ` · ${pending} queued` : ""}</span>
       </div>
 
       <div id="qr-reader" style={{ width: "100%", minHeight: cameraOn ? undefined : 0 }} />

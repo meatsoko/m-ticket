@@ -26,24 +26,27 @@ meatsoko-ticketing/
 │
 ├── supabase/
 │   ├── config.toml           # edge function JWT settings (public fns: verify_jwt=false)
-│   ├── schema.sql            # ⭐ tables, enums, RLS, RPCs confirm_payment + refund_order
+│   ├── schema.sql            # ⭐ full schema for a fresh project (tables, RLS, RPCs)
+│   ├── migrations/           # incremental changes applied with `supabase db push`
 │   └── functions/            # Deno edge functions (deploy: supabase functions deploy <name>)
 │       ├── _shared/
 │       │   ├── cors.ts       # CORS + json() helper
-│       │   ├── supabase.ts   # service-role client + phone normalization
-│       │   └── daraja.ts     # Daraja oauth + STK initiation (env-driven sandbox/prod)
-│       ├── stk-push/         # FR-P1/P2 + FR-G1: pending order → STK (web + gate channels)
+│       │   ├── supabase.ts   # service-role client, phone normalization, requireStaff(),
+│       │   │                 #   rateLimit() — see the auth note below
+│       │   ├── email.ts      # optional Resend ticket email (FR-T2b; no-op without a key)
+│       │   └── daraja.ts     # Daraja oauth + STK initiation (trims secrets, timeouts)
+│       ├── stk-push/         # FR-P1/P2/P6 + FR-G1: order → STK; throttled, cap-checked
 │       ├── daraja-callback/  # FR-P4: idempotent → confirm_payment RPC; failures → failed
 │       ├── order-status/     # FR-P3: buyer/gate polling
-│       ├── lookup/           # FR-L: active tickets by phone (no auth history leak)
+│       ├── lookup/           # FR-L: active tickets by phone (throttled, no history leak)
 │       ├── ticket-by-token/  # FR-T1: public ticket view (unguessable token)
-│       ├── sync-tokens/      # FR-S4: staff JWT → full active-token list for offline cache
+│       ├── sync-tokens/      # FR-S4: staff JWT → tokens + redemption state for offline cache
 │       └── redeem/           # FR-S2/S3/S5: single + bulk redemption, 23505 = already redeemed
 │
 ├── public/
 │   ├── manifest.json         # PWA install (gate staff "install to home screen")
 │   ├── sw.js                 # app-shell cache (network-first pages, cache-first assets)
-│   └── icons/NOTE.txt        # add icon-192.png + icon-512.png before event day
+│   └── icons/                # icon-192 / icon-512 / icon-maskable-512 (ticket + check)
 │
 └── src/
     ├── middleware.ts         # session refresh for /scan /gate /admin /login
@@ -111,8 +114,59 @@ npm run dev                   # http://localhost:3000
 npm run build && npm start    # then deploy to Vercel (framework: Next.js, auto-detected)
 ```
 
-After deploy, set `DARAJA_CALLBACK_URL=https://YOUR_PROJECT.supabase.co/functions/v1/daraja-callback`
-and `NEXT_PUBLIC_APP_URL=https://your-vercel-domain` (used inside QR/wa.me links), redeploy secrets.
+After deploy, set `DARAJA_CALLBACK_URL=https://YOUR_PROJECT.supabase.co/functions/v1/daraja-callback`,
+`NEXT_PUBLIC_APP_URL=https://your-vercel-domain` (QR/wa.me links) and `APP_URL` to the same
+value as a Supabase secret (edge functions cannot read `NEXT_PUBLIC_*`), then redeploy secrets.
+
+> **Secrets must not carry trailing whitespace.** A newline on `DARAJA_PASSKEY` yields a
+> misleading "Wrong credentials"; a newline on `DARAJA_CALLBACK_URL` makes Safaricom's WAF
+> swallow the STK request and never reply. `daraja.ts` now trims and warns, but set them
+> cleanly anyway — `supabase secrets set KEY="$(printf %s "$VALUE")"`.
+
+## 3a. Edge function auth — the one thing not to get wrong
+
+`redeem` and `sync-tokens` need the caller's identity **and** service-role database
+access. Do not do this:
+
+```ts
+// WRONG — PostgREST resolves the role from the JWT, not the service key, so RLS applies
+createClient(url, SERVICE_ROLE_KEY, { global: { headers: { Authorization: userJwt } } })
+```
+
+`redemptions` intentionally has no INSERT policy (NFR-4), so the write above fails with
+*"new row violates row-level security policy"* and **every gate scan is rejected**. Use
+`requireStaff(req)` from `_shared/supabase.ts`: it verifies the token explicitly via
+`auth.getUser(token)` and hands back a clean service-role client.
+
+## 3b. CORS — the other thing not to get wrong
+
+`supabase-js` sends `apikey` and `x-client-info` on **every** `functions.invoke()` call.
+Any header missing from `Access-Control-Allow-Headers` makes the browser reject the
+preflight and never send the real request. The symptom is deeply misleading:
+
+- the browser shows only a generic failure (the `fetch` never completed);
+- the function logs show a **successful boot followed by EarlyDrop with no application
+  logs** — that is the isolate answering the `OPTIONS` and exiting. The `POST` never ran;
+- nothing is written to the database and no rate-limit bucket moves;
+- `curl` works perfectly, because curl does not preflight.
+
+Keep `_shared/cors.ts` as the single source of allowed headers, and reply to `OPTIONS`
+with `preflight()` from that module.
+
+Relatedly, on the client: `functions.invoke()` sets `data: null` for any non-2xx response
+and puts the `Response` on `error.context`. Reading only `data` throws away the server's
+error code, collapsing throttles, sold-out types and Daraja rejections into one generic
+message. Use `invokeFn()` from `src/lib/invoke.ts`, which always returns the parsed body.
+
+## 3c. Before any of this — collect the inputs
+
+`INTAKE.md` lists everything that must be decided, gathered or requested before the
+system can sell a real ticket: event fields and their limits, ticket-type maths (caps
+count *admissions*, not tickets), production Daraja credentials, staff accounts, brand
+assets and the operational decisions the system assumes someone has made. It ends with a
+blank template to send to the event owner.
+
+Start with its section C — Safaricom's Go Live has a human approval step.
 
 ## 4. One-time setup tasks
 
@@ -120,8 +174,8 @@ and `NEXT_PUBLIC_APP_URL=https://your-vercel-domain` (used inside QR/wa.me links
    Then in SQL editor: `insert into admin_users (user_id, role) values ('<auth-uuid>', 'admin');`
    Gate staff: same, with `role = 'staff'`.
 2. **Event**: /admin → create draft → add ticket types → **Go live**.
-3. **Icons**: drop real PNGs into `public/icons/` (192/512) so staff can install the scanner
-   to their home screen.
+3. **Icons**: shipped in `public/icons/` (192, 512, maskable 512). Replace with brand art
+   if you have it; the manifest already references all three.
 4. **Event-day ritual (NFR-6, FR-A4)**: Export CSV from the dashboard, gate staff opens
    /scan on good connection and taps **Sync cache**. Paper CSV is the last-resort fallback.
 

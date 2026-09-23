@@ -1,9 +1,9 @@
 // FR-P3: buyer-side polling. Body: { checkoutRequestId }
-import { corsHeaders, json } from "../_shared/cors.ts";
+import { json, preflight } from "../_shared/cors.ts";
 import { serviceClient } from "../_shared/supabase.ts";
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") return preflight();
   const { checkoutRequestId } = await req.json().catch(() => ({}));
   if (!checkoutRequestId) return json({ error: "missing_id" }, 400);
 

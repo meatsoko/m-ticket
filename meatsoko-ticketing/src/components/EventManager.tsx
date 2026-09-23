@@ -29,7 +29,7 @@ export default function EventManager({ events }: { events: any[] }) {
         <a key={ev.id} className="card" href={`/admin/events/${ev.id}`} style={{ display: "block", color: "inherit", textDecoration: "none" }}>
           <div className="row">
             <strong>{ev.name}</strong>
-            <span className={`badge ${ev.status === "live" ? "ok" : ""}`}>{ev.status}</span>
+            <span className={`pill ${ev.status === "live" ? "ok" : ""}`}>{ev.status}</span>
           </div>
           <p className="small">{new Date(ev.starts_at).toLocaleString()} — {ev.venue}</p>
         </a>
