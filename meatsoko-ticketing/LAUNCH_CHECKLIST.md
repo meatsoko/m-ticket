@@ -189,6 +189,45 @@ The script prints the row first and guards the delete on the phone as well as th
 so if that number has since been reused by a real booking it removes nothing rather than
 the wrong guest. **Still present as of this revision.**
 
+### One guest can hold two reservations under one email
+`create_reservation` treats **phone** as the identity key — it matches on
+`(event_id, phone)` and *updates that row in place* rather than inserting a second, backed
+by `unique (event_id, phone)`, with the capacity check subtracting the existing party size
+first. So a guest who submits the form twice gets one pass, not two.
+
+Email has no such rule. **Same email + a different phone = two reservations, two passes,
+two party sizes against the 500.**
+
+A unique index on `(event_id, lower(email))` is the obvious fix and is the wrong first
+move: families legitimately share one address (two guests, two phones, one inbox), so it
+converts a normal booking into a hard error at the worst moment; `/lookup` already returns
+an *array* per address because sharing is expected; email is stored case-preserved so any
+such rule needs a normalisation pass over live data first; and the migration itself fails
+if duplicates already exist. Extending the upsert to email would be worse — see the next
+paragraph for why.
+
+**The risk points both ways.** `unique (event_id, phone)` means a *shared handset silently
+overwrites a booking*: reserve for yourself, then reserve for a friend from the same
+phone, and the friend's details replace yours — same number, one pass, the first guest
+quietly gone. Party size is the intended answer, but nothing tells the guest that. Any new
+rule on email must not recreate this with a different column.
+
+Measure before building anything:
+
+```sql
+select lower(btrim(email)) as email, count(*) as bookings, sum(party_size) as people,
+       string_agg(reservation_number || ' (' || phone || ')', ', ' order by created_at)
+  from public.reservations
+ where event_id = (select id from events where slug = 'nyamafest')
+   and email is not null
+ group by 1 having count(*) > 1 order by 2 desc;
+```
+
+**Post-event fix, when there is time:** warn rather than block. If the email already has a
+booking under a different phone, return a distinct result carrying the existing
+reservation number and let the guest choose *open my existing pass* or *this is a separate
+booking*. Respects the family case, cannot destroy data, needs no unique index.
+
 ### Dev-server cache
 If the local dev server starts behaving strangely (`Cannot find module
 ./vendor-chunks/@supabase.js`), `rm -rf .next` and restart. It renders an error page that
