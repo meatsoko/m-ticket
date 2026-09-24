@@ -6,48 +6,57 @@ that are known-wrong, unverified, or deliberately deferred.
 
 ---
 
-## 1. Anyone with a pass token can burn it — **confirmed today, live now**
+## 1. ~~Anyone with a pass token can burn it~~ — **FIXED 2026-09-24**
 
-`admit_pass` and `resolve_pass` are callable by `anon` over PostgREST. Probed against the
-live project with nothing but the public anon key:
+`admit_pass` was callable by anyone holding a pass token. Confirmed against the live
+project with nothing but the public anon key, then fixed the same day.
 
-```
-POST /rest/v1/rpc/admit_pass  {"p_token":"000…0","p_station":"probe"}
-  -> HTTP 200  {"result": "not_found"}
-```
+**Migration:** `supabase/migrations/20260924140000_lock_admit_pass.sql`, applied
+2026-09-24 (`supabase migration list` shows `20260924140000`). It revokes `EXECUTE` on
+`public.admit_pass(text, text, uuid, timestamptz, integer)` from `public`, `anon` and
+`authenticated`, and grants it to `service_role`. Function logic untouched; no other
+permission changed.
 
-**HTTP 200 means it ran.** With a *real* token it would not say `not_found` — it would
-admit the pass, write the `redemptions` row, and set the reservation to `checked_in`,
-with whatever `p_station` string the caller chose.
+Revoking from **`public`** is the load-bearing line. No `GRANT` or `REVOKE` for this
+function existed anywhere in the migrations, so the only privilege was the Postgres
+default — `EXECUTE` to `PUBLIC` — which `anon` and `authenticated` both inherited.
+Revoking from those two alone would have been a no-op.
 
-Why this matters more than it looks: pass tokens are **designed to be shared**. They are
-emailed, and the "Share via WhatsApp" button exists to forward them. Anyone in a group
-chat where a pass was posted can burn it. The guest then arrives and the scanner says
-*already admitted*, with a time and station nobody recognises — and there is no override
-in the UI.
+### Verification
 
-Cause: no migration ever revoked `EXECUTE`, and Postgres grants it to `PUBLIC` by default.
-`admit_pass` does no `is_staff()` check of its own; it relies entirely on the `redeem`
-Edge Function calling `requireStaff()`. That is a real boundary only if nothing else can
-reach the function.
+| Check | Method | Result |
+|---|---|---|
+| Anonymous direct RPC rejected | `POST /rest/v1/rpc/admit_pass` with the anon key | ✅ **401 `42501 permission denied for function admit_pass`** — it returned **HTTP 200 `{"result":"not_found"}`** before the migration |
+| Authenticated direct RPC rejected | — | ⚠️ **Inferred, not observed** — see below |
+| Staff / service-role `redeem` path intact | `POST /functions/v1/redeem` with the anon key | ✅ **401 `{"error":"unauthorized"}`** — rejected by `requireStaff()`, not by a database permission error |
 
-**The fix is small and safe.** `redeem/index.ts:29` is the only caller and it uses the
-service-role client, so nothing legitimate breaks:
+**On the `authenticated` check.** Producing a signed-in session needs a staff password, so
+this was not tested directly. The inference is sound rather than hopeful: `authenticated`
+held `EXECUTE` *only* through the `PUBLIC` default, the migration revoked that default, and
+the anon probe flipping from 200 to 401 is direct evidence that the `PUBLIC` revoke took
+effect — the same single mechanism both roles depended on. `authenticated` was also
+revoked explicitly and never granted back.
+
+Confirm it directly whenever convenient:
 
 ```sql
-revoke execute on function public.admit_pass(text, text, uuid, timestamptz, integer) from public, anon, authenticated;
-revoke execute on function public.resolve_pass(text) from public, anon, authenticated;
-grant  execute on function public.admit_pass(text, text, uuid, timestamptz, integer) to service_role;
-grant  execute on function public.resolve_pass(text) to service_role;
+select proacl from pg_proc where proname = 'admit_pass';
 ```
 
-(Confirm the exact argument signatures with `\df admit_pass` before writing the migration.)
+Expect to see `service_role=X/postgres` and the owner, with no `anon`, `authenticated` or
+bare `=X` (PUBLIC) entry.
 
-Note this only became fixable without collateral damage because desk check-in was moved
-off the direct RPC and onto `redeem`. Had it stayed a client-side `supabase.rpc("admit_pass")`,
-revoking would have broken the door list.
+**Still to prove by hand:** that a real staff scan still admits. The probe above shows
+`redeem` rejecting an unauthenticated caller correctly, which is not the same as showing
+the service-role path still reaches `admit_pass`. One scan with a signed-in account settles
+it, and that scan is already on the pre-event list.
 
-**Do this before Sunday.**
+### Follow-up, deliberately not bundled
+
+`resolve_pass` is still `PUBLIC`-callable and leaks pass details (holder name, party size)
+to anyone with a token. Lower severity — a token holder is meant to see their own pass —
+and out of scope for this change, which was explicitly `admit_pass` only. It deserves the
+same revoke.
 
 ## 2. `order-status` returns ticket QR tokens
 
