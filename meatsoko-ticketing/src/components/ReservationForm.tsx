@@ -41,6 +41,8 @@ export default function ReservationForm({
   const [done, setDone] = useState<Confirmed | null>(null);
   const [emailed, setEmailed] = useState(false);
   const [fieldErr, setFieldErr] = useState<{ name?: string; phone?: string; email?: string }>({});
+  // Set when this email already holds a reservation under a different phone.
+  const [dup, setDup] = useState<{ reservation_number: string; party_size: number } | null>(null);
 
   // Payments may be switched off while M-Pesa provisioning is pending. The
   // platters still show — guests should know what is coming — but they cannot
@@ -96,8 +98,9 @@ export default function ReservationForm({
     return true;
   }
 
-  async function submit() {
+  async function submit(allowDuplicate = false) {
     setError("");
+    if (!allowDuplicate) setDup(null);
     if (!validate()) return;
     setPhase("submitting");
 
@@ -110,7 +113,20 @@ export default function ReservationForm({
       expected_arrival: arrival || undefined,
       preorders,
       ...(typeId ? { reservation_type_id: typeId } : {}),
+      ...(allowDuplicate ? { allow_duplicate_email: true } : {}),
     });
+
+    // Must come BEFORE the success test: this response also carries a
+    // reservation_number — the EXISTING one — so reading that first would show
+    // someone else's booking as their confirmation.
+    if (res.errorCode === "email_in_use" && res.data?.reservation_number) {
+      setDup({
+        reservation_number: String(res.data.reservation_number),
+        party_size: Number(res.data.party_size ?? 1),
+      });
+      setPhase("form");
+      return;
+    }
 
     if (!res.data?.reservation_number) {
       setError(explain(res));
@@ -381,10 +397,32 @@ export default function ReservationForm({
             <strong className="num">KSh {total.toLocaleString()}</strong>
           </div>
         )}
+        {dup && (
+          <div className="card quiet" style={{ gap: "var(--s3)" }}>
+            <strong style={{ fontSize: ".95rem" }}>You may already have a place</strong>
+            <p className="small">
+              {email.trim()} already has reservation <strong>{dup.reservation_number}</strong>
+              {dup.party_size > 1 ? ` for ${dup.party_size} people` : ""} at this event.
+              If that is yours, there is no need to reserve again — bring it as it is.
+            </p>
+            <a className="btn-ghost btn-block" href="/lookup">Find my existing pass</a>
+            <button
+              className="btn-primary btn-block"
+              onClick={() => submit(true)}
+              disabled={phase === "submitting"}
+            >
+              This is a separate booking — reserve anyway
+            </button>
+            <p className="small">
+              Reserving for someone else on your email is fine. Two places are only a
+              problem if nobody uses the first one.
+            </p>
+          </div>
+        )}
         {error && <p className="small" style={{ color: "var(--danger)" }}>{error}</p>}
         <button
           className={total > 0 ? "btn-pay btn-block" : "btn-primary btn-block"}
-          onClick={submit}
+          onClick={() => submit()}
           disabled={phase === "submitting"}
         >
           {phase === "submitting"

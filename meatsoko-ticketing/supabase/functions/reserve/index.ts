@@ -47,6 +47,9 @@ Deno.serve(async (req) => {
       event_id, guest_name, phone, email,
       accompanying_guests = 0, expected_arrival, preorders = [],
       reservation_type_id,
+      // Set by the guest answering "this is a separate booking" to the warning
+      // below. A deliberate choice, so it is theirs to make and not ours.
+      allow_duplicate_email = false,
     } = body;
 
     const guestName = String(guest_name ?? "").trim();
@@ -74,6 +77,32 @@ Deno.serve(async (req) => {
     if (!byPhone.allowed) return fail("rate_limited", 429, { scope: "phone", retry_after: byPhone.retryAfter });
     const byIp = await rateLimit(db, `reserve:ip:${clientIp(req)}`, PER_IP.limit, PER_IP.windowSeconds);
     if (!byIp.allowed) return fail("rate_limited", 429, { scope: "ip", retry_after: byIp.retryAfter });
+
+    // One email, two phones, two passes, two party sizes against capacity. Warn
+    // rather than refuse: families genuinely share an inbox, so the guest is the
+    // only one who can tell a duplicate from a second real booking.
+    //
+    // Deliberately after the throttle — before it, this is an unthrottled oracle
+    // for "does this address hold a booking". Only the reservation number and
+    // party size come back, never the access_token: enough to recognise your own
+    // booking, not enough to open someone else's.
+    if (!allow_duplicate_email) {
+      const { data: dup, error: dupErr } = await db.rpc("email_has_other_reservation", {
+        p_event_id: event_id, p_email: guestEmail, p_phone: guestPhone,
+      });
+      // Fails open on purpose — if the migration has not been applied, or the
+      // lookup errors, a guest still gets to reserve. This is a warning, and a
+      // warning that breaks the booking it was meant to improve is worse than
+      // the duplicate it was meant to catch. Logged so it is not silent.
+      if (dupErr) console.error(JSON.stringify({ rid, msg: "dup check failed", detail: dupErr.message }));
+      if ((dup as any)?.found) {
+        log("duplicate email offered", { number: (dup as any).reservation_number });
+        return fail("email_in_use", 409, {
+          reservation_number: (dup as any).reservation_number,
+          party_size: (dup as any).party_size,
+        });
+      }
+    }
 
     stage = "reserve";
     // All validation, pricing, capacity and the decision to create an order at
