@@ -15,6 +15,9 @@ guests are reserving. Three of the four original blockers are closed:
 | Mail provider | ✅ Resend sending; passes arrive with the QR attached |
 | Public URL | ✅ `event.meatsokogroup.com` — see the caveat below |
 | Guest recovery | ✅ `/lookup` takes an email or a phone |
+| Scanning a reservation QR | ✅ Fixed today — **it was broken until 2026-09-24**, see below. Untested on a real phone |
+| Scrolling on a phone | ✅ Fixed today |
+| Sign out | ✅ In the app bar on every signed-in screen |
 | Staff accounts | ⚠️ **The one open item.** Demo admin only; real per-device accounts still to create |
 | Event data | ⚠️ 27 Sep live, capacity 500, payments off — correct. See *Content still needed* |
 | Code | ✅ Lint and build clean, today |
@@ -55,6 +58,20 @@ and it is the only thing between here and being ready.
 - **Desk check-in fixed.** It had never worked — it passed the reservation number to
   `admit_pass`, which only ever matches the 32-hex `access_token`. It now also records
   which account admitted the guest.
+- **The scanner could not read a reservation QR at all.** It stripped the *ticket* URL
+  prefix `/t/` from whatever it scanned, but a reservation pass encodes `/r/<token>`. The
+  whole URL then failed the 32-hex test and every scan returned **"Invalid code"**. This
+  event is reservations-only, so no guest could have been admitted by scanning. It now
+  extracts the token wherever it appears, which also survives a `?utm=` picked up from a
+  link shared through WhatsApp.
+- **Nothing scrolled on a phone.** `.app-body` is the scroller, but a flex child only
+  overflows when its parent is height-bounded, and `.app` had `min-height` with no
+  `height` — so it grew with its content and `overflow: hidden` clipped the rest. The
+  560px rule sets an explicit height, which is why desktop mode appeared to fix it. Not a
+  new bug; it went unnoticed because every page tested so far fits on one screen.
+- **Sign out.** In the app bar on every signed-in screen. A gate phone is a shared device
+  by design, and a shift handover with no way to sign out defeats the per-device accounts
+  that make `scanned_by` meaningful.
 
 ---
 
@@ -158,9 +175,19 @@ A real fix is its own migration (`revoke execute … from anon, authenticated`) 
 not be rushed in alongside anything else.
 
 ### A test reservation is admissible
-`NF-23X5MW` on phone `0700000000` is `confirmed` and will scan in. Delete it before gates
-open — the number is guessable, and its `access_token` has been shared in a chat
-transcript.
+`NF-23X5MW` on phone `0700000000` is `confirmed` and will scan in like any real guest. The
+number is trivially guessable through `/lookup`, and its `access_token` has been pasted
+into a chat transcript — either route hands someone a working pass.
+
+Delete it before gates open, whichever is quicker: **Table Editor → `reservations`**, or
+
+```bash
+./scripts/db.sh < scripts/delete-test-reservation.sql
+```
+
+The script prints the row first and guards the delete on the phone as well as the number,
+so if that number has since been reused by a real booking it removes nothing rather than
+the wrong guest. **Still present as of this revision.**
 
 ### Dev-server cache
 If the local dev server starts behaving strangely (`Cannot find module
@@ -173,15 +200,29 @@ makes every UI check fail for unrelated reasons.
 
 Re-confirmed **today (2026-09-24)**: `npm run lint` and `npm run build` clean across all
 13 routes; `deno check` clean on the changed Edge Function; `https://event.meatsokogroup.com/`
-returns 200 with `x-matched-path: /`; and `reservation-lookup` answers correctly when
-probed with a malformed address, an unknown address, a mixed-case address containing an
-underscore, and a phone.
+returns 200 with `x-matched-path: /`; the deployed stylesheet carries the height bound that
+fixes phone scrolling; and `reservation-lookup` answers correctly when probed with a
+malformed address, an unknown address, a mixed-case address containing an underscore, and
+a phone.
 
-**Not machine-verified — do these by hand before Sunday:** the staff *Guest list* tab and
-the guest email recovery are both shipped but were never exercised with a real session.
-Sign in as a **non-admin staff** account, confirm `/scan` opens on the scanner, check a
-guest in from the list, press it a second time (must say *already admitted*, not admit
-twice), and run `/lookup` with a real guest's email.
+The scanner's token extraction was checked against every shape a pass can arrive in — an
+emailed reservation QR, one shared with a `?utm=` on it, a ticket QR, a hand-typed token,
+stray whitespace, uppercase — all accepted; an unrelated QR and a reservation number still
+refused, the latter deliberately.
+
+**Not machine-verified — do these by hand, on a real phone, before Sunday.** Everything
+below is shipped and has never been through a real session. The scanner fix especially:
+until 2026-09-24 the gate would have rejected every guest, and that path has still not been
+run against a real QR by a human.
+
+1. Sign in as a **non-admin staff** account
+2. **Scan a real reservation QR from an email** — must admit and show the guest's name
+3. Scan it again — must say *already admitted* with the first scan's time, not admit twice
+4. Check a guest in from the *Guest list* tab, and press it twice as well
+5. Scroll the guest list and the poster page — **on a real phone, not desktop mode**, since
+   the bug only appears below 560px and desktop mode is exactly what hides it
+6. Run `/lookup` with a real guest's email
+7. Sign out, and confirm it lands on `/login` with no way back without signing in
 
 Mail confirmed **2026-09-24**: Resend is sending and passes arrive with the QR attached.
 
@@ -214,6 +255,7 @@ gate readiness rather than launch.
    the Guest list tab, then press it again and confirm it refuses. This is the check that
    proves mail, domain, QR, scanner and list all agree
 3. Delete the demo account, and the `NF-23X5MW` test reservation
+   (`./scripts/db.sh < scripts/delete-test-reservation.sql`, or the Table Editor)
 4. Confirm `NEXT_PUBLIC_APP_URL` and the `APP_URL` secret are both the real domain
 5. Verify the `admit_pass` execute grant (see *Known issues*) — a real fix is its own
    migration, so decide now rather than on the day
