@@ -99,7 +99,13 @@ export default function Scanner({ userId }: { userId: string }) {
     if (busyRef.current) return;
     busyRef.current = true;
     try {
-      const token = raw.replace(/.*\/t\//, "").trim(); // accept full URL or bare token
+      // A pass QR encodes a full URL, and there are two shapes of it: /t/<token>
+      // for a ticket and /r/<token> for a reservation. Stripping only /t/ meant
+      // every reservation QR — which is every QR at a free-RSVP event — arrived
+      // here as a whole URL, failed the hex test below, and was rejected as an
+      // invalid code. Pull the token out wherever it sits instead, so a query
+      // string or a future path shape cannot break the gate either.
+      const token = (raw.trim().match(/[a-f0-9]{32}/i)?.[0] ?? "").toLowerCase();
       if (!/^[a-f0-9]{32}$/.test(token)) { show("bad", "Invalid code"); return; }
 
       if (navigator.onLine) {

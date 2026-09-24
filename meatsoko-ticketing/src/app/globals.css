@@ -136,7 +136,14 @@ a  { color: var(--ember); text-underline-offset: 3px; }
   width: 100%;
   max-width: var(--app-w);
   margin: 0 auto;
+  /* .app-body is the scroller, and a flex child only overflows if its parent is
+     height-bounded. With min-height alone .app simply grew with its content and
+     overflow:hidden clipped the rest — nothing scrolled on a phone until the
+     560px rule below set an explicit height, which is why desktop mode "fixed"
+     it. vh first as a fallback for browsers without dvh. */
   min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
   background: var(--bg);
   overflow: hidden;
 }
