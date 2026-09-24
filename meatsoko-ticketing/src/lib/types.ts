@@ -37,6 +37,8 @@ export type PreorderItem = {
 export type Reservation = {
   id: string;
   reservation_number: string;
+  /** 32-hex pass token — the only identifier resolve_pass() accepts. */
+  access_token: string;
   guest_name: string;
   phone: string;
   email: string | null;

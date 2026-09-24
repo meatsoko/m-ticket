@@ -2,32 +2,46 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { invokeFn } from "@/lib/invoke";
 import type { Reservation } from "@/lib/types";
 
 type Row = Reservation & {
   orders?: { status: string; amount_kes: number } | null;
 };
 
+type Filter = "all" | "confirmed" | "pending_payment" | "checked_in";
+
 const KE = "Africa/Nairobi";
 const shortTime = (iso: string | null) =>
   iso ? new Intl.DateTimeFormat("en-KE", { timeZone: KE, timeStyle: "short" }).format(new Date(iso)) : "";
 
 /**
- * Admin reservations panel. Follows the existing EventDashboard patterns — same
- * cards, pills, table and CSV approach — rather than introducing a second admin
- * surface.
+ * Reservations panel. Follows the existing EventDashboard patterns — same cards,
+ * pills, table and CSV approach — rather than introducing a second surface.
+ *
+ * Serves two callers: the admin event page, and the door list inside /scan. The
+ * props below all default to the admin behaviour, so that call site is unchanged;
+ * the door passes the narrower set.
  */
 export default function ReservationsPanel({
   eventId, reservations, stats,
+  canExport = true, showRevenue = true, defaultFilter = "all", station = "admin-desk",
 }: {
   eventId: string;
   reservations: Row[];
   stats: any;
+  /** Gate staff get the list to admit people, not a guest list to download. */
+  canExport?: boolean;
+  /** Takings are an admin concern; the door has no use for them. */
+  showRevenue?: boolean;
+  defaultFilter?: Filter;
+  /** Recorded on the redemption, so desk and door admissions stay apart in the log. */
+  station?: string;
 }) {
   const supabase = createClient();
   const router = useRouter();
   const [q, setQ] = useState("");
-  const [filter, setFilter] = useState<"all" | "confirmed" | "pending_payment" | "checked_in">("all");
+  const [filter, setFilter] = useState<Filter>(defaultFilter);
   const [busy, setBusy] = useState<string | null>(null);
 
   const rows = useMemo(() => {
@@ -51,14 +65,23 @@ export default function ReservationsPanel({
 
   async function checkIn(r: Row) {
     setBusy(r.id);
-    // Same RPC the scanner uses, so the redemption row, the duplicate guard and
-    // the audit entry are identical whether a guest is scanned or admitted by hand.
-    const { data, error } = await supabase.rpc("admit_pass", {
-      p_token: r.reservation_number, p_station: "admin-desk",
+    // Admit through the same Edge Function the scanner calls, so the redemption
+    // row, the duplicate guard and the audit entry are identical whether a guest
+    // is scanned or admitted by hand. Going through redeem rather than straight
+    // to the RPC is what records scanned_by — and a desk admission is precisely
+    // the one with no scan to corroborate it.
+    //
+    // resolve_pass only ever matches the 32-hex access_token; the reservation
+    // number is enumerable and is deliberately not an admission credential.
+    const res = await invokeFn(supabase, "redeem", {
+      token: r.access_token, station,
     });
     setBusy(null);
-    if (error) { alert(`Check-in failed: ${error.message}`); return; }
-    const result = (data as any)?.result;
+    if (res.transportError) {
+      alert("Check-in failed: could not reach the ticket service.");
+      return;
+    }
+    const result = (res.data as any)?.results?.[0]?.result ?? res.errorCode ?? "unknown";
     if (result !== "admitted" && result !== "already_redeemed") {
       alert(`Not admitted: ${result}`);
       return;
@@ -107,10 +130,12 @@ export default function ReservationsPanel({
             <strong className="small num">{stats.ticket_admissions}</strong>
           </div>
         )}
-        <div className="row">
-          <span>Preorder revenue (paid)</span>
-          <strong className="num">KSh {preorderTotal.toLocaleString()}</strong>
-        </div>
+        {showRevenue && (
+          <div className="row">
+            <span>Preorder revenue (paid)</span>
+            <strong className="num">KSh {preorderTotal.toLocaleString()}</strong>
+          </div>
+        )}
       </div>
 
       <div className="card">
@@ -131,9 +156,11 @@ export default function ReservationsPanel({
             </button>
           ))}
         </div>
-        <button className="btn-ghost btn-block" onClick={exportCsv} disabled={rows.length === 0}>
-          Export {rows.length} row{rows.length === 1 ? "" : "s"} to CSV
-        </button>
+        {canExport && (
+          <button className="btn-ghost btn-block" onClick={exportCsv} disabled={rows.length === 0}>
+            Export {rows.length} row{rows.length === 1 ? "" : "s"} to CSV
+          </button>
+        )}
       </div>
 
       {rows.length === 0 ? (
