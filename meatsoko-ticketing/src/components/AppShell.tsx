@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import Icon from "@/components/Icon";
 import TabBar from "@/components/TabBar";
+import SignOutButton from "@/components/SignOutButton";
 import { getRole } from "@/lib/require-staff";
 import { ROLE_LABEL, type Role } from "@/lib/rbac";
 
@@ -50,6 +51,9 @@ export default async function AppShell({
           <span className="pill ember">{ROLE_LABEL[resolved]}</span>
         ) : null}
         {action}
+        {/* Signed-in only. A buyer has no session to end, and the gate phone
+            that passes between shifts is exactly why this needs to exist. */}
+        {resolved !== "public" ? <SignOutButton /> : null}
       </header>
 
       <main className="app-body">{children}</main>
