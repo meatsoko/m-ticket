@@ -1,105 +1,87 @@
   # Launch checklist
 
-**NyamaFest is 4 days out — Sunday 27 September, doors 08:00.** Re-verified
-**2026-09-23** against the live Supabase project, the deployed secrets, and a clean
+**NyamaFest is 3 days out — Sunday 27 September, doors 08:00.** Re-verified
+**2026-09-24** against the live site, the deployed Edge Functions, and a clean
 production build.
 
-## Readiness: not launchable today
+## Readiness: live and taking reservations — one item left
 
-Nothing in the code is in the way — `npm run lint` and `npm run build` are both clean
-as of today, and every guest-facing flow was verified end to end yesterday. What is
-missing is infrastructure, and it has an order to it:
+The site is deployed at **https://event.meatsokogroup.com**, mail is sending, and real
+guests are reserving. Three of the four original blockers are closed:
 
 | | Status |
 |---|---|
-| Mail provider | ❌ No `RESEND_API_KEY` in Supabase secrets (checked today) |
-| Public URL | ❌ `NEXT_PUBLIC_APP_URL` is still `http://localhost:3000`; no Vercel project exists |
-| Staff accounts | ❌ Demo admin only |
-| Deployment | ❌ Never deployed |
-| Event data | ⚠️ 27 Sep is live at capacity 500, payments off — correct. See *Content still needed* |
+| Deployment | ✅ Live on Vercel (project `m-ticket-azure`), custom domain serving |
+| Mail provider | ✅ Resend sending; passes arrive with the QR attached |
+| Public URL | ✅ `event.meatsokogroup.com` — see the caveat below |
+| Guest recovery | ✅ `/lookup` takes an email or a phone |
+| Staff accounts | ⚠️ **The one open item.** Demo admin only; real per-device accounts still to create |
+| Event data | ⚠️ 27 Sep live, capacity 500, payments off — correct. See *Content still needed* |
 | Code | ✅ Lint and build clean, today |
 
-**The critical path is DNS, and it is the one thing you do not control.** Resend will
-not send from `info@meatsokogroup.com` until the domain verifies, and that waits on
-records propagating — hours, occasionally longer. With 4 days left this is the item to
-start within the hour; everything else on this list is an afternoon of setup that can
-happen while DNS settles.
+**Do the staff accounts now.** Follow `ADMIN_ACCESS.md`: one account per device, not one
+shared login, then delete the demo account. Nobody can work the gate until this is done,
+and it is the only thing between here and being ready.
 
-The two URL items are also order-dependent: a QR code bakes in whatever
-`NEXT_PUBLIC_APP_URL` says at the moment it is generated, so any pass issued before the
-real domain is set points at `localhost` forever and cannot be fixed from the guest's
-side. Deploy and set the domain **before** opening reservations, not after.
+> **Confirm `NEXT_PUBLIC_APP_URL` is `https://event.meatsokogroup.com` in Vercel**, and
+> that the `APP_URL` Supabase secret matches. A QR bakes in whatever that says at the
+> moment it is generated. If any pass was issued while it still pointed at the
+> `.vercel.app` URL, those QRs keep pointing there — they resolve, so nothing looks
+> broken, but they are not the address you are giving guests.
 
-> **On "the database is empty":** 0 reservations and 0 orders was verified on 2026-09-22
-> with database access. It has **not** been re-checked today — there is no service-role
-> key on disk and the database password is not stored here. Be careful how you re-check
-> it: `reservations` and `orders` are both staff-read-only under RLS, so querying them
-> with the anon key returns 0 whatever is actually in the tables. That zero is not
-> evidence. Use `./scripts/db.sh "select count(*) from reservations;"`, which connects
-> as `postgres` and sees through RLS.
+> **On "the database is empty":** that was true on 2026-09-22 and is now stale — the
+> event is live and taking real reservations. When you check counts, use
+> `./scripts/db.sh "select count(*) from reservations;"`. Querying with the anon key
+> returns 0 whatever is in the tables, because `reservations` and `orders` are both
+> staff-read-only under RLS. That zero is not evidence.
+
+---
+
+## Done since the last revision
+
+- **Resend live.** `RESEND_API_KEY` and `TICKET_EMAIL_FROM` are Supabase *function*
+  secrets, not Vercel env vars — the sending code runs in Edge Functions and never
+  executes on Vercel. The sender is on the verified `event.meatsokogroup.com`.
+- **Deployed.** The Vercel project needed Root Directory `meatsoko-ticketing` *and*
+  Framework Preset **Next.js**; with the preset left at "Other" the build succeeds and
+  Vercel publishes `public/` as static files, so every route 404s while the build log
+  looks perfect.
+- **Guest recovery works.** `/lookup` used to ask for the M-Pesa number, which for a
+  free-reservation event can only answer "no unused tickets" — while the confirmation
+  screen advertised it as the way back to a lost pass. It now takes an email or a phone
+  and searches reservations as well as tickets.
+- **Staff door list.** A *Guest list* tab inside `/scan`: search, filter, one-tap admit,
+  through the same path a scan uses. Scanning is still the way in.
+- **Desk check-in fixed.** It had never worked — it passed the reservation number to
+  `admit_pass`, which only ever matches the 32-hex `access_token`. It now also records
+  which account admitted the guest.
 
 ---
 
 ## Blocking launch
 
-### 1. Guests are asked for an email and receive nothing
+### 1. No real staff accounts
 
-Passes are sent **from `info@meatsokogroup.com`** — that is set. What is still missing is
-the mail provider itself: `RESEND_API_KEY` is not configured, so nothing sends. Email is
-mandatory at checkout precisely so guests get their pass; without a provider they hand
-over an address and get silence.
+The only account is a **demo admin** — credentials in `ADMIN_LOGIN.local.md`, excluded
+from git on purpose. Nobody can open the scanner, the guest list or Gate Mode without an
+account, so this is the last thing standing between here and gates open.
 
-The app is honest about it in the meantime: `reserve` reports whether the send actually
-succeeded, and the confirmation screen only says "we've also emailed it to …" when it did,
-otherwise "screenshot this". Nothing lies to the guest. But a reservation with no durable
-copy is the main way someone turns up at a gate with nothing to show.
+Create one **per device**, not one shared login. The redemption log records `scanned_by`,
+and a shared credential makes that field worthless — which matters more now that staff can
+admit a guest from the guest list by hand, the one admission with no scan to corroborate
+who waved them through. Steps and ready-to-paste SQL are in `ADMIN_ACCESS.md`.
 
-**Two steps left:**
+Delete the demo account once your own admin works.
 
-1. **Verify `meatsokogroup.com` with Resend.** Create an account, add the domain, and add
-   the DNS records it gives you (SPF and DKIM `TXT`, usually a `CNAME` too). Until the
-   domain shows *Verified*, mail from that address is rejected or silently dropped —
-   sending from an unverified domain is the most common reason "email just doesn't work".
-2. **Set the key:**
+---
 
-```bash
-supabase secrets set RESEND_API_KEY="$(printf %s 're_xxx')"
-supabase functions deploy reserve
-supabase functions deploy daraja-callback
-```
+## Closed blockers, kept for the record
 
-Free tier covers 3,000 emails/month, well beyond this event.
-
-Verify it end to end by reserving once with your own address: the response carries
-`"emailed": true` when the send succeeded.
-
-### 2. Every QR points at `localhost`
-
-`NEXT_PUBLIC_APP_URL` is still `http://localhost:3000`. That string is baked into every
-QR code and WhatsApp link at the moment it is generated — get it wrong and passes you
-have already issued point nowhere.
-
-Set it in **Vercel** and as a **Supabase secret** (`APP_URL`), to the same value. Edge
-Functions cannot read `NEXT_PUBLIC_*`, which is why there are two.
-
-`APP_URL` **already exists** as a Supabase secret (confirmed in `supabase secrets list`
-today). Its value cannot be read back — the CLI shows only a digest — so assume it still
-points at localhost and set it again with the real domain rather than trusting it.
-
-### 3. Only a demo account exists
-
-A demo admin has been created so the admin side can be looked at — credentials are in
-`ADMIN_LOGIN.local.md`, which is **excluded from git** on purpose.
-
-Real per-person accounts still need creating, one per device, before the event: the
-redemption log records `scanned_by`, and a shared credential makes that field worthless.
-See `ADMIN_ACCESS.md`. Delete the demo account before going live.
-
-### 4. Not deployed
-
-The app has never been deployed. Build is green; it needs a Vercel project pointed at this
-repo, the three `NEXT_PUBLIC_*` variables, and a domain. HTTPS is required — the scanner's
-camera will not start without a secure context.
+| Was | How it was closed |
+|---|---|
+| **Guests receive nothing** | `RESEND_API_KEY` and `TICKET_EMAIL_FROM` set as **Supabase function secrets** (not Vercel env vars — the sending code runs in Edge Functions), sender on the verified `event.meatsokogroup.com` |
+| **Every QR points at `localhost`** | Deployed and `NEXT_PUBLIC_APP_URL` set to the real domain. Re-confirm it and the matching `APP_URL` secret — the CLI only shows a digest, never the value |
+| **Not deployed** | Vercel project `m-ticket-azure`: Root Directory `meatsoko-ticketing` **and** Framework Preset `Next.js`. With the preset on "Other" the build succeeds and Vercel publishes `public/` as static files, so every route 404s while the log looks perfect |
 
 ---
 
@@ -129,7 +111,7 @@ Payments → Preorders can be paid for**. No migration, no redeploy.
 | **Poster image** | The landing page falls back to a gradient. Landscape, no text baked in (the title overlays it), under ~200 KB. Set as the event's `banner_url` |
 | **Real copy** | Description is `Nyama Choma \| Live Grills \| Music \| Brand Village` — placeholder chips |
 | **Contact number** | `contact_phone` is empty, so the pass page shows no one to call |
-| **Notify destination** | `notify_email` / `notify_whatsapp` unset, so new reservations land only in the dashboard |
+| **Notify destination** | Both unset, so new reservations land only in the dashboard. Use **`notify_email`** — `notify_whatsapp` looks live in Event settings but cannot deliver: it needs a `WHATSAPP_WEBHOOK_URL` that is not configured and has no provider behind it, so a filled-in field silently does nothing |
 | **Capacity** | 27 Sep is set to 500, 14 Oct to 2,000. Confirm both against the venue |
 
 ---
@@ -158,6 +140,28 @@ The update is written and committed but **not applied** —
 `./scripts/db.sh < scripts/fix-nyamafest-launch.sql` sets payments off and capacity 500
 once `SUPABASE_DB_PASSWORD` is in `.env.local`.
 
+### `admit_pass` / `resolve_pass` may be callable by anyone — **verify before Sunday**
+Neither `supabase/schema.sql` nor any migration contains a `REVOKE EXECUTE`, and only
+`availability` and `expected_attendance` have explicit grants. Postgres defaults `EXECUTE`
+to `PUBLIC`, so these `security definer` functions may be reachable by `anon` over
+PostgREST RPC. `admit_pass` does no `is_staff()` check of its own — it relies entirely on
+`redeem` calling `requireStaff()`.
+
+If that is so, a guest looking at their own `/r/<token>` URL could burn their own pass.
+Check it:
+
+```bash
+./scripts/db.sh "\df+ admit_pass"
+```
+
+A real fix is its own migration (`revoke execute … from anon, authenticated`) and should
+not be rushed in alongside anything else.
+
+### A test reservation is admissible
+`NF-23X5MW` on phone `0700000000` is `confirmed` and will scan in. Delete it before gates
+open — the number is guessable, and its `access_token` has been shared in a chat
+transcript.
+
 ### Dev-server cache
 If the local dev server starts behaving strangely (`Cannot find module
 ./vendor-chunks/@supabase.js`), `rm -rf .next` and restart. It renders an error page that
@@ -167,11 +171,22 @@ makes every UI check fail for unrelated reasons.
 
 ## Verified working
 
-Re-confirmed **today (2026-09-23)**: `npm run lint` clean, `npm run build` clean across
-all 13 routes, and the three events return the expected state from the live project.
+Re-confirmed **today (2026-09-24)**: `npm run lint` and `npm run build` clean across all
+13 routes; `deno check` clean on the changed Edge Function; `https://event.meatsokogroup.com/`
+returns 200 with `x-matched-path: /`; and `reservation-lookup` answers correctly when
+probed with a malformed address, an unknown address, a mixed-case address containing an
+underscore, and a phone.
+
+**Not machine-verified — do these by hand before Sunday:** the staff *Guest list* tab and
+the guest email recovery are both shipped but were never exercised with a real session.
+Sign in as a **non-admin staff** account, confirm `/scan` opens on the scanner, check a
+guest in from the list, press it a second time (must say *already admitted*, not admit
+twice), and run `/lookup` with a real guest's email.
+
+Mail confirmed **2026-09-24**: Resend is sending and passes arrive with the QR attached.
 
 Confirmed **2026-09-22** end-to-end against the live project and in a real headless
-browser at 390×844, and not re-run today:
+browser at 390×844, and not re-run since:
 
 - poster → line-up → reserve; only the open event is clickable
 - three events render with the right state: **Closed / Open / Coming soon**
@@ -190,21 +205,22 @@ browser at 390×844, and not re-run today:
 
 ## Order to do things
 
-With 4 days to the gate, the first two are today's work — both start clocks you cannot
-speed up afterwards.
+Three days to the gate. The site is live and taking reservations, so what is left is
+gate readiness rather than launch.
 
-1. **Add `meatsokogroup.com` to Resend and publish the DNS records** *(blocker 1)* —
-   propagation is the critical path; start it before anything else on this list
-2. **Ask Safaricom to enable M-Pesa Express** — days of lead time and it does not block
-   launch, but it only gets slower by waiting
-3. Deploy to Vercel, set the domain and both app-URL variables *(blockers 2 and 4)* —
-   before any pass is issued, or its QR points at localhost permanently
-4. Set `RESEND_API_KEY` once the domain shows *Verified*, redeploy `reserve` *(blocker 1)*
-5. Create the admin and staff accounts, delete the demo account *(blocker 3)*
+1. **Create the admin and staff accounts, one per device** *(the last blocker)* —
+   `ADMIN_ACCESS.md` has the steps and the SQL. Nobody can work the gate until this is done
+2. **Sign in as staff and walk the gate flow** — scan a real QR, then admit someone from
+   the Guest list tab, then press it again and confirm it refuses. This is the check that
+   proves mail, domain, QR, scanner and list all agree
+3. Delete the demo account, and the `NF-23X5MW` test reservation
+4. Confirm `NEXT_PUBLIC_APP_URL` and the `APP_URL` secret are both the real domain
+5. Verify the `admit_pass` execute grant (see *Known issues*) — a real fix is its own
+   migration, so decide now rather than on the day
 6. Add the poster, real copy, and a contact number
-7. Reserve once yourself, end to end, and scan your own QR at the gate — this is the
-   check that proves mail, domain, QR and scanner all agree
-8. Open reservations
+7. **On the day:** tap *Sync cache* on every gate phone before doors open
+8. **Ask Safaricom to enable M-Pesa Express** — does not block this event, but it only
+   gets slower by waiting
 9. When M-Pesa clears: set the secrets, tick the payments box, test with one shilling
 
 Tidy-up, any time: apply `scripts/fix-nyamafest-launch.sql`.

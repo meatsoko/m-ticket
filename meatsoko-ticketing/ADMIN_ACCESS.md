@@ -4,8 +4,9 @@ There is **no sign-up page, and there never will be** — that is deliberate. An
 can create their own account could scan tickets, sell at the gate and read every guest's
 phone number. Accounts are created by hand, and a role is granted by hand.
 
-Right now **there are zero accounts**, so nobody can open the scanner, Gate Mode or the
-admin dashboard. That is the first thing to fix below.
+Right now the only account is a **demo admin** (credentials in `ADMIN_LOGIN.local.md`,
+excluded from git). Real per-person accounts still need creating — one per device — and
+the demo account deleted before the gates open.
 
 ---
 
@@ -14,11 +15,15 @@ admin dashboard. That is the first thing to fix below.
 | | `staff` | `admin` |
 |---|---|---|
 | Scanner (`/scan`) | ✅ | ✅ |
+| Guest list, search, and admitting by hand | ✅ | ✅ |
 | Gate sales (`/gate`) | ✅ | ✅ |
-| Reservations list & search | — | ✅ |
-| Check a guest in from the desk | — | ✅ |
+| Preorder takings, CSV export of the guest list | — | ✅ |
 | Event settings, reservation types, preorder items | — | ✅ |
-| Refunds, CSV export, audit log | — | ✅ |
+| Refunds, audit log | — | ✅ |
+
+Staff reach the guest list as a **tab inside `/scan`**, not through `/admin`. They see the
+same rows and the same one-tap admit an admin gets, minus the money and minus the export —
+a downloadable guest list on a shared door phone is not something a gate shift needs.
 
 `admin` inherits everything `staff` can do. The app shows a role badge in the top bar, and
 the bottom tab bar only renders the tabs your role holds — so a `staff` phone has no Admin
@@ -39,30 +44,51 @@ tab at all.
 - Password: set one
 - ✅ **Auto Confirm User** — without this the account cannot sign in
 
-Copy the new user's UUID.
-
-Then **SQL Editor**:
+Then **SQL Editor** — this looks the UUID up by email, so there is nothing to copy by
+hand:
 
 ```sql
-insert into admin_users (user_id, role)
-values ('<paste-the-uuid>', 'admin');
+insert into public.admin_users (user_id, role)
+select id, 'admin' from auth.users
+where email = 'you@meatsokogroup.com'
+on conflict (user_id) do update set role = excluded.role;
 ```
 
-That's it. `admin_users` is the whole authorisation model: a row here grants the role, and
-deleting the row revokes it instantly.
+`user_id` is the primary key, so that is safe to re-run and also doubles as the way to
+*change* someone's role. `admin_users` is the whole authorisation model: a row here grants
+the role, and deleting the row revokes it instantly.
 
 ## 2. Create the gate staff
 
 Same steps, one account **per device** — not one shared login:
 
 ```sql
-insert into admin_users (user_id, role)
-values ('<uuid>', 'staff');
+insert into public.admin_users (user_id, role)
+select id, 'staff' from auth.users
+where email in ('gate1@meatsokogroup.com',
+                'gate2@meatsokogroup.com',
+                'gate3@meatsokogroup.com')
+on conflict (user_id) do update set role = excluded.role;
+```
+
+Check what you ended up with:
+
+```sql
+select u.email, a.role
+  from public.admin_users a
+  join auth.users u on u.id = a.user_id
+ order by a.role, u.email;
 ```
 
 Per-device accounts matter because the redemption log records `scanned_by`. With a shared
 credential you cannot tell who admitted whom, which is the one question you will actually
-want answered if something goes wrong at the gate.
+want answered if something goes wrong at the gate. It matters more now that staff can
+admit a guest from the guest list by hand: that is the one admission with no scan to
+corroborate who waved them through.
+
+> If those gate addresses are not real mailboxes, use plus-aliases on an inbox you own —
+> `you+gate1@gmail.com`, `you+gate2@gmail.com`. Supabase treats them as separate users,
+> they all deliver to one place, and you keep password-reset access.
 
 ## 3. Sign in
 
@@ -118,6 +144,15 @@ station of the first.
 
 Tap **Sync cache** before gates open. After that the scanner keeps working with no signal,
 queues admissions, and syncs when it reconnects.
+
+**Guest list tab.** Beside *Scan* is the full list for the live event — search by number,
+name, phone or email, filter by status, and admit anyone with one tap. It is the fallback
+for the guest whose phone is dead, whose QR will not focus, or who never opened the email.
+Scanning stays the way in; reach for this only when scanning cannot happen.
+
+A hand admission goes through exactly the same path a scan does — same duplicate guard,
+same append-only log, and it records **which account** did it. The camera keeps running
+while the list is open, so switching back costs nothing.
 
 ### `/gate` — walk-up sales
 STK push at the door. Pending sales poll in the background, so one person fumbling their
