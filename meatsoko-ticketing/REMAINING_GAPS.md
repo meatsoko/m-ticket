@@ -1,6 +1,6 @@
 # Remaining gaps
 
-As of **2026-09-24**, three days before NyamaFest. The site is live and taking
+As of **2026-09-25**, two days before NyamaFest. The site is live and taking
 reservations; `LAUNCH_CHECKLIST.md` is the readiness view. This is the list of things
 that are known-wrong, unverified, or deliberately deferred.
 
@@ -46,10 +46,20 @@ select proacl from pg_proc where proname = 'admit_pass';
 Expect to see `service_role=X/postgres` and the owner, with no `anon`, `authenticated` or
 bare `=X` (PUBLIC) entry.
 
-**Still to prove by hand:** that a real staff scan still admits. The probe above shows
-`redeem` rejecting an unauthenticated caller correctly, which is not the same as showing
-the service-role path still reaches `admit_pass`. One scan with a signed-in account settles
-it, and that scan is already on the pre-event list.
+**Status 2026-09-25: fix applied, post-fix live redemption smoke test still pending.**
+The scan/redeem flow was verified before this change, so the expectation is that nothing
+broke — but that prior verification cannot carry this one. It predates the revoke, and
+`redeem` reaching `admit_pass` through the service role is exactly the thing the revoke
+could have broken. The probe above only shows `redeem` rejecting an *unauthenticated*
+caller, which is a different assertion.
+
+One signed-in scan settles it. `NF-23X5MW` is the pass to use — it is slated for deletion
+anyway, so burning it costs nothing. Admit it once (expect green, with the guest name),
+scan again (expect *already admitted* with the first scan's time, which proves the
+`redemptions` row was written), confirm the Guest list shows `checked_in`, then delete it.
+
+**If that scan returns a database permission error rather than admitting, the revoke went
+too far and this migration must be reverted.** Any other failure is something else.
 
 ### Follow-up, deliberately not bundled
 
@@ -84,9 +94,16 @@ has **never been through a real session on a real phone**:
 | Sign out | Shift handover |
 | Duplicate-email warning | Deployed today, untested |
 | Phone scrolling | Only visible below 560px — desktop mode hides it |
+| `admit_pass` revoke | Staff redemption after the revoke — see section 1 |
 
 **The scanner one is the gate.** It has still not been pointed at a real emailed QR by a
 person. Do that first.
+
+Worth knowing *why* the earlier verification missed it. The 2026-09-22 pass ran "in a real
+headless browser", which has no camera — so the duplicate-scan check went through the
+manual-entry box, which takes a bare 32-hex token and never touches the URL parsing that
+was broken. The flow was genuinely verified; the path that failed was simply not on it.
+A camera scan of an emailed QR is a different test, and it is still the missing one.
 
 ---
 
