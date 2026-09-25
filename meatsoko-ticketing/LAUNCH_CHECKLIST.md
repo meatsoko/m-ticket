@@ -228,6 +228,22 @@ booking under a different phone, return a distinct result carrying the existing
 reservation number and let the guest choose *open my existing pass* or *this is a separate
 booking*. Respects the family case, cannot destroy data, needs no unique index.
 
+### Reading Edge Function logs
+There is **no `supabase functions logs` subcommand** in this CLI (2.67.1) — `functions`
+offers only `deploy`, `download`, `list`, `new` and `serve`. Logs are dashboard-only:
+
+**https://supabase.com/dashboard/project/tyirenanflcmwfywurvk/functions** → pick the
+function → *Logs*.
+
+That is where to look when a reservation fails, when a pass does not arrive (`reserve`
+logs the send result and its reason), or when the duplicate-email check misbehaves
+(`reserve` logs `dup check failed` if the RPC errors, because that check fails open).
+
+Worth knowing from `FOLDER_GUIDE.md`: a CORS problem looks like a **successful boot
+followed by EarlyDrop with no application logs** — the isolate answered the `OPTIONS` and
+exited, and the `POST` never ran. `curl` will work perfectly in that state, because curl
+does not preflight.
+
 ### Dev-server cache
 If the local dev server starts behaving strangely (`Cannot find module
 ./vendor-chunks/@supabase.js`), `rm -rf .next` and restart. It renders an error page that
