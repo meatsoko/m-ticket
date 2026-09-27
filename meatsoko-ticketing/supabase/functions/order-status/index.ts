@@ -1,15 +1,17 @@
-// FR-P3: buyer-side polling. Body: { checkoutRequestId }
+// Buyer-side payment polling. Body: { checkoutRequestId } or { reference }
 import { json, preflight } from "../_shared/cors.ts";
 import { serviceClient } from "../_shared/supabase.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return preflight();
-  const { checkoutRequestId } = await req.json().catch(() => ({}));
-  if (!checkoutRequestId) return json({ error: "missing_id" }, 400);
+  const { checkoutRequestId, reference } = await req.json().catch(() => ({}));
+  if (!checkoutRequestId && !reference) return json({ error: "missing_id" }, 400);
 
   const db = serviceClient();
   const { data: order } = await db.from("orders")
-    .select("id,status").eq("mpesa_checkout_request_id", checkoutRequestId).maybeSingle();
+    .select("id,status")
+    .eq(checkoutRequestId ? "mpesa_checkout_request_id" : "paystack_reference", checkoutRequestId ?? reference)
+    .maybeSingle();
   if (!order) return json({ status: "unknown" });
 
   if (order.status !== "paid") return json({ status: order.status });

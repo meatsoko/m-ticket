@@ -47,6 +47,8 @@ create table public.orders (
   amount_kes               numeric(10,2) not null,
   status                   order_status not null default 'pending',
   mpesa_checkout_request_id text unique,
+  paystack_reference       text unique,
+  payment_provider         text not null default 'mpesa' check (payment_provider in ('mpesa', 'paystack')),
   mpesa_receipt            text,
   refund_reason            text,
   reversal_ref             text,                      -- M-Pesa reversal ref (FR-A3)

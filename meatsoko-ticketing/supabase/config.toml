@@ -12,6 +12,10 @@ verify_jwt = false
 verify_jwt = false
 [functions.order-status]
 verify_jwt = false
+[functions.paystack-verify]
+verify_jwt = false
+[functions.paystack-webhook]
+verify_jwt = false
 [functions.lookup]
 verify_jwt = false
 [functions.ticket-by-token]

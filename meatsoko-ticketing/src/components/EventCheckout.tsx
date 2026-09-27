@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
 import { normalizePhone, looksLikeEmail, PHONE_HINT, EMAIL_HINT } from "@/lib/phone";
@@ -25,12 +25,36 @@ export default function EventCheckout({
   const [qty, setQty] = useState<Record<string, number>>({});
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+  const [provider, setProvider] = useState<"mpesa" | "paystack">("mpesa");
   const [state, setState] = useState<"form" | "pending" | "success" | "failed">("form");
   const [tickets, setTickets] = useState<OrderTicket[]>([]);
   const [error, setError] = useState("");
   // FR-P6: a retry reuses this order row with a fresh checkout id.
   const [orderId, setOrderId] = useState<string | null>(null);
   const [fieldErr, setFieldErr] = useState<{ phone?: string; items?: string; email?: string }>({});
+
+  useEffect(() => {
+    const query = new URLSearchParams(window.location.search);
+    const reference = query.get("reference");
+    if (query.get("payment") !== "paystack" || !reference) return;
+    window.history.replaceState({}, "", window.location.pathname);
+    setProvider("paystack");
+    setState("pending");
+    (async () => {
+      const checked = await invokeFn(supabase, "paystack-verify", { reference });
+      if (!checked.data || ["not_paid", "mismatch", "ignored"].includes(checked.data.result)) {
+        setError("Paystack did not confirm this payment. If you were charged, contact support with your payment reference.");
+        setState("failed");
+        return;
+      }
+      const { data: st } = await invokeFn(supabase, "order-status", { reference });
+      if (st?.status === "paid") { setTickets(st.tickets ?? []); setState("success"); return; }
+      setError("Payment received but the ticket could not be issued. Our team has been alerted — contact support with your payment reference.");
+      setState("failed");
+    })();
+  // The callback is handled once on mount; Supabase client is stable for this view.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const left = (t: TicketType) => remaining[t.id] ?? null;
   const soldOut = (t: TicketType) => left(t) === 0;
@@ -75,10 +99,14 @@ export default function EventCheckout({
     if (!validate()) return;
     setState("pending");
     const res = await invokeFn(supabase, "stk-push", {
-      event_id: event.id, phone, buyer_email: email.trim(), items,
+      event_id: event.id, phone, buyer_email: email.trim(), items, provider,
       ...(orderId ? { order_id: orderId } : {}),
     });
     if (res.data?.orderId) setOrderId(res.data.orderId);
+    if (res.data?.authorizationUrl) {
+      window.location.assign(res.data.authorizationUrl);
+      return;
+    }
     if (!res.data?.checkoutRequestId) {
       setError(explain(res));
       setState("failed");
@@ -126,7 +154,10 @@ export default function EventCheckout({
       case "stk_failed":
         return "M-Pesa did not accept the request. Check the number and try again.";
       case "daraja_misconfigured":
+      case "paystack_misconfigured":
         return "Payments are temporarily unavailable. Please try again shortly.";
+      case "paystack_init_failed":
+        return "Could not open Paystack checkout. Please try again.";
       default:
         return `Could not start payment${d.stage ? ` (failed at: ${d.stage})` : ""}. Please try again.`;
     }
@@ -175,11 +206,10 @@ export default function EventCheckout({
     return (
       <div className="card" style={{ textAlign: "center" }}>
         <span className="pill warn">Waiting for payment</span>
-        <h2>Check your phone</h2>
-        <p className="small">
-          Enter your M-Pesa PIN to pay <strong>KSh {total.toLocaleString()}</strong>.
-          This page updates on its own — don&apos;t close it.
-        </p>
+        <h2>{provider === "mpesa" ? "Check your phone" : "Opening Paystack"}</h2>
+        <p className="small">{provider === "mpesa"
+          ? <>Enter your M-Pesa PIN to pay <strong>KSh {total.toLocaleString()}</strong>. This page updates on its own — don&apos;t close it.</>
+          : <>You&apos;re being redirected to Paystack to pay <strong>KSh {total.toLocaleString()}</strong>.</>}</p>
       </div>
     );
   }
@@ -234,7 +264,14 @@ export default function EventCheckout({
 
       <div className="card">
         <label className="field">
-          <span>M-Pesa number</span>
+          <span>Payment method</span>
+          <select value={provider} onChange={(e) => setProvider(e.target.value as "mpesa" | "paystack")}>
+            <option value="mpesa">M-Pesa prompt</option>
+            <option value="paystack">Paystack (card and supported methods)</option>
+          </select>
+        </label>
+        <label className="field">
+          <span>{provider === "mpesa" ? "M-Pesa number" : "Contact phone number"}</span>
           <input
             data-field="phone" type="tel" inputMode="numeric" autoComplete="tel"
             placeholder="07XX XXX XXX" aria-invalid={!!fieldErr.phone}
@@ -253,7 +290,7 @@ export default function EventCheckout({
           />
           {fieldErr.email
             ? <span className="field-error">{fieldErr.email}</span>
-            : <span className="small">{EMAIL_HINT}.</span>}
+            : <span className="small">{EMAIL_HINT}. Required for ticket delivery and Paystack checkout.</span>}
         </label>
 
         {error && <p className="small" style={{ color: "var(--danger)" }}>{error}</p>}
@@ -261,12 +298,12 @@ export default function EventCheckout({
         {fieldErr.items && <p className="small" style={{ color: "var(--danger)" }}>{fieldErr.items}</p>}
         <button className="btn-pay btn-block" onClick={pay}>
           {items.length === 0
-            ? "Pay with M-Pesa"
+            ? `Pay with ${provider === "mpesa" ? "M-Pesa" : "Paystack"}`
             : `${state === "failed" ? "Retry —" : "Pay"} KSh ${total.toLocaleString()}`}
         </button>
         <p className="small" style={{ textAlign: "center" }}>
           {count > 0 ? `${count} ticket${count > 1 ? "s" : ""} · ` : ""}
-          Price includes all fees. You&apos;ll get an M-Pesa prompt.
+          Price includes all fees. {provider === "mpesa" ? "You’ll get an M-Pesa prompt." : "You’ll complete payment on Paystack."}
         </p>
       </div>
     </div>

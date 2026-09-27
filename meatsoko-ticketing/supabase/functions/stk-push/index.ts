@@ -17,7 +17,7 @@ const PER_IP = { limit: 20, windowSeconds: 600 };
 type Stage =
   | "boot" | "parse" | "validate" | "throttle" | "event" | "ticket_types"
   | "price" | "availability" | "order" | "order_items"
-  | "daraja_config" | "daraja_stk" | "correlate" | "done";
+  | "daraja_config" | "daraja_stk" | "correlate" | "paystack_init" | "done";
 
 /** Last 3 digits only — enough to match a support call, not enough to be a phone list. */
 const maskPhone = (p: string) => (p.length > 3 ? `***${p.slice(-3)}` : "***");
@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
 
     // ---- validate ----
     stage = "validate";
-    const { event_id, phone, items, channel = "web", order_id } = body ?? {};
+    const { event_id, phone, items, channel = "web", order_id, provider = "mpesa" } = body ?? {};
     // Accept both spellings — the checkout form posts `email`.
     const buyerEmail = body?.buyer_email ?? body?.email ?? null;
 
@@ -67,6 +67,8 @@ Deno.serve(async (req) => {
       return fail("email_required", 400);
     }
     if (channel !== "web" && channel !== "gate") return fail("bad_channel", 400);
+    if (provider !== "mpesa" && provider !== "paystack") return fail("bad_provider", 400);
+    if (provider === "paystack" && channel !== "web") return fail("bad_provider", 400);
     log("validated", { phone: maskPhone(buyerPhone), channel, item_count: items.length });
 
     const db = serviceClient();
@@ -159,6 +161,7 @@ Deno.serve(async (req) => {
           status: "pending", amount_kes: amount,
           buyer_email: buyerEmail || existing.buyer_email,
           mpesa_checkout_request_id: null,
+          paystack_reference: null, payment_provider: provider,
         }).eq("id", existing.id).select().single();
         order = reset;
         if (order) {
@@ -173,6 +176,7 @@ Deno.serve(async (req) => {
       const { data: created, error: oErr } = await db.from("orders").insert({
         event_id, buyer_phone: buyerPhone, buyer_email: buyerEmail || null,
         channel, amount_kes: amount, status: "pending",
+        payment_provider: provider,
       }).select().single();
       if (oErr || !created) return fail("order_create_failed", 500, { detail: oErr?.message });
       order = created;
@@ -184,6 +188,46 @@ Deno.serve(async (req) => {
       );
       if (iErr) return fail("items_create_failed", 500, { detail: iErr.message, order_id: order.id });
       log("order items created");
+    }
+
+    // Paystack hosted checkout. Amount and order contents are computed above on the
+    // server. Its secret key never reaches the browser; only its checkout URL does.
+    if (provider === "paystack") {
+      stage = "paystack_init";
+      const secret = Deno.env.get("PAYSTACK_SECRET_KEY")?.trim();
+      const appUrl = Deno.env.get("APP_URL")?.trim()?.replace(/\/$/, "");
+      if (!secret || !appUrl) {
+        await db.from("orders").update({ status: "failed" }).eq("id", order.id);
+        return fail("paystack_misconfigured", 500, { missing: [!secret && "PAYSTACK_SECRET_KEY", !appUrl && "APP_URL"].filter(Boolean) });
+      }
+      const reference = `MT${crypto.randomUUID().replaceAll("-", "")}`;
+      const { data: evForReturn } = await db.from("events").select("slug").eq("id", event_id).single();
+      const { error: refErr } = await db.from("orders").update({ paystack_reference: reference }).eq("id", order.id);
+      if (refErr) return fail("order_correlation_failed", 500, { detail: refErr.message, order_id: order.id });
+      let response: any;
+      try {
+        const init = await fetch("https://api.paystack.co/transaction/initialize", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: String(buyerEmail).trim(), amount: Math.round(amount * 100), currency: "KES",
+            reference, callback_url: `${appUrl}/e/${encodeURIComponent(evForReturn?.slug ?? "")}?payment=paystack`,
+            metadata: { order_id: order.id, event_id },
+          }),
+        });
+        response = await init.json();
+        if (!init.ok || response?.status !== true || !response?.data?.authorization_url || response?.data?.reference !== reference) {
+          throw new Error(response?.message ?? `Paystack returned HTTP ${init.status}`);
+        }
+      } catch (e) {
+        await db.from("orders").update({ status: "failed" }).eq("id", order.id);
+        return fail("paystack_init_failed", 502, { detail: safe(e), order_id: order.id });
+      }
+      if (throttled) {
+        await rateLimit(db, phoneBucket, PER_PHONE.limit, PER_PHONE.windowSeconds);
+        await rateLimit(db, ipBucket, PER_IP.limit, PER_IP.windowSeconds);
+      }
+      return json({ authorizationUrl: response.data.authorization_url, reference, orderId: order.id, stage: "done", request_id: rid });
     }
 
     // ---- daraja config (presence only — never the values) ----
