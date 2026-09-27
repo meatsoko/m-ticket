@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
 import { normalizePhone, looksLikeEmail, PHONE_HINT, EMAIL_HINT } from "@/lib/phone";
@@ -29,6 +29,7 @@ export default function ReservationForm({
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+  const [provider, setProvider] = useState<"mpesa" | "paystack">("mpesa");
   // A type's smallest legal party, expressed as "people besides you".
   const startingExtra = (t?: ReservationType | null) =>
     Math.max(0, (t?.fixed_party_size ?? t?.min_party_size ?? 1) - 1);
@@ -44,9 +45,57 @@ export default function ReservationForm({
   // Set when this email already holds a reservation under a different phone.
   const [dup, setDup] = useState<{ reservation_number: string; party_size: number } | null>(null);
 
-  // Payments may be switched off while M-Pesa provisioning is pending. The
-  // platters still show — guests should know what is coming — but they cannot
-  // be added, and nothing is ever sent to Daraja.
+  useEffect(() => {
+    const query = new URLSearchParams(window.location.search);
+    if (query.get("payment") !== "paystack" || query.get("flow") !== "reservation") return;
+    window.history.replaceState({}, "", window.location.pathname);
+    const saved = window.sessionStorage.getItem("pending_paystack_reservation");
+    if (!saved) {
+      setError("We couldn't restore this reservation after checkout. Find your pass under My Tickets or contact support with your payment reference.");
+      setPhase("failed");
+      return;
+    }
+    let pending: { reservation: Confirmed; name: string; email: string; emailed: boolean };
+    try { pending = JSON.parse(saved); }
+    catch {
+      window.sessionStorage.removeItem("pending_paystack_reservation");
+      setError("We couldn't restore this reservation after checkout. Find your pass under My Tickets or contact support.");
+      setPhase("failed");
+      return;
+    }
+    setDone(pending.reservation);
+    setName(pending.name);
+    setEmail(pending.email);
+    setEmailed(pending.emailed);
+    setProvider("paystack");
+    setPhase("awaiting_payment");
+    (async () => {
+      const reference = query.get("reference");
+      const verified = reference
+        ? await invokeFn(supabase, "paystack-verify", { reference })
+        : { data: null };
+      if (!verified.data || !["confirmed", "already"].includes(verified.data.result)) {
+        setError("Paystack did not confirm this preorder. If you were charged, contact support with your payment reference.");
+        setPhase("failed");
+        return;
+      }
+      const { data: status } = await invokeFn(supabase, "reservation-status", {
+        access_token: pending.reservation.access_token,
+      });
+      if (status?.status === "confirmed" || status?.payment_status === "paid") {
+        window.sessionStorage.removeItem("pending_paystack_reservation");
+        setPhase("done");
+        return;
+      }
+      setError("Payment received but we could not confirm your preorder. Our team has been alerted — contact support with your payment reference.");
+      setPhase("failed");
+    })();
+  // Callback verification runs once when Paystack returns to this page.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Payments can be switched off per event while providers are being configured.
+  // The preorder catalogue remains visible, but guests cannot add items.
   const paymentsOn = event.payments_enabled !== false;
   const showPreorders = event.reservation_mode !== "free" && items.length > 0;
   const offersPreorders = showPreorders && paymentsOn;
@@ -80,7 +129,7 @@ export default function ReservationForm({
     if (!normalizePhone(phone)) {
       e.phone = phone.trim()
         ? `That number doesn't look right. ${PHONE_HINT}.`
-        : `We need your M-Pesa number. ${PHONE_HINT}.`;
+        : `We need your ${provider === "mpesa" ? "M-Pesa" : "contact"} number. ${PHONE_HINT}.`;
     }
     // Mandatory: the pass, the QR and the order summary are delivered here.
     // Without it the guest has no durable copy of their reservation.
@@ -114,6 +163,7 @@ export default function ReservationForm({
       preorders,
       ...(typeId ? { reservation_type_id: typeId } : {}),
       ...(allowDuplicate ? { allow_duplicate_email: true } : {}),
+      provider,
     });
 
     // Must come BEFORE the success test: this response also carries a
@@ -146,6 +196,13 @@ export default function ReservationForm({
     // Free reservation: already confirmed, no payment step at all.
     if (!res.data.payment_required) {
       setPhase("done");
+      return;
+    }
+
+    if (res.data.authorizationUrl) {
+      const pending = { reservation: confirmed, name: name.trim(), email: email.trim(), emailed: false };
+      window.sessionStorage.setItem("pending_paystack_reservation", JSON.stringify(pending));
+      window.location.assign(res.data.authorizationUrl);
       return;
     }
 
@@ -204,6 +261,10 @@ export default function ReservationForm({
         return "This event requires a preorder. Select at least one item.";
       case "stk_failed":
         return "M-Pesa did not accept the payment request. Your place is held — try paying again.";
+      case "paystack_init_failed":
+        return "Could not open Paystack checkout. Your place is held — try again.";
+      case "paystack_misconfigured":
+        return "Paystack is temporarily unavailable. Please try again shortly.";
       case "payments_unavailable":
         return "Preordering isn't open yet. Your place can still be reserved for free.";
       default:
@@ -248,15 +309,16 @@ export default function ReservationForm({
     );
   }
 
-  // ---------- Awaiting M-Pesa ----------
+  // ---------- Awaiting payment ----------
   if (phase === "awaiting_payment") {
     return (
       <div className="card" style={{ textAlign: "center" }}>
         <span className="pill warn">Waiting for payment</span>
-        <h2>Check your phone</h2>
+        <h2>{provider === "mpesa" ? "Check your phone" : "Opening Paystack"}</h2>
         <p className="small">
-          Enter your M-Pesa PIN to pay <strong>KSh {total.toLocaleString()}</strong> for your preorder.
-          Your place is already held — this page updates on its own.
+          {provider === "mpesa"
+            ? <>Enter your M-Pesa PIN to pay <strong>KSh {total.toLocaleString()}</strong> for your preorder. Your place is already held — this page updates on its own.</>
+            : <>Complete payment of <strong>KSh {total.toLocaleString()}</strong> on Paystack. Your place is already held.</>}
         </p>
       </div>
     );
@@ -359,7 +421,7 @@ export default function ReservationForm({
           </div>
           <p className="small">
             {paymentsOn
-              ? "Add food to any reservation. Paid now by M-Pesa; refunds are handled manually."
+              ? "Add food to any reservation and pay now by M-Pesa or Paystack. Refunds are handled manually."
               : "Food preorders open shortly. Reserve your place now — you'll be able to add a platter before the event."}
           </p>
           <div className="card flush">
@@ -397,6 +459,15 @@ export default function ReservationForm({
             <strong className="num">KSh {total.toLocaleString()}</strong>
           </div>
         )}
+        {total > 0 && (
+          <label className="field">
+            <span>Payment method</span>
+            <select value={provider} onChange={(e) => setProvider(e.target.value as "mpesa" | "paystack")}>
+              <option value="mpesa">M-Pesa prompt</option>
+              <option value="paystack">Paystack (card and supported methods)</option>
+            </select>
+          </label>
+        )}
         {dup && (
           <div className="card quiet" style={{ gap: "var(--s3)" }}>
             <strong style={{ fontSize: ".95rem" }}>You may already have a place</strong>
@@ -433,7 +504,9 @@ export default function ReservationForm({
         </button>
         <p className="small" style={{ textAlign: "center" }}>
           {total > 0
-            ? "You'll get an M-Pesa prompt. Your place is held while you pay."
+            ? provider === "mpesa"
+              ? "You'll get an M-Pesa prompt. Your place is held while you pay."
+              : "You'll complete payment on Paystack. Your place is held while you pay."
             : "Free to reserve. No payment needed."}
         </p>
       </div>

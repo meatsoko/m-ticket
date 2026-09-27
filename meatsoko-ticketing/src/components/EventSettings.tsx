@@ -135,9 +135,9 @@ export default function EventSettings({ event }: { event: any }) {
                     style={{ width: 20, height: 20, margin: 0, flex: "0 0 auto" }} />
                 </div>
                 <span className="small">
-                  Turn this off while M-Pesa is still being provisioned. Guests can still
-                  reserve free; platters are shown as &ldquo;Coming soon&rdquo; and no STK
-                  push is attempted.
+                  Turn this off while payment providers are being configured. Guests can
+                  still reserve free; platters are shown as &ldquo;Coming soon&rdquo; and no
+                  payment request is sent.
                 </span>
               </label>
 

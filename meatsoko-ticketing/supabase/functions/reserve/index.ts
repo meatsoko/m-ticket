@@ -1,9 +1,9 @@
 // Guest reservation, with optional paid preorder.
 //
-// Flow (mirrors the product spec exactly):
+// Flow:
 //   reservation submitted -> preorder selected?
-//     no  -> confirmed immediately, no order, Daraja never called
-//     yes -> order created by create_reservation(), then the EXISTING STK push
+//     no  -> confirmed immediately, no order, payment provider is not contacted
+//     yes -> order created by create_reservation(), then M-Pesa STK or Paystack
 //
 // There is no second payment implementation here: this calls the same
 // initiateStk() the ticket checkout uses, and the same daraja-callback ->
@@ -22,7 +22,7 @@ const PER_IP = { limit: 30, windowSeconds: 600 };
 const maskPhone = (p: string) => (p.length > 3 ? `***${p.slice(-3)}` : "***");
 
 type Stage =
-  | "parse" | "validate" | "throttle" | "reserve" | "daraja_stk" | "correlate" | "notify" | "done";
+  | "parse" | "validate" | "throttle" | "reserve" | "daraja_stk" | "paystack_init" | "correlate" | "notify" | "done";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return preflight();
@@ -47,6 +47,7 @@ Deno.serve(async (req) => {
       event_id, guest_name, phone, email,
       accompanying_guests = 0, expected_arrival, preorders = [],
       reservation_type_id,
+      provider = "mpesa",
       // Set by the guest answering "this is a separate booking" to the warning
       // below. A deliberate choice, so it is theirs to make and not ours.
       allow_duplicate_email = false,
@@ -69,6 +70,7 @@ Deno.serve(async (req) => {
     const arrival = typeof expected_arrival === "string" && /^\d{2}:\d{2}(:\d{2})?$/.test(expected_arrival)
       ? expected_arrival : null;
     if (!Array.isArray(preorders)) return fail("bad_preorders", 400);
+    if (provider !== "mpesa" && provider !== "paystack") return fail("bad_provider", 400);
 
     const db = serviceClient();
 
@@ -132,9 +134,9 @@ Deno.serve(async (req) => {
 
     const amount = Number(res.amount_kes ?? 0);
     const { data: ev } = await db.from("events")
-      .select("name,notify_email,notify_whatsapp").eq("id", event_id).maybeSingle();
+      .select("name,slug,notify_email,notify_whatsapp").eq("id", event_id).maybeSingle();
 
-    // ---- Free reservation: confirmed already, Daraja is never contacted ----
+    // ---- Free reservation: confirmed already, no payment provider is contacted ----
     if (!res.order_id || amount < 1) {
       stage = "notify";
       // The guest's own confirmation, with the QR attached. Never blocks or
@@ -172,7 +174,56 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ---- Paid preorder: hand off to the existing Daraja flow ----
+    // ---- Paid preorder: use the selected provider ----
+    if (provider === "paystack") {
+      stage = "paystack_init";
+      const secret = Deno.env.get("PAYSTACK_SECRET_KEY")?.trim();
+      const appUrl = Deno.env.get("APP_URL")?.trim()?.replace(/\/$/, "");
+      if (!secret || !appUrl) {
+        await db.from("orders").update({ status: "failed" }).eq("id", res.order_id);
+        return fail("paystack_misconfigured", 500, {
+          missing: [!secret && "PAYSTACK_SECRET_KEY", !appUrl && "APP_URL"].filter(Boolean),
+          reservation_number: res.reservation_number, access_token: res.access_token,
+        });
+      }
+      const reference = `MT${crypto.randomUUID().replaceAll("-", "")}`;
+      const { error: refErr } = await db.from("orders").update({
+        paystack_reference: reference, payment_provider: "paystack", mpesa_checkout_request_id: null,
+      }).eq("id", res.order_id);
+      if (refErr) {
+        await db.from("orders").update({ status: "flagged" }).eq("id", res.order_id);
+        return fail("order_correlation_failed", 500, { detail: refErr.message });
+      }
+      try {
+        const init = await fetch("https://api.paystack.co/transaction/initialize", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: guestEmail, amount: Math.round(amount * 100), currency: "KES", reference,
+            callback_url: `${appUrl}/e/${encodeURIComponent((ev as any)?.slug ?? "")}?payment=paystack&flow=reservation`,
+            metadata: { order_id: res.order_id, event_id, reservation_id: res.reservation_id },
+          }),
+        });
+        const response: any = await init.json();
+        if (!init.ok || response?.status !== true || !response?.data?.authorization_url || response?.data?.reference !== reference) {
+          throw new Error(response?.message ?? `Paystack returned HTTP ${init.status}`);
+        }
+        return json({
+          reservation_number: res.reservation_number, access_token: res.access_token,
+          party_size: res.party_size, status: res.status, amount_kes: amount,
+          payment_required: true, authorizationUrl: response.data.authorization_url,
+          reference, order_id: res.order_id, request_id: rid,
+        });
+      } catch (e) {
+        await db.from("orders").update({ status: "failed" }).eq("id", res.order_id);
+        return fail("paystack_init_failed", 502, {
+          detail: String(e).slice(0, 300), reservation_number: res.reservation_number,
+          access_token: res.access_token, amount_kes: amount,
+        });
+      }
+    }
+
+    // Existing M-Pesa STK path.
     stage = "daraja_stk";
     try {
       const stk = await initiateStk({
