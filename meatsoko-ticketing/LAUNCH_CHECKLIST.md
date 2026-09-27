@@ -1,4 +1,10 @@
-  # Launch checklist
+# Launch checklist
+
+> **Historical snapshot:** this checklist was last verified 2026-09-24, before the
+> Paystack deployment and NyamaFest preorder enablement on 2026-09-27. Its statements
+> that payments are off and M-Pesa is the only provider are stale. Use
+> [TECHNICAL_DOCUMENTATION.md](TECHNICAL_DOCUMENTATION.md) and
+> [REMAINING_WORK.md](REMAINING_WORK.md) for the current audited state.
 
 **NyamaFest is 3 days out — Sunday 27 September, doors 08:00.** Re-verified
 **2026-09-24** against the live site, the deployed Edge Functions, and a clean

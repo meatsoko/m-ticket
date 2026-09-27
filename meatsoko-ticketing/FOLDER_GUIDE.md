@@ -1,5 +1,10 @@
 # MeatSoko Ticketing — Codebase & Build Guide
 
+> **Superseded for current architecture:** this guide predates reservations, paid
+> preorders, and Paystack. Use [TECHNICAL_DOCUMENTATION.md](TECHNICAL_DOCUMENTATION.md)
+> as the current technical reference. In particular, ordered migrations—not the
+> historical `supabase/schema.sql` snapshot—are the source of truth for deployed schema.
+
 Generated against **SRS v1.0** (`MeatSoko_Ticketing_SRS_v1.0.md`). Every module maps to
 numbered requirements (FR-E/P/T/S/G/L/A, NFR) — see the SRS for acceptance criteria.
 

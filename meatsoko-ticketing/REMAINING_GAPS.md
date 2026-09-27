@@ -1,5 +1,11 @@
 # Remaining gaps
 
+> **Historical snapshot:** this file was last updated 2026-09-25. Payment and event
+> configuration changed on 2026-09-27. For current verified findings and priorities,
+> see [REMAINING_WORK.md](REMAINING_WORK.md) and
+> [TECHNICAL_DOCUMENTATION.md](TECHNICAL_DOCUMENTATION.md). Revalidate any live-state
+> claims below before acting on them.
+
 As of **2026-09-25**, two days before NyamaFest. The site is live and taking
 reservations; `LAUNCH_CHECKLIST.md` is the readiness view. This is the list of things
 that are known-wrong, unverified, or deliberately deferred.
