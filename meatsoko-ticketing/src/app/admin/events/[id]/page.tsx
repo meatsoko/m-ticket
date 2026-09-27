@@ -45,7 +45,8 @@ export default async function AdminEventPage({ params }: { params: { id: string 
         <EventSettings event={ev} />
         <EventStatusControls eventId={ev.id} status={ev.status} />
         <ReservationsPanel eventId={ev.id} reservations={rows ?? []} stats={stats} />
-        <ReservationTypesPanel eventId={ev.id} types={(resTypes ?? []) as ReservationType[]} />
+        <ReservationTypesPanel eventId={ev.id} types={(resTypes ?? []) as ReservationType[]}
+          items={(items ?? []) as PreorderItem[]} />
         {ev.reservation_mode !== "free" && (
           <PreorderItemsPanel eventId={ev.id} items={(items ?? []) as PreorderItem[]} />
         )}
