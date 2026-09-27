@@ -52,7 +52,7 @@ export default async function Home() {
             See the line-up
           </Link>
           <p className="small" style={{ color: "rgba(255,255,255,.7)" }}>
-            Reserve your place — free
+            Reserve your place now
           </p>
         </section>
       </main>
