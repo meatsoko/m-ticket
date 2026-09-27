@@ -31,6 +31,9 @@ export type ReservationMode = "off" | "free" | "optional_preorder" | "required_p
 export type PreorderItem = {
   id: string; event_id: string; name: string; description: string;
   price_kes: number; quantity_cap: number | null;
+  image_url?: string | null;
+  compare_at_price_kes?: number | null;
+  early_bird_ends_at?: string | null;
   max_per_reservation: number; position: number; is_active: boolean;
 };
 
@@ -58,4 +61,6 @@ export type ReservationType = {
   fixed_party_size: number | null;
   min_party_size: number; max_party_size: number | null;
   position: number; is_active: boolean;
+  included_preorder_item_id?: string | null;
+  included_preorder_item?: PreorderItem | null;
 };

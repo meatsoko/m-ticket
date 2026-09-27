@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import type { ReservationType } from "@/lib/types";
+import type { PreorderItem, ReservationType } from "@/lib/types";
 
 /**
  * Reservation type CRUD. "Single", "Group" and "Family" are data an admin types
@@ -10,10 +10,11 @@ import type { ReservationType } from "@/lib/types";
  * lets the guest enter it.
  */
 export default function ReservationTypesPanel({
-  eventId, types,
+  eventId, types, items,
 }: {
   eventId: string;
   types: ReservationType[];
+  items: PreorderItem[];
 }) {
   const supabase = createClient();
   const router = useRouter();
@@ -22,6 +23,7 @@ export default function ReservationTypesPanel({
   const [d, setD] = useState({
     name: "", description: "", mode: "fixed" as "fixed" | "group",
     fixed_party_size: "1", min_party_size: "2", max_party_size: "10",
+    included_preorder_item_id: "",
   });
 
   async function add() {
@@ -34,11 +36,12 @@ export default function ReservationTypesPanel({
       min_party_size: d.mode === "group" ? Number(d.min_party_size) || 1 : 1,
       max_party_size: d.mode === "group" ? Number(d.max_party_size) || null : null,
       position: types.length,
+      included_preorder_item_id: d.included_preorder_item_id || null,
     });
     setBusy(false);
     if (error) { setErr(error.message); return; }
     setD({ name: "", description: "", mode: "fixed", fixed_party_size: "1",
-           min_party_size: "2", max_party_size: "10" });
+           min_party_size: "2", max_party_size: "10", included_preorder_item_id: "" });
     router.refresh();
   }
 
@@ -53,6 +56,15 @@ export default function ReservationTypesPanel({
     const { error } = await supabase.from("reservation_types").delete().eq("id", t.id);
     setBusy(false);
     if (error) { setErr("Guests have already used this type — hide it instead of deleting."); return; }
+    router.refresh();
+  }
+
+  async function setIncluded(t: ReservationType, itemId: string) {
+    setBusy(true);
+    const { error } = await supabase.from("reservation_types")
+      .update({ included_preorder_item_id: itemId || null }).eq("id", t.id);
+    setBusy(false);
+    if (error) { setErr(error.message); return; }
     router.refresh();
   }
 
@@ -91,11 +103,22 @@ export default function ReservationTypesPanel({
               Delete
             </button>
           </div>
+          {t.fixed_party_size ? <label className="field">
+            <span>Included platter (optional)</span>
+            <select value={t.included_preorder_item_id ?? ""}
+              onChange={(e) => setIncluded(t, e.target.value)} disabled={busy}>
+              <option value="">No included platter</option>
+              {items.filter((i) => i.is_active).map((i) => (
+                <option key={i.id} value={i.id}>{i.name} · KSh {Number(i.price_kes).toLocaleString()}</option>
+              ))}
+            </select>
+          </label> : <p className="small">To make this a table package, create it as a fixed-size type first.</p>}
         </div>
       ))}
 
       <div className="card">
         <strong>Add a type</strong>
+        <p className="small">Table package sizes are fixed: Basic Family Table 3, Moderate Family Table 7, Big Family Table 10.</p>
         <label className="field">
           <span>Name</span>
           <input placeholder="Single / Family / Group" value={d.name}
@@ -112,7 +135,7 @@ export default function ReservationTypesPanel({
             onClick={() => setD({ ...d, mode: "fixed" })}>Fixed size</button>
           <button className={d.mode === "group" ? "btn-primary" : "btn-ghost"}
             style={{ flex: 1, minHeight: 42, fontSize: ".85rem" }}
-            onClick={() => setD({ ...d, mode: "group" })}>Guest chooses</button>
+            onClick={() => setD({ ...d, mode: "group", included_preorder_item_id: "" })}>Guest chooses</button>
         </div>
         {d.mode === "fixed" ? (
           <label className="field">
@@ -134,6 +157,17 @@ export default function ReservationTypesPanel({
             </label>
           </div>
         )}
+        {d.mode === "fixed" && <label className="field">
+          <span>Included platter (optional)</span>
+          <select value={d.included_preorder_item_id}
+            onChange={(e) => setD({ ...d, included_preorder_item_id: e.target.value })}>
+            <option value="">No included platter</option>
+            {items.filter((i) => i.is_active).map((i) => (
+              <option key={i.id} value={i.id}>{i.name} · KSh {Number(i.price_kes).toLocaleString()}</option>
+            ))}
+          </select>
+          {items.length === 0 && <span className="small">Add platter items below first.</span>}
+        </label>}
         {err && <p className="small" style={{ color: "var(--danger)" }}>{err}</p>}
         <button className="btn-primary btn-block" onClick={add} disabled={busy || !d.name.trim()}>
           Add type

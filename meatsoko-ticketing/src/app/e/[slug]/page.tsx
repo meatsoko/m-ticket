@@ -35,6 +35,17 @@ export default async function EventPage({ params }: { params: { slug: string } }
         .eq("event_id", ev.id).eq("is_active", true).order("position")
     : { data: [] };
 
+  const linkedTypes = (reservationTypes ?? []).map((type: any) => ({
+    ...type,
+    included_preorder_item: (preorderItems ?? []).find(
+      (item: any) => item.id === type.included_preorder_item_id
+    ) ?? null,
+  })).filter((type: any) => !type.included_preorder_item_id || type.included_preorder_item);
+  const hasConfiguredPackages = linkedTypes.some((type: any) => !!type.included_preorder_item_id);
+  const bookingTypes = hasConfiguredPackages
+    ? linkedTypes.filter((type: any) => !!type.included_preorder_item_id)
+    : linkedTypes;
+
   // FR-E1: remaining availability (cap minus sold and in-flight holds).
   const remaining: Record<string, number | null> = {};
   const sold: Record<string, number> = {};
@@ -112,7 +123,7 @@ export default async function EventPage({ params }: { params: { slug: string } }
           <ReservationForm
             event={ev as Event}
             items={(preorderItems ?? []) as PreorderItem[]}
-            types={(reservationTypes ?? []) as ReservationType[]}
+            types={bookingTypes as ReservationType[]}
           />
         ) : (
           <EventCheckout

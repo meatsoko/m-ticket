@@ -106,6 +106,27 @@ Deno.serve(async (req) => {
       }
     }
 
+    // A table package's linked platter is mandatory and always quantity one.
+    // Resolve the relation server-side so a modified browser request cannot
+    // reserve a package while omitting its included food item.
+    let orderPreorders = preorders as Array<{ preorder_item_id: string; qty: number }>;
+    if (reservation_type_id) {
+      const { data: packageType, error: packageErr } = await db.from("reservation_types")
+        .select("included_preorder_item_id,fixed_party_size")
+        .eq("id", reservation_type_id).eq("event_id", event_id).eq("is_active", true).maybeSingle();
+      if (packageErr) return fail("reservation_type_lookup_failed", 500, { detail: packageErr.message });
+      if (packageType?.included_preorder_item_id) {
+        if (packageType.fixed_party_size == null) {
+          return fail("table_package_requires_fixed_party_size", 409);
+        }
+        orderPreorders = [
+          ...preorders.filter((line: any) => line && typeof line === "object" &&
+            line.preorder_item_id !== packageType.included_preorder_item_id),
+          { preorder_item_id: packageType.included_preorder_item_id, qty: 1 },
+        ];
+      }
+    }
+
     stage = "reserve";
     // All validation, pricing, capacity and the decision to create an order at
     // all happen inside the RPC, under an advisory lock.
@@ -116,7 +137,7 @@ Deno.serve(async (req) => {
       p_email: guestEmail,
       p_accompanying: accompanying,
       p_arrival: arrival,
-      p_preorders: preorders,
+      p_preorders: orderPreorders,
       p_source: "web",
       p_reservation_type_id: reservation_type_id ?? null,
     });
@@ -130,9 +151,20 @@ Deno.serve(async (req) => {
                       "payments_unavailable"].includes(res?.result) ? 409 : 400;
       return fail(res?.result ?? "reservation_rejected", status, res ?? {});
     }
-    log("reserved", { number: res.reservation_number, phone: maskPhone(guestPhone), amount: res.amount_kes });
+    let amount = Number(res.amount_kes ?? 0);
+    if (res.order_id) {
+      const { data: repriced, error: pricingError } = await db.rpc("reprice_pending_reservation_order", {
+        p_order_id: res.order_id,
+      });
+      if (pricingError || repriced == null) {
+        await db.from("orders").update({ status: "flagged" }).eq("id", res.order_id).eq("status", "pending");
+        return fail("pricing_failed", 500, { order_id: res.order_id });
+      }
+      amount = Number(repriced);
+      res.amount_kes = amount;
+    }
+    log("reserved", { number: res.reservation_number, phone: maskPhone(guestPhone), amount });
 
-    const amount = Number(res.amount_kes ?? 0);
     const { data: ev } = await db.from("events")
       .select("name,slug,notify_email,notify_whatsapp").eq("id", event_id).maybeSingle();
 

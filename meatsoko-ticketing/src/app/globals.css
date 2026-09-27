@@ -251,6 +251,15 @@ a  { color: var(--ember); text-underline-offset: 3px; }
 .stack { display: flex; flex-direction: column; gap: var(--s3); }
 .stack.tight { gap: var(--s2); }
 
+.table-package-image {
+  display: block; width: 100%; aspect-ratio: 1 / 1; object-fit: cover;
+  border-radius: 12px; background: var(--surface-2);
+}
+.table-package-fallback { display: grid; place-items: center; color: var(--muted); }
+@media (min-width: 560px) {
+  .table-package-card { display: grid; grid-template-columns: minmax(150px, .8fr) 1.2fr; align-items: center; }
+}
+
 .small { font-size: .82rem; color: var(--muted); line-height: 1.45; }
 .eyebrow { font-size: .7rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 .num { font-variant-numeric: tabular-nums; }
