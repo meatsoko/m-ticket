@@ -216,7 +216,7 @@ export default function EventCheckout({
 
   // ---------- Selection + payment ----------
   return (
-    <div className="stack">
+    <div className="stack event-ticket-checkout">
       <span className="eyebrow">Tickets</span>
 
       <div className="card flush">

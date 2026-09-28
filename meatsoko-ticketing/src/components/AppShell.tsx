@@ -18,15 +18,17 @@ type Props = {
   action?: ReactNode;
   /** Override the resolved role — used by staff pages that already resolved it. */
   role?: Role;
+  /** Use a wide editorial layout on desktop while preserving the phone layout. */
+  wideEvent?: boolean;
 };
 
 export default async function AppShell({
-  children, title, transparentBar, hideTabs, back, action, role,
+  children, title, transparentBar, hideTabs, back, action, role, wideEvent,
 }: Props) {
   const resolved: Role = role ?? (await getRole());
 
   return (
-    <div className="app">
+    <div className={`app${wideEvent ? " wide-event-shell" : ""}`}>
       <header className={`app-bar${transparentBar ? " on-media" : ""}`}>
         {back ? (
           <Link href={back} className="icon-btn" aria-label="Back">

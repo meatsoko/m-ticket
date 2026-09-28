@@ -6,6 +6,7 @@ import { normalizePhone, looksLikeEmail, PHONE_HINT, EMAIL_HINT } from "@/lib/ph
 import QrImage from "@/components/QrImage";
 import Icon from "@/components/Icon";
 import type { Event, PreorderItem, ReservationType } from "@/lib/types";
+import { familyPackageUsdPrices, formatUsd, formatUsdSaving } from "@/lib/family-package-pricing";
 
 const APP_URL = () => process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin;
 
@@ -126,12 +127,6 @@ export default function ReservationForm({
     ? Number(item.price_kes)
     : Number(item.compare_at_price_kes);
   const total = items.reduce((s, i) => s + chosenQty(i) * currentPrice(i), 0);
-  const campaign = items.find((item) => item.early_bird_ends_at && item.compare_at_price_kes);
-  const campaignSeconds = campaign && nowMs !== null
-    ? Math.max(0, Math.floor((new Date(campaign.early_bird_ends_at!).getTime() - nowMs) / 1000))
-    : null;
-  const countdown = campaignSeconds === null ? "Loading countdown…" :
-    `${Math.floor(campaignSeconds / 86400)}d ${String(Math.floor((campaignSeconds % 86400) / 3600)).padStart(2, "0")}h ${String(Math.floor((campaignSeconds % 3600) / 60)).padStart(2, "0")}m ${String(campaignSeconds % 60).padStart(2, "0")}s`;
   const partySize = fixed ?? 1 + accompanying;
   const maxParty = Math.min(
     event.max_party_size ?? 10,
@@ -360,7 +355,7 @@ export default function ReservationForm({
 
   // ---------- Form ----------
   return (
-    <div className="stack">
+    <div className={`stack reservation-form reservation-step-${step}`}>
       <span className="eyebrow">Reserve your place</span>
       <div className="row" aria-label="Booking steps">
         <span className={`pill ${step === "selection" ? "ok" : ""}`}>1 · Platter</span>
@@ -369,20 +364,17 @@ export default function ReservationForm({
       </div>
 
       {step === "selection" && <>
-      {campaign && (
-        <div className="card early-bird-banner" aria-live="polite">
-          <strong>EARLY BIRD</strong>
-          <span>{campaignSeconds === null ? "10-day offer" : campaignSeconds > 0 ? `Ends in ${countdown}` : "Offer ended"}</span>
-        </div>
-      )}
       {types.length > 0 && (
         <div className="stack tight">
           <span className="eyebrow">Choose your platter package</span>
+          <div className="package-card-grid">
           {types.map((t) => {
             const platter = t.included_preorder_item;
+            const usdPrices = platter ? familyPackageUsdPrices(platter.name) : null;
+            const isEarlyBird = platter ? earlyBirdActive(platter) : false;
             return (
-              <label key={t.id} className={`card table-package-card ${typeId === t.id ? "" : "quiet"}`}
-                style={{ padding: 12, cursor: "pointer", gap: 8, border: typeId === t.id ? "2px solid var(--accent)" : undefined }}>
+              <label key={t.id} className={`card table-package-card package-card ${typeId === t.id ? "selected" : "quiet"}`}
+                style={{ padding: 12, cursor: "pointer", gap: 8, border: typeId === t.id ? "2px solid var(--ember)" : undefined }}>
                 {platter?.image_url && !failedImages[platter.id] ? (
                   <img src={platter.image_url} alt={`${platter.name}, included with ${t.name}`} loading="lazy"
                     onError={() => setFailedImages((v) => ({ ...v, [platter.id]: true }))}
@@ -393,22 +385,30 @@ export default function ReservationForm({
                     <span className="small">Platter photo coming soon</span>
                   </div>
                 ) : null}
-                <div className="row">
+                <div className="row package-card-info">
                   <div className="stack tight" style={{ minWidth: 0 }}>
                     <strong style={{ fontSize: "1rem" }}>{t.name}</strong>
                     <span className="small">
                       {t.fixed_party_size ? `${t.fixed_party_size} people` : platter ? "Package unavailable" : `${t.min_party_size}–${t.max_party_size ?? maxParty} people`}
                     </span>
-                    {platter && <span className="small">Includes {platter.name}</span>}
-                    {platter?.description && <span className="small">{platter.description}</span>}
-                    {platter && <span className="price">
-                      {earlyBirdActive(platter) ? "Early Bird · " : ""}KSh {currentPrice(platter).toLocaleString()}
-                      {earlyBirdActive(platter) && platter.compare_at_price_kes && Number(platter.compare_at_price_kes) > Number(platter.price_kes) && <>
-                        <span className="small" style={{ textDecoration: "line-through", marginLeft: 8 }}>
-                          KSh {Number(platter.compare_at_price_kes).toLocaleString()}
-                        </span>
-                      </>}
+                    {platter && <span className="small package-included-name">Includes {platter.name}</span>}
+                    {platter?.description && <span className="small package-description">
+                      {platter.description.replace(/\s*all goat meat is roasted\.?\s*/gi, " ").trim().replace(/[\s.]+$/, ".")}
                     </span>}
+                    {platter && (usdPrices ? (
+                      <span className="package-price-block">
+                        <span className="price">
+                          {isEarlyBird ? "Early Bird · " : ""}{formatUsd(isEarlyBird ? usdPrices.earlyBird : usdPrices.regular)}
+                          {isEarlyBird && <span className="small package-price-was">{formatUsd(usdPrices.regular)}</span>}
+                        </span>
+                        {isEarlyBird && <span className="package-saving">Save {formatUsdSaving(usdPrices.regular - usdPrices.earlyBird)}</span>}
+                      </span>
+                    ) : <span className="price">
+                      {earlyBirdActive(platter) ? "Early Bird · " : ""}KSh {currentPrice(platter).toLocaleString()}
+                      {earlyBirdActive(platter) && platter.compare_at_price_kes && Number(platter.compare_at_price_kes) > Number(platter.price_kes) && <span className="small" style={{ textDecoration: "line-through", marginLeft: 8 }}>
+                        KSh {Number(platter.compare_at_price_kes).toLocaleString()}
+                      </span>}
+                    </span>)}
                   </div>
                   <input type="radio" name="reservation_type" checked={typeId === t.id}
                     onChange={() => chooseType(t)} aria-label={`Choose ${t.name}`}
@@ -418,6 +418,7 @@ export default function ReservationForm({
               </label>
             );
           })}
+          </div>
         </div>
       )}
 

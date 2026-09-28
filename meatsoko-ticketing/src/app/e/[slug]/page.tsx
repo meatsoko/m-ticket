@@ -4,6 +4,7 @@ import AppShell from "@/components/AppShell";
 import Icon from "@/components/Icon";
 import EventCheckout from "@/components/EventCheckout";
 import ReservationForm from "@/components/ReservationForm";
+import EarlyBirdCountdown from "@/components/EarlyBirdCountdown";
 import type { Event, TicketType, PreorderItem, ReservationType } from "@/lib/types";
 
 /** Nairobi, always — the buyer and the venue are both there. */
@@ -29,6 +30,9 @@ export default async function EventPage({ params }: { params: { slug: string } }
     ? await supabase.from("preorder_items").select("*")
         .eq("event_id", ev.id).eq("is_active", true).order("position")
     : { data: [] };
+  const earlyBirdEndsAt = (preorderItems ?? []).find(
+    (item: any) => item.early_bird_ends_at && item.compare_at_price_kes
+  )?.early_bird_ends_at;
 
   const { data: reservationTypes } = isReservation
     ? await supabase.from("reservation_types").select("*")
@@ -65,15 +69,13 @@ export default async function EventPage({ params }: { params: { slug: string } }
   const blurb = zones.length ? "" : (ev.description ?? "");
 
   return (
-    <AppShell transparentBar>
+    <AppShell transparentBar wideEvent>
       <section className="hero">
         {ev.banner_url
           ? <img src={ev.banner_url} alt="" />
           : <div className="hero-fallback" aria-hidden="true" />}
         <div className="hero-inner">
-          <span className="pill glass">
-            {ev.format === "conference_expo" ? "Expo" : "Festival"}
-          </span>
+          {earlyBirdEndsAt && <EarlyBirdCountdown endsAt={earlyBirdEndsAt} />}
           <h1>{ev.name}</h1>
           {ev.tagline && <p className="small" style={{ color: "rgba(255,255,255,.88)" }}>{ev.tagline}</p>}
           <div className="meta">
@@ -83,7 +85,9 @@ export default async function EventPage({ params }: { params: { slug: string } }
             <span className="pill glass">
               <Icon name="clock" size={13} />
               {fmt(ev.starts_at, { hour: "numeric", minute: "2-digit", hour12: true })}
-              {ev.ends_at && ev.ends_at !== ev.starts_at
+              {ev.slug === "nyamafest-main"
+                ? " till dawn"
+                : ev.ends_at && ev.ends_at !== ev.starts_at
                 ? ` – ${fmt(ev.ends_at, { hour: "numeric", minute: "2-digit", hour12: true })}`
                 : ""}
             </span>
@@ -92,48 +96,52 @@ export default async function EventPage({ params }: { params: { slug: string } }
       </section>
 
       <div className="pad">
-        <div className="row">
-          <div className="stack tight">
-            <span className="eyebrow">
-              {fmt(ev.starts_at, { weekday: "long" })}
-            </span>
-            <strong style={{ fontSize: "1.05rem" }}>
-              {fmt(ev.starts_at, { day: "numeric", month: "long", year: "numeric" })}
-            </strong>
-          </div>
-          {/* The one element people screenshot and remember. */}
-          <span className="datestamp" aria-hidden="true">
-            <span className="d num">{fmt(ev.starts_at, { day: "numeric" })}</span>
-            <span className="m">{fmt(ev.starts_at, { month: "short" })}</span>
-          </span>
-        </div>
-
-        {zones.length > 0 && (
-          <div className="stack tight">
-            <span className="eyebrow">What&apos;s inside</span>
-            <div className="scroller">
-              {zones.map((z: string) => <span className="pill" key={z}>{z}</span>)}
+        <div className="event-purchase-layout">
+          <section className="event-overview" aria-label="Event details">
+            <div className="row event-date-summary">
+              <div className="stack tight">
+                <span className="eyebrow">
+                  {fmt(ev.starts_at, { weekday: "long" })}
+                </span>
+                <strong style={{ fontSize: "1.05rem" }}>
+                  {fmt(ev.starts_at, { day: "numeric", month: "long", year: "numeric" })}
+                </strong>
+              </div>
+              <span className="datestamp" aria-hidden="true">
+                <span className="d num">{fmt(ev.starts_at, { day: "numeric" })}</span>
+                <span className="m">{fmt(ev.starts_at, { month: "short" })}</span>
+              </span>
             </div>
-          </div>
-        )}
 
-        {blurb && <p className="small">{blurb}</p>}
+            {zones.length > 0 && (
+              <div className="stack tight event-zones-panel">
+                <span className="eyebrow">What&apos;s inside</span>
+                <div className="scroller">
+                  {zones.map((z: string) => <span className="pill" key={z}>{z}</span>)}
+                </div>
+              </div>
+            )}
 
-        {isReservation ? (
-          <ReservationForm
-            event={ev as Event}
-            items={(preorderItems ?? []) as PreorderItem[]}
-            types={bookingTypes as ReservationType[]}
-          />
-        ) : (
-          <EventCheckout
-            event={ev as Event}
-            types={(types ?? []) as TicketType[]}
-            remaining={remaining}
-            sold={sold}
-          />
-        )}
+            {blurb && <p className="small event-description">{blurb}</p>}
+          </section>
 
+          <section className="event-booking" aria-label={isReservation ? "Reserve your place" : "Buy tickets"}>
+            {isReservation ? (
+              <ReservationForm
+                event={ev as Event}
+                items={(preorderItems ?? []) as PreorderItem[]}
+                types={bookingTypes as ReservationType[]}
+              />
+            ) : (
+              <EventCheckout
+                event={ev as Event}
+                types={(types ?? []) as TicketType[]}
+                remaining={remaining}
+                sold={sold}
+              />
+            )}
+          </section>
+        </div>
         <div className="bottom-gap" />
       </div>
     </AppShell>
