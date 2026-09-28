@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "MeatSoko Ticketing",
-  description: "Official MeatSoko event tickets",
+  title: "MeatSoko — Good Things for Good Gatherings",
+  description: "Shop MeatSoko merchandise and find your next gathering.",
   manifest: "/manifest.json",
   appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "MS Tickets" },
   formatDetection: { telephone: false },

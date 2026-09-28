@@ -33,64 +33,66 @@ export default async function EventsPage() {
   };
 
   return (
-    <AppShell title="Events">
+    <AppShell title="Events" wideEvent>
       <div className="pad">
-        <div className="stack tight">
+        <div className="stack tight event-lineup-heading">
           <span className="eyebrow">MeatSoko</span>
           <h1>The line-up</h1>
         </div>
 
-        {list.length === 0 && (
-          <div className="empty">
-            <Icon name="ticket" size={30} />
-            <strong>Nothing announced yet</strong>
-          </div>
-        )}
+        <div className="event-lineup-grid">
+          {list.length === 0 && (
+            <div className="empty">
+              <Icon name="ticket" size={30} />
+              <strong>Nothing announced yet</strong>
+            </div>
+          )}
 
-        {list.map((e: any) => {
-          const phase = phaseOf(e);
-          const inner = (
-            <>
-              <div className="row">
-                <span className="ev-date" aria-hidden="true">
-                  <span className="d num">{fmt(e.starts_at, { day: "numeric" })}</span>
-                  <span className="m">{fmt(e.starts_at, { month: "short" })}</span>
-                </span>
-                <div className="stack tight" style={{ flex: 1, minWidth: 0 }}>
-                  <strong>{e.name}</strong>
-                  <span className="small">
-                    {fmt(e.starts_at, { weekday: "long" })}
-                    {e.venue ? ` · ${e.venue}` : ""}
+          {list.map((e: any) => {
+            const phase = phaseOf(e);
+            const inner = (
+              <>
+                <div className="row">
+                  <span className="ev-date" aria-hidden="true">
+                    <span className="d num">{fmt(e.starts_at, { day: "numeric" })}</span>
+                    <span className="m">{fmt(e.starts_at, { month: "short" })}</span>
+                  </span>
+                  <div className="stack tight" style={{ flex: 1, minWidth: 0 }}>
+                    <strong>{e.name}</strong>
+                    <span className="small">
+                      {fmt(e.starts_at, { weekday: "long" })}
+                      {e.venue ? ` · ${e.venue}` : ""}
+                    </span>
+                  </div>
+                  <span className={`pill ${phase === "now" ? "ember" : phase === "soon" ? "warn" : ""}`}>
+                    {phase === "now" ? "Open" : phase === "soon" ? "Coming soon" : "Closed"}
                   </span>
                 </div>
-                <span className={`pill ${phase === "now" ? "ember" : phase === "soon" ? "warn" : ""}`}>
-                  {phase === "now" ? "Open" : phase === "soon" ? "Coming soon" : "Closed"}
-                </span>
-              </div>
-              {e.tagline && <span className="small">{e.tagline}</span>}
-              {phase === "now" && (
-                <span className="small" style={{ color: "var(--ember)", fontWeight: 600 }}>
-                  Reserve your place →
-                </span>
-              )}
-              {phase === "soon" && (
-                <span className="small">
-                  Reservations open{e.reservations_open_at
-                    ? ` ${fmt(e.reservations_open_at, { day: "numeric", month: "long" })}`
-                    : " closer to the date"}.
-                </span>
-              )}
-            </>
-          );
+                {e.tagline && <span className="small">{e.tagline}</span>}
+                {phase === "now" && (
+                  <span className="small" style={{ color: "var(--ember)", fontWeight: 600 }}>
+                    Reserve your place →
+                  </span>
+                )}
+                {phase === "soon" && (
+                  <span className="small">
+                    Reservations open{e.reservations_open_at
+                      ? ` ${fmt(e.reservations_open_at, { day: "numeric", month: "long" })}`
+                      : " closer to the date"}.
+                  </span>
+                )}
+              </>
+            );
 
-          // Only the open event is actionable — a closed or unannounced event
-          // that looks tappable is a dead end.
-          return phase === "now" ? (
-            <Link key={e.id} href={`/e/${e.slug}`} className="ev-card now">{inner}</Link>
-          ) : (
-            <div key={e.id} className={`ev-card ${phase}`} aria-disabled="true">{inner}</div>
-          );
-        })}
+            // Only the open event is actionable — a closed or unannounced event
+            // that looks tappable is a dead end.
+            return phase === "now" ? (
+              <Link key={e.id} href={`/e/${e.slug}`} className="ev-card now">{inner}</Link>
+            ) : (
+              <div key={e.id} className={`ev-card ${phase}`} aria-disabled="true">{inner}</div>
+            );
+          })}
+        </div>
 
         <div className="bottom-gap" />
       </div>

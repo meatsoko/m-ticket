@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="2520" viewBox="0 0 1440 2520" role="img" aria-labelledby="title desc">
+  <title id="title">MeatSoko merchandise storefront wireframe</title>
+  <desc id="desc">Desktop storefront concept combining an editorial brand-led landing page with direct retail shopping and an events module.</desc>
+  <defs>
+    <style>
+      .bg{fill:#f6f3ed}.white{fill:#fff}.ink{fill:#171717}.muted{fill:#77736e}.red{fill:#d32f3b}.line{stroke:#dedbd4;stroke-width:1}.label{font:600 13px Arial,sans-serif;letter-spacing:1.5px;fill:#77736e}.h1{font:700 56px Arial,sans-serif;fill:#171717}.h2{font:700 34px Arial,sans-serif;fill:#171717}.body{font:16px Arial,sans-serif;fill:#55514d}.small{font:13px Arial,sans-serif;fill:#77736e}.nav{font:600 14px Arial,sans-serif;fill:#171717}.product{font:600 16px Arial,sans-serif;fill:#171717}.price{font:700 15px Arial,sans-serif;fill:#171717}.btntext{font:700 13px Arial,sans-serif;fill:#fff;letter-spacing:.5px}.placeholder{fill:#e4e0d8}.dark{fill:#171717}
+    </style>
+  </defs>
+  <rect width="1440" height="2520" class="bg"/>
+  <!-- Announcement + navigation -->
+  <rect x="0" y="0" width="1440" height="38" class="dark"/>
+  <text x="720" y="25" text-anchor="middle" class="small" fill="#fff">MEAT SOKO · MADE FOR GOOD GATHERINGS · FREE PICKUP ON EVENT DAYS</text>
+  <rect x="0" y="38" width="1440" height="94" class="bg"/>
+  <circle cx="105" cy="85" r="27" fill="#171717"/><text x="105" y="93" text-anchor="middle" font-family="Arial" font-size="23" font-weight="700" fill="#d32f3b">M</text>
+  <text x="145" y="91" font-family="Arial" font-size="20" font-weight="700" fill="#171717">MEATSOKO</text>
+  <text x="650" y="91" class="nav">SHOP</text><text x="735" y="91" class="nav">COLLECTIONS</text><text x="875" y="91" class="nav">EVENTS</text>
+  <rect x="1143" y="60" width="166" height="50" rx="2" class="red"/><text x="1226" y="91" text-anchor="middle" class="btntext">SHOP THE DROP  ↗</text>
+  <circle cx="1360" cy="84" r="22" fill="none" stroke="#171717" stroke-width="1.5"/><text x="1360" y="90" text-anchor="middle" class="nav">0</text>
+  <!-- Hero -->
+  <rect x="56" y="158" width="1328" height="495" rx="3" fill="#e7e2d9"/>
+  <rect x="56" y="158" width="1328" height="495" rx="3" fill="#171717" opacity=".08"/>
+  <rect x="735" y="188" width="615" height="435" rx="2" fill="#d8d2c7"/>
+  <text x="1042" y="410" text-anchor="middle" font-family="Arial" font-size="20" fill="#827d74">[ LIFESTYLE MERCH CAMPAIGN IMAGE ]</text>
+  <rect x="735" y="188" width="615" height="435" fill="none" stroke="#b8b1a6" stroke-width="1"/>
+  <text x="117" y="257" class="label">THE MEATSOKO COLLECTION</text>
+  <text x="117" y="326" class="h1">Wear the</text><text x="117" y="389" class="h1">good times<tspan fill="#d32f3b">.</tspan></text>
+  <text x="117" y="433" class="body">Everyday pieces for people who bring</text><text x="117" y="458" class="body">good food and good people together.</text>
+  <rect x="117" y="492" width="180" height="54" class="red"/><text x="207" y="525" text-anchor="middle" class="btntext">SHOP MERCH  ↗</text>
+  <text x="117" y="593" class="small">APPAREL  ·  ACCESSORIES  ·  GATHERING ESSENTIALS</text>
+  <!-- Intro/value props -->
+  <text x="80" y="713" class="label">GOOD THINGS, MADE TO GO PLACES</text>
+  <text x="80" y="760" class="h2">A little MeatSoko, wherever you go.</text>
+  <text x="80" y="793" class="body">Shop the pieces you know from our gatherings, plus new everyday favourites.</text>
+  <line x1="80" y1="825" x2="1360" y2="825" class="line"/>
+  <text x="80" y="864" class="small">01  THOUGHTFUL DROPS</text><text x="505" y="864" class="small">02  EASY KENYAN CHECKOUT</text><text x="960" y="864" class="small">03  PICKUP OR DELIVERY</text>
+  <!-- Categories -->
+  <text x="80" y="955" class="label">FIND YOUR THING</text><text x="80" y="1000" class="h2">Shop by category</text>
+  <g>
+    <rect x="80" y="1030" width="408" height="232" class="placeholder"/><rect x="516" y="1030" width="408" height="232" class="placeholder"/><rect x="952" y="1030" width="408" height="232" class="placeholder"/>
+    <text x="284" y="1134" text-anchor="middle" class="small">[ APPAREL IMAGE ]</text><text x="720" y="1134" text-anchor="middle" class="small">[ ACCESSORIES IMAGE ]</text><text x="1156" y="1134" text-anchor="middle" class="small">[ HOME &amp; GATHERING IMAGE ]</text>
+    <rect x="80" y="1194" width="408" height="68" class="red"/><rect x="516" y="1194" width="408" height="68" class="red"/><rect x="952" y="1194" width="408" height="68" class="red"/>
+    <text x="104" y="1237" class="product">CATEGORY 01  ↗</text><text x="540" y="1237" class="product">CATEGORY 02  ↗</text><text x="976" y="1237" class="product">CATEGORY 03  ↗</text>
+  </g>
+  <!-- Best sellers -->
+  <text x="80" y="1360" class="label">THE CURRENT FAVOURITES</text><text x="80" y="1405" class="h2">Popular right now</text>
+  <text x="1358" y="1401" text-anchor="end" class="nav">VIEW ALL PRODUCTS  →</text>
+  <g>
+    <rect x="80" y="1433" width="300" height="265" class="placeholder"/><rect x="400" y="1433" width="300" height="265" class="placeholder"/><rect x="720" y="1433" width="300" height="265" class="placeholder"/><rect x="1040" y="1433" width="320" height="265" class="placeholder"/>
+    <text x="230" y="1570" text-anchor="middle" class="small">[ PRODUCT PHOTO ]</text><text x="550" y="1570" text-anchor="middle" class="small">[ PRODUCT PHOTO ]</text><text x="870" y="1570" text-anchor="middle" class="small">[ PRODUCT PHOTO ]</text><text x="1200" y="1570" text-anchor="middle" class="small">[ PRODUCT PHOTO ]</text>
+    <rect x="96" y="1449" width="61" height="25" class="red"/><text x="126" y="1467" text-anchor="middle" font-family="Arial" font-size="11" font-weight="700" fill="#fff">NEW</text>
+    <text x="80" y="1730" class="product">Product name</text><text x="80" y="1757" class="price">KSh —</text>
+    <text x="400" y="1730" class="product">Product name</text><text x="400" y="1757" class="price">KSh —</text>
+    <text x="720" y="1730" class="product">Product name</text><text x="720" y="1757" class="price">KSh —</text>
+    <text x="1040" y="1730" class="product">Product name</text><text x="1040" y="1757" class="price">KSh —</text>
+    <text x="80" y="1792" class="small">Product images, names and prices to be supplied</text><text x="400" y="1792" class="small">Options such as size or color can be added if needed</text>
+  </g>
+  <!-- Editorial campaign -->
+  <rect x="56" y="1840" width="1328" height="300" class="dark"/>
+  <rect x="56" y="1840" width="650" height="300" fill="#282621"/><text x="381" y="1993" text-anchor="middle" font-family="Arial" font-size="18" fill="#aaa69f">[ CAMPAIGN / PRODUCT LIFESTYLE IMAGE ]</text>
+  <text x="770" y="1916" class="label" fill="#e64a54">FEATURED COLLECTION</text><text x="770" y="1972" font-family="Arial" font-size="39" font-weight="700" fill="#fff">Made for the</text><text x="770" y="2018" font-family="Arial" font-size="39" font-weight="700" fill="#fff">moments between.</text>
+  <text x="770" y="2060" font-family="Arial" font-size="15" fill="#d4d0ca">A collection inspired by long tables, loud laughs, and one more plate.</text>
+  <rect x="770" y="2080" width="156" height="42" class="red"/><text x="848" y="2107" text-anchor="middle" class="btntext">EXPLORE EDIT</text>
+  <!-- Events module -->
+  <text x="80" y="2210" class="label">THE TICKETED SIDE OF MEATSOKO</text><text x="80" y="2252" class="h2">Come through.</text>
+  <text x="80" y="2283" class="body">Find the next gathering and book your place.</text>
+  <rect x="858" y="2182" width="502" height="136" fill="#fff" stroke="#dedbd4"/><rect x="878" y="2202" width="98" height="96" class="placeholder"/><text x="927" y="2255" text-anchor="middle" class="small">[ EVENT ]</text>
+  <text x="1000" y="2227" class="label">UPCOMING EVENT</text><text x="1000" y="2257" class="product">MeatSoko Live at NyamaFest</text><text x="1000" y="2284" class="small">Tickets and details →</text>
+  <!-- Footer -->
+  <rect x="0" y="2350" width="1440" height="170" class="dark"/>
+  <circle cx="111" cy="2403" r="25" fill="#d32f3b"/><text x="111" y="2411" text-anchor="middle" font-family="Arial" font-size="21" font-weight="700" fill="#fff">M</text>
+  <text x="154" y="2407" font-family="Arial" font-size="17" font-weight="700" fill="#fff">MEATSOKO</text><text x="80" y="2450" font-family="Arial" font-size="13" fill="#c5c1ba">Good things for good gatherings.</text>
+  <text x="600" y="2397" font-family="Arial" font-size="13" font-weight="700" fill="#e64a54">SHOP</text><text x="600" y="2428" font-family="Arial" font-size="13" fill="#fff">All merchandise · Help · Delivery</text>
+  <text x="900" y="2397" font-family="Arial" font-size="13" font-weight="700" fill="#e64a54">EVENTS</text><text x="900" y="2428" font-family="Arial" font-size="13" fill="#fff">Upcoming events · Tickets · Contact</text>
+  <line x1="80" y1="2472" x2="1360" y2="2472" stroke="#444"/><text x="80" y="2500" font-family="Arial" font-size="11" fill="#aaa">© MeatSoko 2026</text><text x="1360" y="2500" text-anchor="end" font-family="Arial" font-size="11" fill="#aaa">CHECKOUT CONCEPT: CART → DELIVERY / PICKUP → CONTACT → PAYMENT → CONFIRMATION</text>
+</svg>
