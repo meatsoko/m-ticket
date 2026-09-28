@@ -1,61 +1,69 @@
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { StoreFooter, StoreHeader, StoreMobileBar } from "@/components/StoreChrome";
 
-const KE = "Africa/Nairobi";
+const categories = ["Category to be confirmed", "Category to be confirmed", "Category to be confirmed"];
 
-/**
- * Poster-first landing. One image, the event's name, and a single bouncing
- * call to action — nothing else competes with it. The featured event is the
- * open one if there is one, otherwise the next upcoming.
- */
-export default async function Home() {
-  const supabase = createClient();
-  const { data: events } = await supabase
-    .from("events").select("*").neq("status", "draft").order("starts_at");
-
-  const now = Date.now();
-  const list = events ?? [];
-  // Feature whatever a visitor can act on right now: a live event whose
-  // reservation window is open. Otherwise the next announced one.
-  const isOpen = (e: any) =>
-    e.status === "live" &&
-    new Date(e.ends_at ?? e.starts_at).getTime() >= now &&
-    (!e.reservations_open_at || new Date(e.reservations_open_at).getTime() <= now) &&
-    (!e.reservations_close_at || new Date(e.reservations_close_at).getTime() >= now);
-
-  const featured =
-    list.find(isOpen) ??
-    list.find((e: any) => e.status === "live" && new Date(e.starts_at).getTime() >= now) ??
-    list[list.length - 1];
-
+export default function Home() {
   return (
-    <div className="app">
-      <main className="app-body" style={{ display: "flex", flexDirection: "column" }}>
-        <section className="poster">
-          {featured?.banner_url
-            ? <img src={featured.banner_url} alt="" />
-            : <div className="poster-fallback" aria-hidden="true" />}
+    <div className="storefront">
+      <div className="store-announcement">MEATSOKO · GOOD THINGS FOR GOOD GATHERINGS</div>
+      <StoreHeader />
+      <main>
+        <section className="store-hero">
+          <div className="store-hero-copy">
+            <span className="store-eyebrow">THE MEATSOKO COLLECTION</span>
+            <h1>Wear the<br />good times<span>.</span></h1>
+            <p>Everyday pieces for people who bring good food and good people together.</p>
+            <Link href="/shop" className="store-button">Shop merchandise <span>↗</span></Link>
+            <small>MEATSOKO MERCHANDISE&nbsp; · &nbsp;NEW COLLECTION COMING SOON</small>
+          </div>
+          <div className="store-hero-art" aria-label="Merchandise collection image coming soon">
+            <div className="hero-art-orbit orbit-one"/><div className="hero-art-orbit orbit-two"/>
+            <div className="hero-art-card"><span>MEAT<br/>SOKO</span></div>
+            <div className="hero-art-caption">COLLECTION<br/><strong>01 / EVERYDAY</strong></div>
+            <span className="image-note">Your campaign image<br/>will go here</span>
+          </div>
+        </section>
 
-          <span className="kicker">{featured?.tagline ?? "MeatSoko presents"}</span>
-          <h1>{featured?.name ?? "MeatSoko"}</h1>
-          {featured && (
-            <p className="sub">
-              {new Intl.DateTimeFormat("en-KE", {
-                timeZone: KE, weekday: "long", day: "numeric", month: "long",
-              }).format(new Date(featured.starts_at))}
-              {featured.venue ? ` · ${featured.venue}` : ""}
-            </p>
-          )}
+        <section className="store-intro">
+          <span className="store-eyebrow">GOOD THINGS, MADE TO GO PLACES</span>
+          <h2>A little MeatSoko,<br className="mobile-break"/> wherever you go.</h2>
+          <p>Shop the pieces you know from our gatherings, plus new everyday favourites.</p>
+          <div className="store-promises"><span>Thoughtful drops</span><span>Easy Kenyan checkout</span><span>Pickup or delivery</span></div>
+        </section>
 
-          <Link href="/events" className="btn btn-primary btn-block cta-bounce"
-            style={{ marginTop: "var(--s4)" }}>
-            See the line-up
-          </Link>
-          <p className="small" style={{ color: "rgba(255,255,255,.7)" }}>
-            Reserve your place now
-          </p>
+        <section className="store-section" id="collections">
+          <div className="section-heading"><div><span className="store-eyebrow">FIND YOUR THING</span><h2>Shop by category</h2></div><Link href="/shop">View shop <span>→</span></Link></div>
+          <div className="category-grid">
+            {categories.map((category, i) => <Link href="/shop" className={`category-card category-${i + 1}`} key={category}>
+              <span className="category-image-note">Category and product<br/>imagery coming soon</span>
+              <strong>{category}<span>↗</span></strong>
+            </Link>)}
+          </div>
+        </section>
+
+        <section className="store-section popular-section">
+          <div className="section-heading"><div><span className="store-eyebrow">THE CURRENT FAVOURITES</span><h2>Popular right now</h2></div><Link href="/shop">View all products <span>→</span></Link></div>
+          <div className="products-empty">
+            <div className="product-placeholder-grid" aria-hidden="true"><i/><i/><i/><i/></div>
+            <strong>Your next favourite is on its way.</strong>
+            <p>Product photos and prices are being prepared.</p>
+            <Link href="/shop" className="text-link">Explore the shop <span>→</span></Link>
+          </div>
+        </section>
+
+        <section className="store-campaign">
+          <div className="campaign-image"><span>Campaign image<br/>coming soon</span></div>
+          <div><span className="store-eyebrow">THE GATHERING EDIT</span><h2>Made for the<br/>moments between.</h2><p>A collection inspired by long tables, loud laughs, and one more plate.</p><Link href="/shop" className="store-button store-button-light">Explore the collection <span>↗</span></Link></div>
+        </section>
+
+        <section className="events-teaser">
+          <div><span className="store-eyebrow">THE TICKETED SIDE OF MEATSOKO</span><h2>Come through.</h2><p>Find the next gathering and book your place.</p><Link href="/events" className="store-button">Browse events <span>↗</span></Link></div>
+          <Link href="/events" className="event-teaser-link"><span className="event-date-mark">MS</span><span><small>MEATSOKO EVENTS</small><strong>See the upcoming line-up</strong><small>Event details and tickets <b>→</b></small></span><span className="event-arrow">↗</span></Link>
         </section>
       </main>
+      <StoreFooter />
+      <StoreMobileBar />
     </div>
   );
 }
