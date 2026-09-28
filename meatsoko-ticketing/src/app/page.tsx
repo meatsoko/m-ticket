@@ -1,9 +1,29 @@
 import Link from "next/link";
+import Image from "next/image";
 import { StoreFooter, StoreHeader, StoreMobileBar } from "@/components/StoreChrome";
+import MerchandiseCard from "@/components/MerchandiseCard";
+import { merchandiseCategories } from "@/lib/merchandise";
+import { createClient } from "@/lib/supabase/server";
 
-const categories = ["Category to be confirmed", "Category to be confirmed", "Category to be confirmed"];
+const featuredProducts = [
+  merchandiseCategories[0].products[0],
+  merchandiseCategories[1].products[0],
+  merchandiseCategories[2].products[0],
+  merchandiseCategories[3].products[1],
+];
 
-export default function Home() {
+export default async function Home() {
+  const supabase = createClient();
+  const now = new Date().toISOString();
+  const { data: currentEvent } = await supabase.from("events")
+    .select("slug, name, venue, starts_at")
+    .eq("status", "live")
+    .gte("ends_at", now)
+    .order("starts_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  const currentEventHref = currentEvent?.slug ? `/e/${currentEvent.slug}` : "/events";
+
   return (
     <div className="storefront">
       <div className="store-announcement">MEATSOKO · GOOD THINGS FOR GOOD GATHERINGS</div>
@@ -15,13 +35,11 @@ export default function Home() {
             <h1>Wear the<br />good times<span>.</span></h1>
             <p>Everyday pieces for people who bring good food and good people together.</p>
             <Link href="/shop" className="store-button">Shop merchandise <span>↗</span></Link>
-            <small>MEATSOKO MERCHANDISE&nbsp; · &nbsp;NEW COLLECTION COMING SOON</small>
+            <small>MEATSOKO MERCHANDISE&nbsp; · &nbsp;THE NYAMAFEST COLLECTION</small>
           </div>
-          <div className="store-hero-art" aria-label="Merchandise collection image coming soon">
-            <div className="hero-art-orbit orbit-one"/><div className="hero-art-orbit orbit-two"/>
-            <div className="hero-art-card"><span>MEAT<br/>SOKO</span></div>
-            <div className="hero-art-caption">COLLECTION<br/><strong>01 / EVERYDAY</strong></div>
-            <span className="image-note">Your campaign image<br/>will go here</span>
+          <div className="store-hero-art" aria-label="NyamaFest green hoodie from the current merchandise collection">
+            <Image src={merchandiseCategories[0].products[0].image} alt="NyamaFest hoodie in green" fill priority sizes="(max-width: 760px) 100vw, 52vw" />
+            <div className="hero-art-caption">THE NYAMAFEST DROP<br/><strong>01 / EVERYDAY</strong></div>
           </div>
         </section>
 
@@ -35,31 +53,30 @@ export default function Home() {
         <section className="store-section" id="collections">
           <div className="section-heading"><div><span className="store-eyebrow">FIND YOUR THING</span><h2>Shop by category</h2></div><Link href="/shop">View shop <span>→</span></Link></div>
           <div className="category-grid">
-            {categories.map((category, i) => <Link href="/shop" className={`category-card category-${i + 1}`} key={category}>
-              <span className="category-image-note">Category and product<br/>imagery coming soon</span>
-              <strong>{category}<span>↗</span></strong>
+            {merchandiseCategories.map((category) => <Link href={`/shop#${category.id}`} className="category-card" key={category.id}>
+              <Image src={category.products[0].image} alt={`${category.name} collection`} fill sizes="(max-width: 760px) 80vw, 25vw" />
+              <strong>{category.name}<span>↗</span></strong>
             </Link>)}
           </div>
         </section>
 
         <section className="store-section popular-section">
-          <div className="section-heading"><div><span className="store-eyebrow">THE CURRENT FAVOURITES</span><h2>Popular right now</h2></div><Link href="/shop">View all products <span>→</span></Link></div>
-          <div className="products-empty">
-            <div className="product-placeholder-grid" aria-hidden="true"><i/><i/><i/><i/></div>
-            <strong>Your next favourite is on its way.</strong>
-            <p>Product photos and prices are being prepared.</p>
-            <Link href="/shop" className="text-link">Explore the shop <span>→</span></Link>
+          <div className="section-heading"><div><span className="store-eyebrow">THE NYAMAFEST COLLECTION</span><h2>Featured pieces</h2></div><Link href="/shop">View all products <span>→</span></Link></div>
+          <div className="merch-product-grid featured-product-grid">
+            {featuredProducts.map((product) => <MerchandiseCard key={product.image} product={product} />)}
           </div>
         </section>
 
         <section className="store-campaign">
-          <div className="campaign-image"><span>Campaign image<br/>coming soon</span></div>
+          <div className="campaign-image">
+            <Image src="/images/campaign/nyamafest-poster.jpeg" alt="NyamaFest poster featuring grilled food and live entertainment" fill sizes="(max-width: 760px) 100vw, 50vw" />
+          </div>
           <div><span className="store-eyebrow">THE GATHERING EDIT</span><h2>Made for the<br/>moments between.</h2><p>A collection inspired by long tables, loud laughs, and one more plate.</p><Link href="/shop" className="store-button store-button-light">Explore the collection <span>↗</span></Link></div>
         </section>
 
         <section className="events-teaser">
           <div><span className="store-eyebrow">THE TICKETED SIDE OF MEATSOKO</span><h2>Come through.</h2><p>Find the next gathering and book your place.</p><Link href="/events" className="store-button">Browse events <span>↗</span></Link></div>
-          <Link href="/events" className="event-teaser-link"><span className="event-date-mark">MS</span><span><small>MEATSOKO EVENTS</small><strong>See the upcoming line-up</strong><small>Event details and tickets <b>→</b></small></span><span className="event-arrow">↗</span></Link>
+          <Link href={currentEventHref} className="event-teaser-link"><span className="event-date-mark">MS</span><span><small>MEATSOKO EVENTS</small><strong>{currentEvent?.name ?? "See the upcoming event"}</strong><small>{currentEvent?.venue ?? "Event details and tickets"} <b>→</b></small></span><span className="event-arrow">↗</span></Link>
         </section>
       </main>
       <StoreFooter />
