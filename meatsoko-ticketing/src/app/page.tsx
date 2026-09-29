@@ -1,9 +1,11 @@
 import Link from "next/link";
 import Image from "next/image";
-import { StoreFooter, StoreHeader, StoreMobileBar } from "@/components/StoreChrome";
+import { StoreShell } from "@/components/StoreChrome";
 import MerchandiseCard from "@/components/MerchandiseCard";
 import { merchandiseCategories } from "@/lib/merchandise";
 import { createClient } from "@/lib/supabase/server";
+
+const heroProduct = merchandiseCategories[0].products[0];
 
 const featuredProducts = [
   merchandiseCategories[0].products[0],
@@ -25,9 +27,7 @@ export default async function Home() {
   const currentEventHref = currentEvent?.slug ? `/e/${currentEvent.slug}` : "/events";
 
   return (
-    <div className="storefront">
-      <div className="store-announcement">MEATSOKO · GOOD THINGS FOR GOOD GATHERINGS</div>
-      <StoreHeader />
+    <StoreShell>
       <main>
         <section className="store-hero">
           <div className="store-hero-copy">
@@ -37,10 +37,14 @@ export default async function Home() {
             <Link href="/shop" className="store-button">Shop merchandise <span>↗</span></Link>
             <small>MEATSOKO MERCHANDISE&nbsp; · &nbsp;THE NYAMAFEST COLLECTION</small>
           </div>
-          <div className="store-hero-art" aria-label="NyamaFest green hoodie from the current merchandise collection">
-            <Image src={merchandiseCategories[0].products[0].image} alt="NyamaFest hoodie in green" fill priority sizes="(max-width: 760px) 100vw, 52vw" />
-            <div className="hero-art-caption">THE NYAMAFEST DROP<br/><strong>01 / EVERYDAY</strong></div>
-          </div>
+          <Link href={`/shop/${heroProduct.slug}`} className="store-hero-art" aria-label={`${heroProduct.name} in ${heroProduct.color.toLowerCase()} — view product`}>
+            <span className="hero-glow" aria-hidden="true" />
+            <span className="hero-float">
+              <Image src="/images/merchandise/green-hoodie-nyamafest-cutout.png" alt="" width={605} height={782} priority sizes="(max-width: 760px) 70vw, 34vw" />
+            </span>
+            <span className="hero-shadow" aria-hidden="true" />
+            <span className="hero-art-caption">THE NYAMAFEST DROP<br/><strong>01 / THE HOODIE</strong></span>
+          </Link>
         </section>
 
         <section className="store-intro">
@@ -63,7 +67,7 @@ export default async function Home() {
         <section className="store-section popular-section">
           <div className="section-heading"><div><span className="store-eyebrow">THE NYAMAFEST COLLECTION</span><h2>Featured pieces</h2></div><Link href="/shop">View all products <span>→</span></Link></div>
           <div className="merch-product-grid featured-product-grid">
-            {featuredProducts.map((product) => <MerchandiseCard key={product.image} product={product} />)}
+            {featuredProducts.map((product) => <MerchandiseCard key={product.slug} product={product} />)}
           </div>
         </section>
 
@@ -79,8 +83,6 @@ export default async function Home() {
           <Link href={currentEventHref} className="event-teaser-link"><span className="event-date-mark">MS</span><span><small>MEATSOKO EVENTS</small><strong>{currentEvent?.name ?? "See the upcoming event"}</strong><small>{currentEvent?.venue ?? "Event details and tickets"} <b>→</b></small></span><span className="event-arrow">↗</span></Link>
         </section>
       </main>
-      <StoreFooter />
-      <StoreMobileBar />
-    </div>
+    </StoreShell>
   );
 }
