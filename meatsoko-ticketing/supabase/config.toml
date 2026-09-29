@@ -44,3 +44,8 @@ verify_jwt = false
 
 [functions.merch-fx-refresh]
 verify_jwt = false
+
+# Called by Supabase Cron (pg_net) with no key; it can only confirm payments
+# Paystack says succeeded, and rate-limits itself. See the function's header.
+[functions.paystack-reconcile]
+verify_jwt = false

@@ -83,3 +83,9 @@ The user wants the storefront to use a warm cream, black, and red visual system.
 - **Email:** every message goes through `supabase/functions/_shared/resend.ts` (`sendEmail`): ticket email, reservation pass (QR attached as `cid:reservation-qr`), organiser reservation alert, merch buyer confirmation, merch organiser alert. Same `RESEND_API_KEY` / `TICKET_EMAIL_FROM`. Merch organiser alerts go to the `MERCH_NOTIFY_EMAIL` secret (comma-separated; unset = no alert).
 - **Payment:** tickets (`stk-push`), reservation preorders (`reserve`) and merch (`merch-checkout`) all initialise Paystack without a `channels` list (every method enabled on the account — card, M-Pesa, etc.) and return `accessCode`; the pages open Paystack InlineJS as a popup (`src/lib/paystack-popup.ts`), fall back to the hosted redirect if the script is blocked, and ask the server before assuming a closed popup means unpaid.
 - **Daraja (direct M-Pesa STK)** is hidden in the UI unless `NEXT_PUBLIC_DARAJA_ENABLED=on` — Safaricom has not enabled M-Pesa Express on the shortcode. The code path is intact.
+
+## Paystack webhook is shared — confirmations come from reconciliation
+
+- The Paystack account is shared with the WooCommerce store at `assets.meatsoko.com`; its single live webhook points there (`/wc-api/Tbz_WC_Paystack_Webhook/`). **Do not move it** — that would break the WooCommerce store. Our `paystack-webhook` therefore receives nothing from live Paystack.
+- Payments are confirmed (1) on the buyer's return — `merch-order` / `paystack-verify` verify with Paystack — and (2) by `paystack-reconcile`, run every 5 min by pg_cron (`20260929150000_paystack_reconcile_cron.sql`), which asks Paystack about pending MS/MT orders created 2 min – 3 h ago. It needs no key and rate-limits itself (6 runs / 10 min).
+- Longer term: a separate Paystack business for events/merch would give its own webhook and payout reporting.
