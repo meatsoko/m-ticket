@@ -137,7 +137,8 @@ export const merchandiseCategories: MerchandiseCategory[] = [
       make("headwear", NYAMAFEST.beanie, "Green", "green-beanie-nyamafest.png", null),
       make("headwear", NYAMAFEST.cap, "Red", "red-cap-nyamafest.png", null),
       make("headwear", NYAMAFEST.cap, "Green", "green-cap-nyamafest.png", null),
-      make("headwear", NYAMAFEST.beanie, "Red", "red-beanie-nyamafest.png", null),
+      // TEMPORARY live-checkout test price: $0.08 = KSh 10 at ~129.55. Restore to null after the test.
+      make("headwear", NYAMAFEST.beanie, "Red", "red-beanie-nyamafest.png", 0.08),
       make("headwear", NYAMAFEST.beanie, "White", "white-beanie-nyamafest.png", null),
     ],
   },
