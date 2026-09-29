@@ -21,7 +21,6 @@ const INTERVAL_MS = 3000;
 export default function HeroCarousel() {
   const [index, setIndex] = useState(0);
   const [prev, setPrev] = useState<number | null>(null);
-  const [stopped, setStopped] = useState(false); // the pause button
   const [hidden, setHidden] = useState(false);   // tab in the background
 
   const go = (next: number) => {
@@ -38,12 +37,13 @@ export default function HeroCarousel() {
 
   // A timeout keyed on the index (not an interval) so a manual pick restarts the 3 s.
   useEffect(() => {
-    // Always advancing: only the pause button or a hidden tab stops it — not hover or focus.
-    if (stopped || hidden) return;
+    // Always advancing; there is deliberately no pause control. Only a hidden tab
+    // stops it (nothing to watch) — not hover or focus.
+    if (hidden) return;
     const t = window.setTimeout(() => go(index + 1), INTERVAL_MS);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [index, stopped, hidden]);
+  }, [index, hidden]);
 
   const slide = SLIDES[index];
 
@@ -66,18 +66,13 @@ export default function HeroCarousel() {
         ))}
       </Link>
       <span className="hero-shadow" aria-hidden="true" />
-      <span className="hero-art-caption" aria-live={stopped ? "polite" : "off"}>
+      <span className="hero-art-caption" aria-live="off">
         {slide.kicker}<br /><strong>{String(index + 1).padStart(2, "0")} / {slide.label}</strong>
       </span>
       <div className="hero-dots">
         {SLIDES.map((s, i) => (
           <button key={s.slug} type="button" className={i === index ? "active" : undefined} aria-label={`Show ${s.name}`} aria-current={i === index} onClick={() => go(i)} />
         ))}
-        <button type="button" className="hero-pause" onClick={() => setStopped((v) => !v)} aria-label={stopped ? "Play slideshow" : "Pause slideshow"}>
-          {stopped
-            ? <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" /></svg>
-            : <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3v14H7zM14 5h3v14h-3z" /></svg>}
-        </button>
       </div>
     </div>
   );
