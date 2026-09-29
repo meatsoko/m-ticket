@@ -31,11 +31,13 @@ const priceLabel = (p: UpgradePlatter, now: number) => {
 };
 
 export default function TableUpgrade({
-  token, options, onUpgraded,
+  token, options, onUpgraded, preview = false,
 }: {
   token: string;
   options: UpgradeOption[];
   onUpgraded?: () => void;
+  /** Local design preview (lib/ga-preview): simulate, never call the server. */
+  preview?: boolean;
 }) {
   const supabase = createClient();
   const [now, setNow] = useState(() => Date.now());
@@ -68,6 +70,7 @@ export default function TableUpgrade({
   async function start() {
     setError("");
     if (!selected) { setError("Choose a table first."); return; }
+    if (preview) { setPhase("done"); return; }   // no Paystack in the design preview
     setPhase("paying");
     const res = await invokeFn(supabase, "upgrade-reservation", {
       access_token: token, reservation_type_id: selected.id,

@@ -6,6 +6,7 @@ import EventCheckout from "@/components/EventCheckout";
 import ReservationForm from "@/components/ReservationForm";
 import GeneralAdmissionForm from "@/components/GeneralAdmissionForm";
 import type { UpgradeOption } from "@/components/TableUpgrade";
+import { GA_PREVIEW, GA_PREVIEW_TYPE_ID } from "@/lib/ga-preview";
 import EarlyBirdCountdown from "@/components/EarlyBirdCountdown";
 import type { Event, TicketType, PreorderItem, ReservationType } from "@/lib/types";
 
@@ -51,7 +52,9 @@ export default async function EventPage({ params }: { params: { slug: string } }
   // General Admission first (migration 20260929180000): when the event has a GA
   // type, the page issues the free ticket and the table packages become
   // upgrades of it. Events without one keep the original reservation form.
-  const gaType = (reservationTypes ?? []).find((type: any) => type.is_general_admission);
+  // GA_PREVIEW: local design preview only (never in a production build).
+  const gaType = (reservationTypes ?? []).find((type: any) => type.is_general_admission)
+    ?? (GA_PREVIEW && isReservation ? { id: GA_PREVIEW_TYPE_ID } : undefined);
   const upgradeOptions: UpgradeOption[] = linkedTypes
     .filter((type: any) => !type.is_general_admission && type.included_preorder_item && type.fixed_party_size)
     .map((type: any) => ({ id: type.id, name: type.name, party_size: type.fixed_party_size, platter: type.included_preorder_item }));
@@ -136,7 +139,8 @@ export default async function EventPage({ params }: { params: { slug: string } }
 
           <section className="event-booking" aria-label={isReservation ? "Reserve your place" : "Buy tickets"}>
             {isReservation && gaType ? (
-              <GeneralAdmissionForm event={ev as Event} gaTypeId={gaType.id} options={upgradeOptions} />
+              <GeneralAdmissionForm event={ev as Event} gaTypeId={gaType.id} options={upgradeOptions}
+                preview={gaType.id === GA_PREVIEW_TYPE_ID} />
             ) : isReservation ? (
               <ReservationForm
                 event={ev as Event}

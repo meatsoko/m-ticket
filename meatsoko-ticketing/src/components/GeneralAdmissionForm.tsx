@@ -19,11 +19,13 @@ const APP_URL = () => process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin;
 type Result = { reservation_number: string; access_token?: string; unchanged?: boolean; emailed: boolean };
 
 export default function GeneralAdmissionForm({
-  event, gaTypeId, options,
+  event, gaTypeId, options, preview = false,
 }: {
   event: Event;
   gaTypeId: string;
   options: UpgradeOption[];
+  /** Local design preview (lib/ga-preview): simulate, never call the server. */
+  preview?: boolean;
 }) {
   const supabase = createClient();
   const [name, setName] = useState("");
@@ -50,6 +52,10 @@ export default function GeneralAdmissionForm({
     setError("");
     if (!allowDuplicate) setDup(null);
     if (!validate()) return;
+    if (preview) {
+      setDone({ reservation_number: "NFM-PREVIEW", access_token: "0".repeat(32), emailed: true });
+      return;
+    }
     setBusy(true);
     const res = await invokeFn(supabase, "reserve", {
       event_id: event.id,
@@ -99,11 +105,11 @@ export default function GeneralAdmissionForm({
             `My ${event.name} ticket (${done.reservation_number}) — open at the door: ${url}`)}`}>
             <Icon name="share" size={18} /> Send via WhatsApp
           </a>
-          <a className="btn-ghost btn-block" href={`/r/${done.access_token}`}>Open my pass</a>
+          {!preview && <a className="btn-ghost btn-block" href={`/r/${done.access_token}`}>Open my pass</a>}
         </div>
         {options.length > 0 && (
           <div className="card">
-            <TableUpgrade token={done.access_token} options={options}
+            <TableUpgrade token={done.access_token} options={options} preview={preview}
               onUpgraded={() => window.location.assign(`/r/${done.access_token}`)} />
           </div>
         )}
@@ -135,6 +141,11 @@ export default function GeneralAdmissionForm({
   const now = Date.now();
   return (
     <div className="stack reservation-form general-admission">
+      {preview && (
+        <p className="small" style={{ color: "var(--danger)" }}>
+          Design preview — nothing is booked, charged or emailed.
+        </p>
+      )}
       <div className="stack tight">
         <span className="eyebrow">General Admission</span>
         <h2 style={{ margin: 0 }}>Grab Your Free Ticket</h2>
