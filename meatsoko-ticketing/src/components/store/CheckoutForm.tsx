@@ -57,10 +57,11 @@ export default function CheckoutForm() {
   useEffect(() => {
     if (!PAYMENT_CONNECTED) return;
     setRateState("loading");
-    supabase.rpc("merch_current_fx").then(({ data, error }) => {
-      const r = !error && Array.isArray(data) && data[0] ? Number(data[0].rate) : null;
-      setRate(r && r > 0 ? r : null);
-      setRateState(r && r > 0 ? "ready" : "missing");
+    // merch-checkout's quote refreshes the rate first if it is more than 6 hours old.
+    invokeFn<{ rate?: number }>(supabase, "merch-checkout", { action: "quote" }).then((res) => {
+      const r = Number(res.data?.rate);
+      setRate(r > 0 ? r : null);
+      setRateState(r > 0 ? "ready" : "missing");
     });
   }, [supabase]);
 

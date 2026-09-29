@@ -1,6 +1,10 @@
 // Merchandise checkout: create the order (which prices it and holds stock), then
 // open a Paystack hosted checkout for the KES total.
 //
+// Body: { action: "quote" } -> { rate, as_of }: the USD→KES rate checkout will use,
+//         refreshed first if it is more than 6 hours old (see _shared/fx.ts). The
+//         checkout form calls this to show the KSh total before the buyer pays.
+//
 // Body: {
 //   customer: { first_name, last_name, phone, email, notes? },
 //   delivery: { code, zone?, address?, town?, sacco? },   // zone is the zone NAME
@@ -11,6 +15,7 @@
 // every line, the delivery fee and the exchange rate from the database.
 import { json, preflight } from "../_shared/cors.ts";
 import { clientIp, normalizePhone, rateLimit, serviceClient } from "../_shared/supabase.ts";
+import { ensureFreshRate } from "../_shared/fx.ts";
 
 const PER_PHONE = { limit: 6, windowSeconds: 600 };
 const PER_IP = { limit: 30, windowSeconds: 600 };
@@ -34,6 +39,13 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json().catch(() => null);
     if (!body || typeof body !== "object") return fail("bad_json", 400);
+
+    if (body.action === "quote") {
+      // One DB read normally; one feed fetch at most every 6 hours.
+      const fx = await ensureFreshRate(serviceClient());
+      if (!fx) return fail("fx_unavailable", 503);
+      return json({ rate: fx.rate, as_of: fx.as_of });
+    }
     const customer = body.customer ?? {};
     const delivery = body.delivery ?? {};
     const lines = Array.isArray(body.lines) ? body.lines : [];
@@ -74,6 +86,10 @@ Deno.serve(async (req) => {
         .select("id").eq("option_code", String(delivery.code ?? "")).eq("name", String(delivery.zone)).maybeSingle();
       zoneId = zone?.id ?? null;
     }
+
+    // Refresh the rate if it is due, so a quiet store never locks itself out.
+    // merch_create_order reads the rate itself and refuses if none is fresh enough.
+    await ensureFreshRate(db);
 
     const { data: created, error: cErr } = await db.rpc("merch_create_order", {
       p_customer: { first_name: firstName, last_name: lastName, phone, email, notes: customer.notes ?? null },
