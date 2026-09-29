@@ -77,3 +77,9 @@ The user wants the storefront to use a warm cream, black, and red visual system.
 - Storefront: `/checkout` → Paystack → `/checkout/complete?reference=…` → `/order/<access_token>`. Pay stays disabled until `NEXT_PUBLIC_MERCH_PAYMENTS=on`.
 - Go-live order: ~~apply the migration~~ (done) → ~~deploy the three merch functions and `paystack-webhook`~~ (done 2026-09-29: merch-checkout v1, merch-order v1, merch-fx-refresh v1, paystack-webhook v2 — v1 is the pre-merch rollback point) → ~~set `PAYSTACK_SECRET_KEY`~~ (done; `sk_live`) → ~~first rate~~ (done 2026-09-29: 129.5491 via a live quote) → set `NEXT_PUBLIC_MERCH_PAYMENTS=on` in Vercel → one small real purchase.
 - The frontend catalogue still comes from `src/lib/merchandise.ts`; the database is seeded from it and re-prices every order, so the two must agree until the storefront reads from the database.
+
+## Email and payment, shared across tickets, reservations and merchandise
+
+- **Email:** every message goes through `supabase/functions/_shared/resend.ts` (`sendEmail`): ticket email, reservation pass (QR attached as `cid:reservation-qr`), organiser reservation alert, merch buyer confirmation, merch organiser alert. Same `RESEND_API_KEY` / `TICKET_EMAIL_FROM`. Merch organiser alerts go to the `MERCH_NOTIFY_EMAIL` secret (comma-separated; unset = no alert).
+- **Payment:** tickets (`stk-push`), reservation preorders (`reserve`) and merch (`merch-checkout`) all initialise Paystack with `channels: ["mobile_money","card"]` and return `accessCode`; the pages open Paystack InlineJS as a popup (`src/lib/paystack-popup.ts`), fall back to the hosted redirect if the script is blocked, and ask the server before assuming a closed popup means unpaid.
+- **Daraja (direct M-Pesa STK)** is hidden in the UI unless `NEXT_PUBLIC_DARAJA_ENABLED=on` — Safaricom has not enabled M-Pesa Express on the shortcode. The code path is intact.

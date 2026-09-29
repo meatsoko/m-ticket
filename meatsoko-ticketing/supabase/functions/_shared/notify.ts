@@ -3,6 +3,7 @@
 // Destinations are configured PER EVENT (events.notify_email / notify_whatsapp),
 // never hard-coded. With neither set this is a no-op and the admin dashboard is
 // the only destination — a valid configuration, not a failure.
+import { sendEmail } from "./resend.ts";
 
 type ReservationSummary = {
   reservationNumber: string;
@@ -34,29 +35,19 @@ function lines(r: ReservationSummary): string[] {
 }
 
 async function viaEmail(to: string, r: ReservationSummary): Promise<string> {
-  const apiKey = (Deno.env.get("RESEND_API_KEY") ?? "").trim();
-  const from = (Deno.env.get("TICKET_EMAIL_FROM") ?? "").trim();
-  if (!apiKey) return "email:not_configured";
-  if (!from) return "email:no_from_address";
-  try {
-    const body = lines(r);
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      signal: AbortSignal.timeout(10_000),
-      body: JSON.stringify({
-        from, to: [to],
-        subject: `${r.eventName} — reservation ${r.reservationNumber} (${r.partySize} guest${r.partySize > 1 ? "s" : ""})`,
-        text: body.join("\n"),
-        html: `<pre style="font-family:ui-monospace,monospace;font-size:14px">${
-          body.map((l) => l.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]!))).join("\n")
-        }</pre>`,
-      }),
-    });
-    return res.ok ? "email:sent" : `email:${res.status}`;
-  } catch (e) {
-    return `email:${e instanceof Error ? e.message : String(e)}`;
-  }
+  const body = lines(r);
+  const out = await sendEmail({
+    to,
+    subject: `${r.eventName} — reservation ${r.reservationNumber} (${r.partySize} guest${r.partySize > 1 ? "s" : ""})`,
+    text: body.join("\n"),
+    html: `<pre style="font-family:ui-monospace,monospace;font-size:14px">${
+      body.map((l) => l.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]!))).join("\n")
+    }</pre>`,
+  });
+  // Same strings the caller has always logged.
+  if (out.sent) return "email:sent";
+  if (out.reason === "not_configured" || out.reason === "no_from_address") return `email:${out.reason}`;
+  return `email:${(out.reason ?? "failed").split(" ")[0]}`;
 }
 
 /**

@@ -2,12 +2,18 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
+import { openPaystackPopup } from "@/lib/paystack-popup";
 import { normalizePhone, looksLikeEmail, PHONE_HINT, EMAIL_HINT } from "@/lib/phone";
 import QrImage from "@/components/QrImage";
 import Icon from "@/components/Icon";
 import type { Event, TicketType, OrderTicket } from "@/lib/types";
 
 const APP_URL = () => process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin;
+
+// Paystack (M-Pesa or card, in a popup) is the payment path, as for merchandise.
+// Direct M-Pesa STK via Daraja stays in the code for when Safaricom enables M-Pesa
+// Express on the shortcode; until then offering it would only fail.
+const DARAJA_ENABLED = process.env.NEXT_PUBLIC_DARAJA_ENABLED === "on";
 
 type InvokeResult = {
   data: any; status: number | null; errorCode: string | null; transportError: boolean;
@@ -25,7 +31,7 @@ export default function EventCheckout({
   const [qty, setQty] = useState<Record<string, number>>({});
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
-  const [provider, setProvider] = useState<"mpesa" | "paystack">("mpesa");
+  const [provider, setProvider] = useState<"mpesa" | "paystack">(DARAJA_ENABLED ? "mpesa" : "paystack");
   const [state, setState] = useState<"form" | "pending" | "success" | "failed">("form");
   const [tickets, setTickets] = useState<OrderTicket[]>([]);
   const [error, setError] = useState("");
@@ -39,22 +45,25 @@ export default function EventCheckout({
     if (query.get("payment") !== "paystack" || !reference) return;
     window.history.replaceState({}, "", window.location.pathname);
     setProvider("paystack");
-    setState("pending");
-    (async () => {
-      const checked = await invokeFn(supabase, "paystack-verify", { reference });
-      if (!checked.data || ["not_paid", "mismatch", "ignored"].includes(checked.data.result)) {
-        setError("Paystack did not confirm this payment. If you were charged, contact support with your payment reference.");
-        setState("failed");
-        return;
-      }
-      const { data: st } = await invokeFn(supabase, "order-status", { reference });
-      if (st?.status === "paid") { setTickets(st.tickets ?? []); setState("success"); return; }
-      setError("Payment received but the ticket could not be issued. Our team has been alerted — contact support with your payment reference.");
-      setState("failed");
-    })();
+    completePaystack(reference);
   // The callback is handled once on mount; Supabase client is stable for this view.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // After Paystack says the buyer paid — by popup callback or by redirect back here.
+  async function completePaystack(reference: string) {
+    setState("pending");
+    const checked = await invokeFn(supabase, "paystack-verify", { reference });
+    if (!checked.data || ["not_paid", "mismatch", "ignored"].includes(checked.data.result)) {
+      setError("Paystack did not confirm this payment. If you were charged, contact support with your payment reference.");
+      setState("failed");
+      return;
+    }
+    const { data: st } = await invokeFn(supabase, "order-status", { reference });
+    if (st?.status === "paid") { setTickets(st.tickets ?? []); setState("success"); return; }
+    setError("Payment received but the ticket could not be issued. Our team has been alerted — contact support with your payment reference.");
+    setState("failed");
+  }
 
   const left = (t: TicketType) => remaining[t.id] ?? null;
   const soldOut = (t: TicketType) => left(t) === 0;
@@ -104,7 +113,19 @@ export default function EventCheckout({
     });
     if (res.data?.orderId) setOrderId(res.data.orderId);
     if (res.data?.authorizationUrl) {
-      window.location.assign(res.data.authorizationUrl);
+      const { authorizationUrl, accessCode, reference } = res.data;
+      const opened = accessCode && await openPaystackPopup(accessCode, {
+        onSuccess: (tx) => completePaystack(tx?.reference || reference),
+        // Closed without a success callback: ask Paystack before assuming nothing was paid.
+        onCancel: async () => {
+          const checked = await invokeFn(supabase, "paystack-verify", { reference });
+          if (["confirmed", "already"].includes(checked.data?.result)) { completePaystack(reference); return; }
+          setError("Payment window closed before paying. Tap below to try again.");
+          setState("failed");
+        },
+        onError: () => window.location.assign(authorizationUrl),
+      });
+      if (!opened) window.location.assign(authorizationUrl);   // script blocked: hosted page as before
       return;
     }
     if (!res.data?.checkoutRequestId) {
@@ -209,7 +230,7 @@ export default function EventCheckout({
         <h2>{provider === "mpesa" ? "Check your phone" : "Opening Paystack"}</h2>
         <p className="small">{provider === "mpesa"
           ? <>Enter your M-Pesa PIN to pay <strong>KSh {total.toLocaleString()}</strong>. This page updates on its own — don&apos;t close it.</>
-          : <>You&apos;re being redirected to Paystack to pay <strong>KSh {total.toLocaleString()}</strong>.</>}</p>
+          : <>Complete your payment of <strong>KSh {total.toLocaleString()}</strong> in the Paystack window — M-Pesa or card.</>}</p>
       </div>
     );
   }
@@ -263,13 +284,15 @@ export default function EventCheckout({
       </div>
 
       <div className="card">
-        <label className="field">
-          <span>Payment method</span>
-          <select value={provider} onChange={(e) => setProvider(e.target.value as "mpesa" | "paystack")}>
-            <option value="mpesa">M-Pesa prompt</option>
-            <option value="paystack">Paystack (card and supported methods)</option>
-          </select>
-        </label>
+        {DARAJA_ENABLED && (
+          <label className="field">
+            <span>Payment method</span>
+            <select value={provider} onChange={(e) => setProvider(e.target.value as "mpesa" | "paystack")}>
+              <option value="mpesa">M-Pesa prompt</option>
+              <option value="paystack">Paystack (M-Pesa or card)</option>
+            </select>
+          </label>
+        )}
         <label className="field">
           <span>{provider === "mpesa" ? "M-Pesa number" : "Contact phone number"}</span>
           <input
@@ -298,12 +321,12 @@ export default function EventCheckout({
         {fieldErr.items && <p className="small" style={{ color: "var(--danger)" }}>{fieldErr.items}</p>}
         <button className="btn-pay btn-block" onClick={pay}>
           {items.length === 0
-            ? `Pay with ${provider === "mpesa" ? "M-Pesa" : "Paystack"}`
+            ? "Choose tickets to pay"
             : `${state === "failed" ? "Retry —" : "Pay"} KSh ${total.toLocaleString()}`}
         </button>
         <p className="small" style={{ textAlign: "center" }}>
           {count > 0 ? `${count} ticket${count > 1 ? "s" : ""} · ` : ""}
-          Price includes all fees. {provider === "mpesa" ? "You’ll get an M-Pesa prompt." : "You’ll complete payment on Paystack."}
+          Price includes all fees. {provider === "mpesa" ? "You’ll get an M-Pesa prompt." : "Pay by M-Pesa or card through Paystack."}
         </p>
       </div>
     </div>

@@ -211,6 +211,8 @@ Deno.serve(async (req) => {
           headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
           body: JSON.stringify({
             email: String(buyerEmail).trim(), amount: Math.round(amount * 100), currency: "KES",
+            // Same as merchandise: M-Pesa or card only, which keeps Paystack's screen short.
+            channels: ["mobile_money", "card"],
             reference, callback_url: `${appUrl}/e/${encodeURIComponent(evForReturn?.slug ?? "")}?payment=paystack`,
             metadata: { order_id: order.id, event_id },
           }),
@@ -227,7 +229,8 @@ Deno.serve(async (req) => {
         await rateLimit(db, phoneBucket, PER_PHONE.limit, PER_PHONE.windowSeconds);
         await rateLimit(db, ipBucket, PER_IP.limit, PER_IP.windowSeconds);
       }
-      return json({ authorizationUrl: response.data.authorization_url, reference, orderId: order.id, stage: "done", request_id: rid });
+      // accessCode lets the page open Paystack as a popup; authorizationUrl is the redirect fallback.
+      return json({ authorizationUrl: response.data.authorization_url, accessCode: response.data.access_code, reference, orderId: order.id, stage: "done", request_id: rid });
     }
 
     // ---- daraja config (presence only — never the values) ----

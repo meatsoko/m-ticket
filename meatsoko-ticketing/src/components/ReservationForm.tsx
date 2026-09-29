@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
+import { openPaystackPopup } from "@/lib/paystack-popup";
 import { normalizePhone, looksLikeEmail, PHONE_HINT, EMAIL_HINT } from "@/lib/phone";
 import QrImage from "@/components/QrImage";
 import Icon from "@/components/Icon";
@@ -11,6 +12,11 @@ import { familyPackageUsdPrices, formatUsd, formatUsdSaving } from "@/lib/family
 const APP_URL = () => process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin;
 
 type Phase = "form" | "submitting" | "awaiting_payment" | "done" | "failed";
+
+// Paystack (M-Pesa or card, in a popup) is the payment path, as for tickets and
+// merchandise. Direct M-Pesa STK via Daraja is kept for when Safaricom enables
+// M-Pesa Express on the shortcode; until then offering it would only fail.
+const DARAJA_ENABLED = process.env.NEXT_PUBLIC_DARAJA_ENABLED === "on";
 type BookingStep = "selection" | "details" | "payment";
 
 type Confirmed = {
@@ -31,7 +37,7 @@ export default function ReservationForm({
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
-  const [provider, setProvider] = useState<"mpesa" | "paystack">("mpesa");
+  const [provider, setProvider] = useState<"mpesa" | "paystack">(DARAJA_ENABLED ? "mpesa" : "paystack");
   const [nowMs, setNowMs] = useState<number | null>(null);
   // A type's smallest legal party, expressed as "people besides you".
   const startingExtra = (t?: ReservationType | null) =>
@@ -73,31 +79,31 @@ export default function ReservationForm({
     setEmail(pending.email);
     setEmailed(pending.emailed);
     setProvider("paystack");
-    setPhase("awaiting_payment");
-    (async () => {
-      const reference = query.get("reference");
-      const verified = reference
-        ? await invokeFn(supabase, "paystack-verify", { reference })
-        : { data: null };
-      if (!verified.data || !["confirmed", "already"].includes(verified.data.result)) {
-        setError("Paystack did not confirm this preorder. If you were charged, contact support with your payment reference.");
-        setPhase("failed");
-        return;
-      }
-      const { data: status } = await invokeFn(supabase, "reservation-status", {
-        access_token: pending.reservation.access_token,
-      });
-      if (status?.status === "confirmed" || status?.payment_status === "paid") {
-        window.sessionStorage.removeItem("pending_paystack_reservation");
-        setPhase("done");
-        return;
-      }
-      setError("Payment received but we could not confirm your preorder. Our team has been alerted — contact support with your payment reference.");
-      setPhase("failed");
-    })();
+    completePaystack(query.get("reference"), pending.reservation.access_token);
   // Callback verification runs once when Paystack returns to this page.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // After Paystack says the guest paid — by popup callback or by redirect back here.
+  async function completePaystack(reference: string | null, accessToken: string) {
+    setPhase("awaiting_payment");
+    const verified = reference
+      ? await invokeFn(supabase, "paystack-verify", { reference })
+      : { data: null };
+    if (!verified.data || !["confirmed", "already"].includes(verified.data.result)) {
+      setError("Paystack did not confirm this preorder. If you were charged, contact support with your payment reference.");
+      setPhase("failed");
+      return;
+    }
+    const { data: status } = await invokeFn(supabase, "reservation-status", { access_token: accessToken });
+    if (status?.status === "confirmed" || status?.payment_status === "paid") {
+      window.sessionStorage.removeItem("pending_paystack_reservation");
+      setPhase("done");
+      return;
+    }
+    setError("Payment received but we could not confirm your preorder. Our team has been alerted — contact support with your payment reference.");
+    setPhase("failed");
+  }
 
   useEffect(() => {
     if (!items.some((item) => item.early_bird_ends_at)) return;
@@ -227,9 +233,23 @@ export default function ReservationForm({
     }
 
     if (res.data.authorizationUrl) {
+      // Saved for the redirect fallback, which comes back to this page and restores from it.
       const pending = { reservation: confirmed, name: name.trim(), email: email.trim(), emailed: false };
       window.sessionStorage.setItem("pending_paystack_reservation", JSON.stringify(pending));
-      window.location.assign(res.data.authorizationUrl);
+      const { authorizationUrl, accessCode, reference } = res.data;
+      setPhase("awaiting_payment");
+      const opened = accessCode && await openPaystackPopup(accessCode, {
+        onSuccess: (tx) => completePaystack(tx?.reference || reference, confirmed.access_token),
+        // Closed without a success callback: ask Paystack before assuming nothing was paid.
+        onCancel: async () => {
+          const checked = await invokeFn(supabase, "paystack-verify", { reference });
+          if (["confirmed", "already"].includes(checked.data?.result)) { completePaystack(reference, confirmed.access_token); return; }
+          setError("Payment window closed before paying. Your reservation is held — tap below to pay again.");
+          setPhase("failed");
+        },
+        onError: () => window.location.assign(authorizationUrl),
+      });
+      if (!opened) window.location.assign(authorizationUrl);   // script blocked: hosted page as before
       return;
     }
 
@@ -347,7 +367,7 @@ export default function ReservationForm({
         <p className="small">
           {provider === "mpesa"
             ? <>Enter your M-Pesa PIN to pay <strong>KSh {total.toLocaleString()}</strong>. Your pass will appear here after payment is confirmed.</>
-            : <>Complete payment of <strong>KSh {total.toLocaleString()}</strong> on Paystack. Your pass will appear here after payment is confirmed.</>}
+            : <>Complete your payment of <strong>KSh {total.toLocaleString()}</strong> in the Paystack window — M-Pesa or card. Your pass appears here once it&apos;s confirmed.</>}
         </p>
       </div>
     );
@@ -497,17 +517,19 @@ export default function ReservationForm({
           </div>
           <strong className="num">KSh {total.toLocaleString()}</strong>
         </div>
-        {total > 0 && !hasTablePackages && (
+        {total > 0 && !hasTablePackages && DARAJA_ENABLED && (
           <label className="field">
             <span>Payment method</span>
             <select value={provider} onChange={(e) => setProvider(e.target.value as "mpesa" | "paystack")}>
               <option value="mpesa">M-Pesa STK push</option>
-              <option value="paystack">Paystack</option>
+              <option value="paystack">Paystack (M-Pesa or card)</option>
             </select>
           </label>
         )}
         {total > 0 && hasTablePackages && (
-          <p className="small">We&apos;ll send an M-Pesa STK prompt to {phone || "your phone"} when you continue.</p>
+          <p className="small">{provider === "mpesa"
+            ? <>We&apos;ll send an M-Pesa STK prompt to {phone || "your phone"} when you continue.</>
+            : <>You&apos;ll pay by M-Pesa or card through Paystack when you continue.</>}</p>
         )}
         <button className="btn-ghost btn-block" onClick={() => setStep("details")} style={{ minHeight: 42 }}>
           Back to your details
@@ -542,14 +564,14 @@ export default function ReservationForm({
           {phase === "submitting"
             ? provider === "mpesa" ? "Sending M-Pesa prompt…" : "Opening Paystack…"
             : total > 0
-            ? `${phase === "failed" ? "Retry payment —" : provider === "mpesa" ? "Send M-Pesa prompt" : "Continue to Paystack"} · KSh ${total.toLocaleString()}`
+            ? `${phase === "failed" ? "Retry payment —" : provider === "mpesa" ? "Send M-Pesa prompt" : "Pay"} · KSh ${total.toLocaleString()}`
             : phase === "failed" ? "Try again" : "Confirm reservation"}
         </button>
         <p className="small" style={{ textAlign: "center" }}>
           {total > 0
             ? provider === "mpesa"
               ? "An M-Pesa prompt will be sent to your phone. Your pass appears after payment is confirmed."
-              : "Complete payment on Paystack. Your pass appears after payment is confirmed."
+              : "Pay by M-Pesa or card through Paystack. Your pass appears after payment is confirmed."
             : "No payment is due. Your reservation pass will be issued after confirmation."}
         </p>
       </div>

@@ -232,6 +232,7 @@ Deno.serve(async (req) => {
           headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
           body: JSON.stringify({
             email: guestEmail, amount: Math.round(amount * 100), currency: "KES", reference,
+            channels: ["mobile_money", "card"],   // M-Pesa or card only, as for tickets and merchandise
             callback_url: `${appUrl}/e/${encodeURIComponent((ev as any)?.slug ?? "")}?payment=paystack&flow=reservation`,
             metadata: { order_id: res.order_id, event_id, reservation_id: res.reservation_id },
           }),
@@ -244,6 +245,7 @@ Deno.serve(async (req) => {
           reservation_number: res.reservation_number, access_token: res.access_token,
           party_size: res.party_size, status: res.status, amount_kes: amount,
           payment_required: true, authorizationUrl: response.data.authorization_url,
+          accessCode: response.data.access_code,   // popup; authorizationUrl is the redirect fallback
           reference, order_id: res.order_id, request_id: rid,
         });
       } catch (e) {
