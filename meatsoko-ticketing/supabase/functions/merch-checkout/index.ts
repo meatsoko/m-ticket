@@ -130,6 +130,8 @@ Deno.serve(async (req) => {
         email,
         amount: Math.round(Number(order.total_kes) * 100),   // KES in cents
         currency: "KES",
+        // Kenyan buyers pay by M-Pesa or card; hiding the rest keeps Paystack's screen short.
+        channels: ["mobile_money", "card"],
         reference: order.paystack_reference,
         callback_url: `${returnBase(req, appUrl)}/checkout/complete`,   // Paystack appends ?reference=
         metadata: { kind: "merch", order_id: order.order_id, order_number: order.order_number },
@@ -146,7 +148,8 @@ Deno.serve(async (req) => {
 
     console.log(JSON.stringify({ rid, msg: "merch checkout opened", order: order.order_number, total_kes: order.total_kes }));
     return json({
-      authorizationUrl: initBody.data.authorization_url,
+      authorizationUrl: initBody.data.authorization_url,   // redirect fallback
+      accessCode: initBody.data.access_code,               // for the in-page popup
       reference: order.paystack_reference,
       order_number: order.order_number,
       total_kes: order.total_kes,

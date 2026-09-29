@@ -2,18 +2,36 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useBag } from "./BagProvider";
 import { DELIVERY_OPTIONS, DELIVERY_ZONES, formatPrice, type DeliveryOption } from "@/lib/merchandise";
 import { looksLikeEmail, normalizePhone, PHONE_HINT } from "@/lib/phone";
 import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
+import { openPaystackPopup } from "@/lib/paystack-popup";
 
 // Merchandise payment goes live only when NEXT_PUBLIC_MERCH_PAYMENTS is "on" — set
 // it after the merchandise migration is applied and merch-checkout is deployed
 // (see supabase/migrations/20260929120000_merchandise_store.sql). Until then the
 // form works end to end but Pay stays disabled and says why.
 const PAYMENT_CONNECTED = process.env.NEXT_PUBLIC_MERCH_PAYMENTS === "on";
+
+// An order opened on Paystack but not yet paid (popup closed). Pressing Pay again with
+// the same bag and details resumes it instead of creating a second order — which
+// would hold the same stock twice. Kept below the server's 30-minute hold.
+const PENDING_KEY = "merch_pending_payment";
+const PENDING_MAX_MS = 25 * 60 * 1000;
+type Pending = { sig: string; reference: string; accessCode: string; authorizationUrl: string; at: number };
+const readPending = (sig: string): Pending | null => {
+  try {
+    const p: Pending = JSON.parse(window.sessionStorage.getItem(PENDING_KEY) ?? "null");
+    return p && p.sig === sig && Date.now() - p.at < PENDING_MAX_MS ? p : null;
+  } catch { return null; }
+};
+const writePending = (p: Pending | null) => {
+  try { p ? window.sessionStorage.setItem(PENDING_KEY, JSON.stringify(p)) : window.sessionStorage.removeItem(PENDING_KEY); } catch { /* private mode */ }
+};
 
 // What merch-checkout can refuse, in the buyer's words.
 const CHECKOUT_ERRORS: Record<string, string> = {
@@ -48,6 +66,7 @@ export default function CheckoutForm() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const supabase = useMemo(() => createClient(), []);
+  const router = useRouter();
 
 
   const option = DELIVERY_OPTIONS.find((o) => o.id === delivery)!;
@@ -82,21 +101,45 @@ export default function CheckoutForm() {
     setTouched(true);
     setSubmitError(null);
     if (blocker || submitting || Object.keys(errors).length) return;
-
     setSubmitting(true);
-    const res = await invokeFn<{ authorizationUrl?: string; error?: string }>(supabase, "merch-checkout", {
+
+    const payload = {
       customer: { first_name: f.firstName.trim(), last_name: f.lastName.trim(), phone: f.phone, email: f.email.trim(), notes: f.notes.trim() || null },
       delivery: { code: delivery, zone: f.zone || null, address: f.street.trim() || null, town: f.town.trim() || null, sacco: f.sacco.trim() || null },
       lines: lines.map((l) => ({ slug: l.slug, size: l.size, qty: l.qty })),
-    });
-    if (res.data?.authorizationUrl) {
-      window.location.assign(res.data.authorizationUrl);   // stays "submitting" while the page changes
-      return;
+    };
+    const sig = JSON.stringify(payload);
+
+    let pending = readPending(sig);
+    if (!pending) {
+      const res = await invokeFn<{ authorizationUrl?: string; accessCode?: string; reference?: string }>(supabase, "merch-checkout", payload);
+      if (!res.data?.authorizationUrl || !res.data.reference) {
+        setSubmitting(false);
+        setSubmitError(res.transportError
+          ? "We couldn’t reach the payment service. Check your connection and try again."
+          : CHECKOUT_ERRORS[res.errorCode ?? ""] ?? "Something went wrong starting your payment. Please try again.");
+        return;
+      }
+      pending = { sig, reference: res.data.reference, accessCode: res.data.accessCode ?? "", authorizationUrl: res.data.authorizationUrl, at: Date.now() };
+      writePending(pending);
     }
-    setSubmitting(false);
-    setSubmitError(res.transportError
-      ? "We couldn’t reach the payment service. Check your connection and try again."
-      : CHECKOUT_ERRORS[res.errorCode ?? ""] ?? "Something went wrong starting your payment. Please try again.");
+
+    const done = (reference: string) => { writePending(null); router.push(`/checkout/complete?reference=${encodeURIComponent(reference)}`); };
+    const ref = pending.reference;
+    const opened = pending.accessCode && await openPaystackPopup(pending.accessCode, {
+      onSuccess: (tx) => done(tx?.reference || ref),
+      // Closed without a success callback: ask the server before assuming nothing was paid.
+      onCancel: async () => {
+        const check = await invokeFn<{ payment_status?: string }>(supabase, "merch-order", { reference: ref });
+        if (check.data?.payment_status === "paid" || check.data?.payment_status === "flagged") { done(ref); return; }
+        if (check.data?.payment_status === "failed") writePending(null);   // next Pay starts a fresh order
+        setSubmitting(false);
+        setSubmitError("Payment window closed. Your order is held for 30 minutes — press Pay to continue.");
+      },
+      onError: () => window.location.assign(pending!.authorizationUrl),
+    });
+    // Script blocked or offline: fall back to Paystack's hosted page (returns to /checkout/complete).
+    if (!opened) window.location.assign(pending.authorizationUrl);
   };
 
   if (!ready) return <main className="store-subpage checkout-page" />;
