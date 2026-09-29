@@ -133,12 +133,12 @@ export const merchandiseCategories: MerchandiseCategory[] = [
     id: "headwear", name: "Headwear", eyebrow: "NYAMAFEST MERCHANDISE",
     description: "Caps and beanies to top off your gathering look.",
     products: [
-      make("headwear", NYAMAFEST.cap, "White", "white-cap-nyamafest.png", null),
-      make("headwear", NYAMAFEST.beanie, "Green", "green-beanie-nyamafest.png", null),
-      make("headwear", NYAMAFEST.cap, "Red", "red-cap-nyamafest.png", null),
-      make("headwear", NYAMAFEST.cap, "Green", "green-cap-nyamafest.png", null),
-      make("headwear", NYAMAFEST.beanie, "Red", "red-beanie-nyamafest.png", null),
-      make("headwear", NYAMAFEST.beanie, "White", "white-beanie-nyamafest.png", null),
+      make("headwear", NYAMAFEST.cap, "White", "white-cap-nyamafest.png", 12),
+      make("headwear", NYAMAFEST.beanie, "Green", "green-beanie-nyamafest.png", 12),
+      make("headwear", NYAMAFEST.cap, "Red", "red-cap-nyamafest.png", 12),
+      make("headwear", NYAMAFEST.cap, "Green", "green-cap-nyamafest.png", 12),
+      make("headwear", NYAMAFEST.beanie, "Red", "red-beanie-nyamafest.png", 12),
+      make("headwear", NYAMAFEST.beanie, "White", "white-beanie-nyamafest.png", 12),
     ],
   },
   {
@@ -154,7 +154,7 @@ export const merchandiseCategories: MerchandiseCategory[] = [
         style: "MeatSoko Overall", name: "MeatSoko Overall", sizes: APPAREL_SIZES,
         summary: "A one-piece khaki overall with the MeatSoko Ecosystem patch up front and a large print across the back.",
         details: ["MeatSoko Ecosystem patch on the chest", "Large MeatSoko Ecosystem print across the back", "Collar with a full-length front opening", "Long sleeves and a belted waist"],
-      }, "Khaki", "meatsoko-overall-khaki.jpg", null, { slug: "meatsoko-overall" }),
+      }, "Khaki", "meatsoko-overall-khaki.jpg", 22, { slug: "meatsoko-overall" }),
     ],
   },
   {
@@ -176,7 +176,7 @@ export const merchandiseCategories: MerchandiseCategory[] = [
         style: "BMB T-shirt", name: "BMB × MeatSoko T-shirt", sizes: APPAREL_SIZES, partner: "Brian Munyolo Boxing",
         summary: "A partnership tee with Brian Munyolo Boxing: the BMB mark up front and the MeatSoko Ecosystem print on the back.",
         details: ["BMB — Brian Munyolo Boxing print on the chest", "MeatSoko Ecosystem print across the back", "Crew neck, short sleeves"],
-      }, "Blue", "bmb-tee-blue.jpg", null, { slug: "bmb-t-shirt-blue" }),
+      }, "Blue", "bmb-tee-blue.jpg", 15, { slug: "bmb-t-shirt-blue" }),
     ],
   },
 ];
