@@ -24,6 +24,8 @@ export type ReservationEmail = {
   amountKes: number;
   paid: boolean;
   contactPhone: string | null;
+  /** General Admission passes that can still add a table: the pass page's upgrade section. */
+  upgradeUrl?: string | null;
 };
 
 const esc = (s: string) =>
@@ -92,6 +94,13 @@ export async function sendReservationEmail(
     If the QR above doesn't show, open the link instead:<br>
     <a href="${esc(r.passUrl)}" style="color:#D1481F">${esc(r.passUrl)}</a>
   </p>
+  ${r.upgradeUrl ? `
+  <div style="border:1px solid #E3D9D2;border-radius:12px;padding:14px 18px;margin:18px 0;text-align:center">
+    <strong>Coming with family or friends?</strong>
+    <p style="font-size:13px;color:#6E615A;margin:6px 0 12px">Upgrade this ticket to a table with a family platter
+      (3, 7 or 10 people). Same booking, same QR code.</p>
+    <a href="${esc(r.upgradeUrl)}" style="color:#D1481F;font-weight:700">Upgrade to a table</a>
+  </div>` : ""}
   ${r.contactPhone ? `<p style="font-size:13px;color:#6E615A">Questions? ${esc(r.contactPhone)}</p>` : ""}
 </div>`;
 
@@ -105,6 +114,7 @@ export async function sendReservationEmail(
          `  Total KSh ${r.amountKes.toLocaleString()} — ${r.paid ? "PAID" : "not yet paid"}`]
       : []),
     "", `Open your pass: ${r.passUrl}`,
+    ...(r.upgradeUrl ? [`Upgrade to a table (3, 7 or 10 people): ${r.upgradeUrl}`] : []),
   ].filter(Boolean).join("\n");
 
   return sendEmail({
@@ -124,8 +134,8 @@ export async function buildAndSend(
   db: any, reservationId: string, appUrl: string
 ): Promise<{ sent: boolean; reason?: string }> {
   const { data: r } = await db.from("reservations")
-    .select(`guest_name,email,reservation_number,access_token,party_size,expected_arrival,order_id,
-             reservation_types(name), orders(status,amount_kes),
+    .select(`guest_name,email,reservation_number,access_token,party_size,expected_arrival,order_id,status,
+             reservation_types(name,is_general_admission), orders(status,amount_kes),
              events(name,venue,starts_at,contact_phone)`)
     .eq("id", reservationId).maybeSingle();
   if (!r?.email) return { sent: false, reason: "no_guest_email" };
@@ -142,6 +152,8 @@ export async function buildAndSend(
 
   const ev: any = r.events;
   const order: any = r.orders;
+  const passUrl = `${appUrl.replace(/\/+$/, "")}/r/${r.access_token}`;
+  const upgradable = !!(r as any).reservation_types?.is_general_admission && !r.order_id && r.status === "confirmed";
   return sendReservationEmail({
     to: r.email,
     guestName: r.guest_name,
@@ -152,7 +164,8 @@ export async function buildAndSend(
     eventName: ev?.name ?? "Event",
     eventVenue: ev?.venue ?? null,
     eventStartsAt: ev?.starts_at ?? null,
-    passUrl: `${appUrl.replace(/\/+$/, "")}/r/${r.access_token}`,
+    passUrl,
+    upgradeUrl: upgradable ? `${passUrl}#upgrade` : null,
     preorder,
     amountKes: Number(order?.amount_kes ?? 0),
     paid: r.order_id ? order?.status === "paid" : true,

@@ -49,3 +49,7 @@ verify_jwt = false
 # Paystack says succeeded, and rate-limits itself. See the function's header.
 [functions.paystack-reconcile]
 verify_jwt = false
+
+# Public: the pass token in the body is the authorisation (see the function header).
+[functions.upgrade-reservation]
+verify_jwt = false

@@ -160,11 +160,33 @@ Deno.serve(async (req) => {
     if (rErr) return fail("reservation_failed", 500, { detail: rErr.message });
 
     const res = r as any;
+    // General Admission event, and this phone + email already holds a table (or
+    // an older table booking): nothing is changed. The pass is re-sent to the
+    // address on the booking, exactly like an amendment, and never returned here.
+    if (res?.result === "already_booked") {
+      stage = "notify";
+      const appUrl = (Deno.env.get("APP_URL") ?? "").trim();
+      let emailed = false;
+      if (appUrl) {
+        const out = await buildAndSend(db, res.reservation_id, appUrl)
+          .catch((e) => ({ sent: false, reason: String(e).slice(0, 120) }));
+        log("existing booking re-sent", out);
+        emailed = !!out.sent;
+      }
+      stage = "done";
+      return json({
+        reservation_number: res.reservation_number, updated: true, unchanged: true,
+        party_size: res.party_size, status: res.status, amount_kes: 0,
+        payment_required: false, emailed, request_id: rid,
+      });
+    }
     const ok = res?.result === "created" || res?.result === "updated";
     if (!ok) {
       // Business rejections are 409/400, never 500: the caller can act on these.
+      // upgrade_required: a table on a General Admission event is bought from the
+      // pass (upgrade-reservation), never through this form.
       const status = ["full", "preorder_sold_out", "closed", "not_open_yet",
-                      "payments_unavailable"].includes(res?.result) ? 409 : 400;
+                      "payments_unavailable", "upgrade_required"].includes(res?.result) ? 409 : 400;
       return fail(res?.result ?? "reservation_rejected", status, res ?? {});
     }
     let amount = Number(res.amount_kes ?? 0);
