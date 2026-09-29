@@ -21,7 +21,6 @@ const INTERVAL_MS = 3000;
 export default function HeroCarousel() {
   const [index, setIndex] = useState(0);
   const [prev, setPrev] = useState<number | null>(null);
-  const [paused, setPaused] = useState(false);   // hover / focus
   const [stopped, setStopped] = useState(false); // the pause button
   const [hidden, setHidden] = useState(false);   // tab in the background
 
@@ -39,11 +38,12 @@ export default function HeroCarousel() {
 
   // A timeout keyed on the index (not an interval) so a manual pick restarts the 3 s.
   useEffect(() => {
-    if (paused || stopped || hidden) return;
+    // Always advancing: only the pause button or a hidden tab stops it — not hover or focus.
+    if (stopped || hidden) return;
     const t = window.setTimeout(() => go(index + 1), INTERVAL_MS);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [index, paused, stopped, hidden]);
+  }, [index, stopped, hidden]);
 
   const slide = SLIDES[index];
 
@@ -54,10 +54,6 @@ export default function HeroCarousel() {
       aria-roledescription="carousel"
       aria-label="Featured pieces"
       style={{ ["--glow" as string]: slide.glow }}
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-      onFocus={() => setPaused(true)}
-      onBlur={() => setPaused(false)}
     >
       <span className="hero-glow" aria-hidden="true" />
       <Link href={`/shop/${slide.slug}`} className="hero-stage" aria-label={`${slide.name} — view product`}>
