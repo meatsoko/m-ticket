@@ -147,7 +147,6 @@ export default function CheckoutForm() {
   if (lines.length === 0) {
     return (
       <main className="store-subpage checkout-page">
-        <div className="store-breadcrumb"><Link href="/">Home</Link><span>/</span><span>Checkout</span></div>
         <h1>Checkout</h1>
         <div className="store-empty-panel checkout-empty">
           <strong>Your bag is empty.</strong>
@@ -160,8 +159,6 @@ export default function CheckoutForm() {
 
   return (
     <main className="store-subpage checkout-page">
-      <div className="store-breadcrumb"><Link href="/">Home</Link><span>/</span><Link href="/cart">Your bag</Link><span>/</span><span>Checkout</span></div>
-      <span className="store-eyebrow">MERCHANDISE CHECKOUT</span>
       <h1>Checkout</h1>
       <div className="checkout-steps" aria-label="Checkout steps"><span className="done">01 &nbsp; Bag</span><span className="current">02 &nbsp; Details &amp; delivery</span><span>03 &nbsp; Payment</span></div>
 

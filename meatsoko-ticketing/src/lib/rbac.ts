@@ -89,7 +89,9 @@ export const NAV: NavItem[] = [
   { href: "/lookup", label: "My Tickets", icon: "search", capability: "lookup_tickets" },
   { href: "/scan", label: "Scan", icon: "scan", capability: "scan" },
   { href: "/gate", label: "Gate", icon: "sell", capability: "gate_sales" },
-  { href: "/admin", label: "Admin", icon: "grid", capability: "manage_events", prefix: true },
+  // No Admin tab, deliberately: the admin screens are reached only by typing
+  // /admin. They are still guarded by requireAdmin() — hiding the tab is not
+  // the protection (see the note at the top of this file).
 ];
 
 export function navFor(role: Role): NavItem[] {

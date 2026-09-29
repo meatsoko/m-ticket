@@ -609,9 +609,9 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .merch-product-image img { object-fit: cover; transition: transform .4s; }
 .merch-product-card:hover .merch-product-image img,
 .merch-product-card:focus-within .merch-product-image img { transform: scale(1.09); }
-.merch-checkout-button { position: absolute; z-index: 1; right: 13px; bottom: 13px; left: 13px; min-height: 43px; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; background: var(--store-red); color: #fff; font-size: 11px; font-weight: 700; opacity: 0; transform: translateY(7px); transition: opacity .2s,transform .2s; }
+.merch-checkout-button { position: absolute; z-index: 1; bottom: 13px; left: 50%; width: max-content; max-width: calc(100% - 26px); min-height: 43px; padding: 0 18px; display: flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; background: var(--store-red); color: #fff; font-size: 11px; font-weight: 700; opacity: 0; transform: translate(-50%, 7px); transition: opacity .2s,transform .2s; }
 .merch-product-card:hover .merch-checkout-button,
-.merch-product-card:focus-within .merch-checkout-button { opacity: 1; transform: translateY(0); }
+.merch-product-card:focus-within .merch-checkout-button { opacity: 1; transform: translate(-50%, 0); }
 .merch-product-info { padding: 13px 14px 15px; }
 .merch-product-info h3 { margin: 0; font-size: 13px; font-weight: 700; }
 .merch-product-info span { display: block; margin-top: 5px; color: var(--store-muted); font-size: 11px; }
@@ -815,7 +815,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .shop-category-heading p { margin: 0; }
   .merch-product-grid, .featured-product-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 11px; }
   .merch-product-image { aspect-ratio: 1.08 / 1; }
-  .merch-checkout-button { right: 8px; bottom: 8px; left: 8px; min-height: 37px; padding: 0 10px; opacity: 1; transform: none; font-size: 10px; }
+  .merch-checkout-button { bottom: 8px; max-width: calc(100% - 16px); min-height: 37px; padding: 0 14px; opacity: 1; transform: translate(-50%, 0); font-size: 10px; }
   .merch-product-info { padding: 10px; }
   .merch-product-info h3 { font-size: 11px; line-height: 1.35; }
   .merch-product-info span { font-size: 10px; }
@@ -865,9 +865,6 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .hero-dots { position: absolute; z-index: 4; left: 50%; bottom: -4px; display: flex; align-items: center; gap: 8px; transform: translateX(-50%); }
 .hero-dots button { width: 8px; height: 8px; border-radius: 999px; background: #cfc8bd; transition: width .3s, background .3s; cursor: pointer; }
 .hero-dots button.active { width: 26px; background: var(--store-red); }
-.hero-dots .hero-pause { width: 26px; height: 26px; margin-left: 6px; border-radius: 50%; background: transparent; color: var(--store-muted); }
-.hero-dots .hero-pause:hover { background: #ebe5dc; color: var(--store-ink); }
-.hero-dots .hero-pause svg { width: 12px; height: 12px; fill: currentColor; }
 .hero-float { position: relative; display: block; height: 88%; width: auto; aspect-ratio: 605 / 782; max-width: 74%; animation: hero-float 6.5s ease-in-out infinite; will-change: transform; }
 .hero-float img { width: 100%; height: 100%; object-fit: contain; display: block; filter: drop-shadow(0 34px 34px rgba(23,23,23,.22)) drop-shadow(0 8px 10px rgba(23,23,23,.10)); transition: transform .5s cubic-bezier(.2,.8,.2,1); }
 .hero-stage:hover .hero-float img { transform: scale(1.03) rotate(-1deg); }
@@ -1220,4 +1217,12 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .order-steps { grid-template-columns: 1fr 1fr; }
   .order-grid { grid-template-columns: 1fr; }
   .order-status, .order-panel { padding: 24px 20px; }
+}
+
+/* Checkout: no breadcrumb or eyebrow above the heading, so tighten the top. */
+.store-subpage.checkout-page { padding-top: 28px; }
+.store-subpage.checkout-page h1 { margin-top: 0; }
+.checkout-page .checkout-steps { margin: 18px 0 24px; }
+@media (max-width: 760px) {
+  .store-subpage.checkout-page { padding-top: 18px; }
 }
