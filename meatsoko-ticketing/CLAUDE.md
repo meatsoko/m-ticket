@@ -1,7 +1,7 @@
 # MeatSoko project handoff
 
 Last updated: 2026-09-29  
-Current branch: `main` (production — every push deploys)  
+Current branch: `main` (production — every push deploys). Pre-merge rollback point for PR #8: `1a740e7`.  
 Merch storefront and platter flow merged via PRs #5–#7 (`e7f31c4`, 2026-09-28)
 
 ## Product direction
@@ -90,9 +90,9 @@ The user wants the storefront to use a warm cream, black, and red visual system.
 - Payments are confirmed (1) on the buyer's return — `merch-order` / `paystack-verify` verify with Paystack — and (2) by `paystack-reconcile`, run every 5 min by pg_cron (`20260929150000_paystack_reconcile_cron.sql`), which asks Paystack about pending MS/MT orders created 2 min – 3 h ago. It needs no key and rate-limits itself (6 runs / 10 min).
 - Longer term: a separate Paystack business for events/merch would give its own webhook and payout reporting.
 
-## Booking takeover fix (built 2026-09-29; deploys with the merge)
+## Booking takeover fix (LIVE since 2026-09-29, PR #8)
 
 - `reserve`: one booking per phone per event belongs to whoever booked it. Same phone + different email → `409 phone_in_use` (masked email hint), booking untouched. Same phone + same email (any case) → amended, but the pass token is **never returned**; it is emailed to the address on the booking. New bookings still return their own token.
 - `lookup` and `reservation-lookup` never return pass/QR tokens: they email passes to the address on the booking/order and reply `{found, emailed, sent_to (masked), no_email}`. `LookupForm` shows "check your email".
-- **Not yet deployed**: the live `main` frontend still expects tokens from these three functions, so deploy them together with merging `feat/merch-product-page`.
+- Deployed with the merge of PR #8 (`ec026d8`): Vercel first, then `reserve`, `lookup`, `reservation-lookup`. Verified live: takeover attempt on a known phone → `409 phone_in_use`, booking unchanged; lookups reply with counts only; `/lookup` renders the email-me flow.
 - DB lock-down (`20260929160000_lock_down_open_functions.sql`) **is applied** and independent of the merge.
