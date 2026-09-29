@@ -32,6 +32,12 @@ export async function verifyAndConfirm(reference: string) {
   });
   if (confirmError) throw new Error(`confirmation_failed:${confirmError.message}`);
   const result: any = data;
+  // A table upgrade paid twice (two tabs) or for a booking that is no longer
+  // valid: the order is flagged with paid_at set, for a manual refund.
+  if (result?.result === "upgrade_conflict") {
+    console.error(JSON.stringify({ msg: "table upgrade paid but not applied — refund needed",
+      ref: reference.slice(0, 10), number: result.reservation_number }));
+  }
   if (result?.result === "confirmed") {
     if (result.kind === "reservation") {
       const appUrl = (Deno.env.get("APP_URL") ?? "").trim();

@@ -11,8 +11,9 @@ Deno.serve(async (req) => {
   const db = serviceClient();
   const { data } = await db.from("reservations")
     .select(`reservation_number,guest_name,party_size,expected_arrival,status,access_token,order_id,
+             event_id,reservation_types(name,is_general_admission),
              orders(status,amount_kes),
-             events(name,tagline,venue,starts_at,doors_open_at,status,contact_phone)`)
+             events(name,tagline,venue,starts_at,doors_open_at,status,contact_phone,payments_enabled,reservations_close_at)`)
     .eq("access_token", token).maybeSingle();
   if (!data) return json({ error: "not_found" }, 404);
 
@@ -28,8 +29,40 @@ Deno.serve(async (req) => {
     }));
   }
 
+  // General Admission: offer the table upgrades. Display only — the upgrade
+  // itself is decided again, under a lock, by start_reservation_upgrade.
+  const rtype: any = (data as any).reservation_types;
+  let upgrade: any = null;
+  if (rtype?.is_general_admission) {
+    const reason = data.order_id ? "already_upgraded"
+      : data.status !== "confirmed" ? "not_upgradable"
+      : ev?.status !== "live" ? "event_not_live"
+      : !ev?.payments_enabled ? "payments_unavailable"
+      : ev?.reservations_close_at && Date.now() > new Date(ev.reservations_close_at).getTime() ? "closed"
+      : null;
+    const { data: types } = await db.from("reservation_types")
+      .select("id,name,fixed_party_size,included_preorder_item_id,position")
+      .eq("event_id", (data as any).event_id).eq("is_active", true).eq("is_general_admission", false)
+      .not("included_preorder_item_id", "is", null).not("fixed_party_size", "is", null)
+      .order("position");
+    const ids = (types ?? []).map((t: any) => t.included_preorder_item_id);
+    const { data: platters } = ids.length
+      ? await db.from("preorder_items")
+          .select("id,name,description,price_kes,compare_at_price_kes,early_bird_ends_at,image_url")
+          .in("id", ids).eq("is_active", true)
+      : { data: [] as any[] };
+    const options = (types ?? []).flatMap((t: any) => {
+      const p = (platters ?? []).find((x: any) => x.id === t.included_preorder_item_id);
+      return p ? [{ id: t.id, name: t.name, party_size: t.fixed_party_size, platter: p }] : [];
+    });
+    upgrade = { available: !reason && options.length > 0, reason, options };
+  }
+
   return json({
     reservation_number: data.reservation_number,
+    type_name: rtype?.name ?? null,
+    general_admission: !!rtype?.is_general_admission,
+    upgrade,
     guest_name: data.guest_name,
     party_size: data.party_size,
     expected_arrival: data.expected_arrival,

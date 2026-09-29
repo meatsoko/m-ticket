@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
 import QrImage from "@/components/QrImage";
 import Icon from "@/components/Icon";
+import TableUpgrade from "@/components/TableUpgrade";
 
 const KE = "Africa/Nairobi";
 const when = (iso: string) =>
@@ -15,16 +16,25 @@ export default function ReservationView({ token }: { token: string }) {
   const [r, setR] = useState<any>(null);
   const [err, setErr] = useState("");
 
+  const load = () => invokeFn(supabase, "reservation-by-token", { token })
+    .then((res) => {
+      if (res.transportError) return setErr("Could not load this reservation. Check your connection.");
+      if (!res.data || res.data.error) return setErr("Reservation not found.");
+      setR(res.data);
+    })
+    .catch(() => setErr("Could not load this reservation."));
+
   useEffect(() => {
-    invokeFn(supabase, "reservation-by-token", { token })
-      .then((res) => {
-        if (res.transportError) return setErr("Could not load this reservation. Check your connection.");
-        if (!res.data || res.data.error) return setErr("Reservation not found.");
-        setR(res.data);
-      })
-      .catch(() => setErr("Could not load this reservation."));
+    load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  // The email's "Upgrade to a table" link lands on #upgrade.
+  useEffect(() => {
+    if (r?.upgrade?.available && window.location.hash === "#upgrade") {
+      document.getElementById("upgrade")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [r]);
 
   if (err) return <div className="empty"><Icon name="ticket" size={28} /><strong>{err}</strong></div>;
   if (!r) return <div className="empty"><span className="small">Loading…</span></div>;
@@ -55,6 +65,7 @@ export default function ReservationView({ token }: { token: string }) {
         )}
 
         <div className="row" style={{ width: "100%", justifyContent: "center", gap: 8, flexWrap: "wrap" }}>
+          {r.type_name && <span className="pill ok">{r.type_name}</span>}
           <span className="pill">{r.guest_name}</span>
           <span className="pill ember">{r.party_size} {r.party_size === 1 ? "guest" : "guests"}</span>
           {r.expected_arrival && <span className="pill">Arriving {String(r.expected_arrival).slice(0, 5)}</span>}
@@ -95,6 +106,14 @@ export default function ReservationView({ token }: { token: string }) {
           </a>
         )}
       </div>
+      {r.upgrade?.available && (
+        <div className="card">
+          <TableUpgrade token={r.token} options={r.upgrade.options} onUpgraded={load} />
+        </div>
+      )}
+      {r.general_admission && !r.upgrade?.available && r.upgrade?.reason === "payments_unavailable" && (
+        <p className="small" style={{ textAlign: "center" }}>Table upgrades will open here soon.</p>
+      )}
       {r.event?.contact_phone && (
         <p className="small" style={{ textAlign: "center" }}>
           Questions? <a href={`tel:${r.event.contact_phone}`}>{r.event.contact_phone}</a>

@@ -4,6 +4,8 @@ import AppShell from "@/components/AppShell";
 import Icon from "@/components/Icon";
 import EventCheckout from "@/components/EventCheckout";
 import ReservationForm from "@/components/ReservationForm";
+import GeneralAdmissionForm from "@/components/GeneralAdmissionForm";
+import type { UpgradeOption } from "@/components/TableUpgrade";
 import EarlyBirdCountdown from "@/components/EarlyBirdCountdown";
 import type { Event, TicketType, PreorderItem, ReservationType } from "@/lib/types";
 
@@ -46,6 +48,13 @@ export default async function EventPage({ params }: { params: { slug: string } }
     ) ?? null,
   })).filter((type: any) => !type.included_preorder_item_id || type.included_preorder_item);
   const hasConfiguredPackages = linkedTypes.some((type: any) => !!type.included_preorder_item_id);
+  // General Admission first (migration 20260929180000): when the event has a GA
+  // type, the page issues the free ticket and the table packages become
+  // upgrades of it. Events without one keep the original reservation form.
+  const gaType = (reservationTypes ?? []).find((type: any) => type.is_general_admission);
+  const upgradeOptions: UpgradeOption[] = linkedTypes
+    .filter((type: any) => !type.is_general_admission && type.included_preorder_item && type.fixed_party_size)
+    .map((type: any) => ({ id: type.id, name: type.name, party_size: type.fixed_party_size, platter: type.included_preorder_item }));
   const bookingTypes = hasConfiguredPackages
     ? linkedTypes.filter((type: any) => !!type.included_preorder_item_id)
     : linkedTypes;
@@ -126,7 +135,9 @@ export default async function EventPage({ params }: { params: { slug: string } }
           </section>
 
           <section className="event-booking" aria-label={isReservation ? "Reserve your place" : "Buy tickets"}>
-            {isReservation ? (
+            {isReservation && gaType ? (
+              <GeneralAdmissionForm event={ev as Event} gaTypeId={gaType.id} options={upgradeOptions} />
+            ) : isReservation ? (
               <ReservationForm
                 event={ev as Event}
                 items={(preorderItems ?? []) as PreorderItem[]}

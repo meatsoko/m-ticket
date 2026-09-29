@@ -63,4 +63,6 @@ export type ReservationType = {
   position: number; is_active: boolean;
   included_preorder_item_id?: string | null;
   included_preorder_item?: PreorderItem | null;
+  /** The free one-person ticket that tables upgrade (migration 20260929180000). */
+  is_general_admission?: boolean;
 };
