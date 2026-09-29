@@ -306,7 +306,7 @@ Keep `supabase/functions/_shared/cors.ts` the single source of allowed headers a
 
 | Script | Use |
 |---|---|
-| `db.sh` | Run SQL against the linked project. **There is no `supabase db query` command** — this wraps `psql` against the pooler URL saved by `supabase link`. Connects as `postgres`, so it sees through RLS. Needs `SUPABASE_DB_PASSWORD` in `.env.local` (gitignored). `./scripts/db.sh "select count(*) from reservations;"` |
+| `db.sh` | Run SQL against the linked project. (**Update 2026-09-29:** Supabase CLI 2.118 has `supabase db query --linked "<sql>"`, which runs through the Management API with no DB password — prefer it.) Otherwise: this wraps `psql` against the pooler URL saved by `supabase link`. Connects as `postgres`, so it sees through RLS. Needs `SUPABASE_DB_PASSWORD` in `.env.local` (gitignored). `./scripts/db.sh "select count(*) from reservations;"` |
 | `delete-test-reservation.sql` | Removes `NF-23X5MW`, guarded on the phone as well as the number. **Not yet applied.** |
 | `fix-nyamafest-launch.sql` | Sets `payments_enabled=false`, `capacity=500` on the stale closed event. **Not yet applied.** |
 
@@ -395,10 +395,10 @@ Full register in `REMAINING_GAPS.md`. The ones that will bite:
    account. *The last launch blocker.*
 2. **Camera-scan `NF-23X5MW` while signed in** — settles the QR fix, the service-role path
    and the `admit_pass` revoke in one action. Scan twice. Then delete the row.
-3. **Verify the `authenticated` role cannot call `admit_pass`** — never directly observed,
-   only inferred from the `PUBLIC` revoke: `select proacl from pg_proc where proname =
-   'admit_pass';`
-4. **Revoke `EXECUTE` on `resolve_pass` from `PUBLIC`** — two lines, same pattern as §5.
+3. ~~**Verify the `authenticated` role cannot call `admit_pass`**~~ — **verified 2026-09-29**:
+   `proacl` is `{postgres=X/postgres,service_role=X/postgres}` (no PUBLIC, anon or authenticated).
+   Same check shows `confirm_payment` and `create_reservation` still grant `=X` (PUBLIC), anon, authenticated.
+4. ~~**Revoke `EXECUTE` on `resolve_pass` from `PUBLIC`**~~ — **done 2026-09-29** in `20260929160000_lock_down_open_functions.sql`, together with `confirm_payment`, `create_reservation`, `gen_reservation_number`, `rate_limit_hit`, `rate_limit_gc` (service_role only) and `refund_order` (authenticated + service_role). Verified live: anon gets `42501`.
 5. **Confirm `NEXT_PUBLIC_APP_URL` and the `APP_URL` secret** are both
    `https://event.meatsokogroup.com`.
 6. **Content:** poster (`banner_url` is null), real event copy, `contact_phone`,

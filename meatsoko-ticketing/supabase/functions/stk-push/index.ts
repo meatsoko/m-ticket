@@ -8,6 +8,7 @@
 import { json, preflight } from "../_shared/cors.ts";
 import { describeDarajaConfig, initiateStk } from "../_shared/daraja.ts";
 import { clientIp, normalizePhone, rateLimit, serviceClient } from "../_shared/supabase.ts";
+import { returnBase } from "../_shared/return-url.ts";
 
 // NFR-5. Generous enough for a real buyer retrying a failed PIN, tight enough that the
 // endpoint can't be used to spray PIN prompts at arbitrary numbers with our shortcode.
@@ -211,7 +212,8 @@ Deno.serve(async (req) => {
           headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
           body: JSON.stringify({
             email: String(buyerEmail).trim(), amount: Math.round(amount * 100), currency: "KES",
-            reference, callback_url: `${appUrl}/e/${encodeURIComponent(evForReturn?.slug ?? "")}?payment=paystack`,
+            // No `channels` list: Paystack offers every method enabled on the account (card, M-Pesa and the rest).
+            reference, callback_url: `${returnBase(req, appUrl)}/e/${encodeURIComponent(evForReturn?.slug ?? "")}?payment=paystack`,
             metadata: { order_id: order.id, event_id },
           }),
         });
@@ -227,7 +229,8 @@ Deno.serve(async (req) => {
         await rateLimit(db, phoneBucket, PER_PHONE.limit, PER_PHONE.windowSeconds);
         await rateLimit(db, ipBucket, PER_IP.limit, PER_IP.windowSeconds);
       }
-      return json({ authorizationUrl: response.data.authorization_url, reference, orderId: order.id, stage: "done", request_id: rid });
+      // accessCode lets the page open Paystack as a popup; authorizationUrl is the redirect fallback.
+      return json({ authorizationUrl: response.data.authorization_url, accessCode: response.data.access_code, reference, orderId: order.id, stage: "done", request_id: rid });
     }
 
     // ---- daraja config (presence only — never the values) ----

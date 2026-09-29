@@ -5,6 +5,7 @@
 // gate and find a blank box. The attachment survives, and the link is repeated
 // in text so the pass is reachable even if attachments are blocked.
 import QRCode from "https://esm.sh/qrcode@1.5.4";
+import { sendEmail } from "./resend.ts";
 
 type Line = { name: string; qty: number; unit_price_kes: number };
 
@@ -36,10 +37,8 @@ const whenKE = (iso: string) =>
 export async function sendReservationEmail(
   r: ReservationEmail
 ): Promise<{ sent: boolean; reason?: string }> {
-  const apiKey = (Deno.env.get("RESEND_API_KEY") ?? "").trim();
-  if (!apiKey) return { sent: false, reason: "not_configured" };
-  const from = (Deno.env.get("TICKET_EMAIL_FROM") ?? "").trim();
-  if (!from) return { sent: false, reason: "no_from_address" };
+  // Checked before the QR is drawn, so an unconfigured mailer costs nothing.
+  if (!(Deno.env.get("RESEND_API_KEY") ?? "").trim()) return { sent: false, reason: "not_configured" };
 
   let qrBase64 = "";
   try {
@@ -108,26 +107,16 @@ export async function sendReservationEmail(
     "", `Open your pass: ${r.passUrl}`,
   ].filter(Boolean).join("\n");
 
-  try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      signal: AbortSignal.timeout(15_000),
-      body: JSON.stringify({
-        from, to: [r.to],
-        subject: `${r.eventName} — reservation ${r.reservationNumber}`,
-        html, text,
-        ...(qrBase64
-          ? { attachments: [{ filename: `${r.reservationNumber}.png`,
-                              content: qrBase64, content_id: "reservation-qr" }] }
-          : {}),
-      }),
-    });
-    if (!res.ok) return { sent: false, reason: `${res.status} ${(await res.text()).slice(0, 160)}` };
-    return { sent: true };
-  } catch (e) {
-    return { sent: false, reason: e instanceof Error ? e.message : String(e) };
-  }
+  return sendEmail({
+    to: r.to,
+    subject: `${r.eventName} — reservation ${r.reservationNumber}`,
+    html,
+    text,
+    timeoutMs: 15_000,
+    attachments: qrBase64
+      ? [{ filename: `${r.reservationNumber}.png`, content: qrBase64, content_id: "reservation-qr" }]
+      : undefined,
+  });
 }
 
 /** Build the payload from a reservation id. Used by both reserve/ and the callback. */

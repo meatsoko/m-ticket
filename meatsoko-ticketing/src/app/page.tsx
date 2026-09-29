@@ -1,7 +1,8 @@
 import Link from "next/link";
 import Image from "next/image";
-import { StoreFooter, StoreHeader, StoreMobileBar } from "@/components/StoreChrome";
+import { StoreShell } from "@/components/StoreChrome";
 import MerchandiseCard from "@/components/MerchandiseCard";
+import HeroCarousel from "@/components/store/HeroCarousel";
 import { merchandiseCategories } from "@/lib/merchandise";
 import { createClient } from "@/lib/supabase/server";
 
@@ -25,29 +26,20 @@ export default async function Home() {
   const currentEventHref = currentEvent?.slug ? `/e/${currentEvent.slug}` : "/events";
 
   return (
-    <div className="storefront">
-      <div className="store-announcement">MEATSOKO · GOOD THINGS FOR GOOD GATHERINGS</div>
-      <StoreHeader />
+    <StoreShell>
       <main>
-        <section className="store-hero">
-          <div className="store-hero-copy">
-            <span className="store-eyebrow">THE MEATSOKO COLLECTION</span>
-            <h1>Wear the<br />good times<span>.</span></h1>
-            <p>Everyday pieces for people who bring good food and good people together.</p>
-            <Link href="/shop" className="store-button">Shop merchandise <span>↗</span></Link>
-            <small>MEATSOKO MERCHANDISE&nbsp; · &nbsp;THE NYAMAFEST COLLECTION</small>
+        <section className="store-hero-screen">
+          <div className="store-hero">
+            <div className="store-hero-copy">
+              <span className="store-eyebrow">THE MEATSOKO COLLECTION</span>
+              <h1>Wear the<br />good times<span>.</span></h1>
+              <p>Everyday pieces for people who bring good food and good people together.</p>
+              <Link href="/shop" className="store-button">Shop merchandise <span>↗</span></Link>
+              <small>MEATSOKO MERCHANDISE&nbsp; · &nbsp;THE NYAMAFEST COLLECTION</small>
+            </div>
+            <HeroCarousel />
           </div>
-          <div className="store-hero-art" aria-label="NyamaFest green hoodie from the current merchandise collection">
-            <Image src={merchandiseCategories[0].products[0].image} alt="NyamaFest hoodie in green" fill priority sizes="(max-width: 760px) 100vw, 52vw" />
-            <div className="hero-art-caption">THE NYAMAFEST DROP<br/><strong>01 / EVERYDAY</strong></div>
-          </div>
-        </section>
-
-        <section className="store-intro">
-          <span className="store-eyebrow">GOOD THINGS, MADE TO GO PLACES</span>
-          <h2>A little MeatSoko,<br className="mobile-break"/> wherever you go.</h2>
-          <p>Shop the pieces you know from our gatherings, plus new everyday favourites.</p>
-          <div className="store-promises"><span>Thoughtful drops</span><span>Easy Kenyan checkout</span><span>Pickup or delivery</span></div>
+          <div className="store-promises" aria-label="Why shop with us"><span>Thoughtful drops</span><span>Easy Kenyan checkout</span><span>Pickup or delivery</span></div>
         </section>
 
         <section className="store-section" id="collections">
@@ -63,7 +55,7 @@ export default async function Home() {
         <section className="store-section popular-section">
           <div className="section-heading"><div><span className="store-eyebrow">THE NYAMAFEST COLLECTION</span><h2>Featured pieces</h2></div><Link href="/shop">View all products <span>→</span></Link></div>
           <div className="merch-product-grid featured-product-grid">
-            {featuredProducts.map((product) => <MerchandiseCard key={product.image} product={product} />)}
+            {featuredProducts.map((product) => <MerchandiseCard key={product.slug} product={product} />)}
           </div>
         </section>
 
@@ -79,8 +71,6 @@ export default async function Home() {
           <Link href={currentEventHref} className="event-teaser-link"><span className="event-date-mark">MS</span><span><small>MEATSOKO EVENTS</small><strong>{currentEvent?.name ?? "See the upcoming event"}</strong><small>{currentEvent?.venue ?? "Event details and tickets"} <b>→</b></small></span><span className="event-arrow">↗</span></Link>
         </section>
       </main>
-      <StoreFooter />
-      <StoreMobileBar />
-    </div>
+    </StoreShell>
   );
 }

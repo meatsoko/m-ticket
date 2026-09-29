@@ -67,3 +67,32 @@ The user wants the storefront to use a warm cream, black, and red visual system.
 - Preserve existing Supabase order snapshots and transaction values when updating presentation.
 - Never put Supabase secrets or payment credentials in source control.
 - Check the repository status before editing and stage only files relevant to the requested work; this repository can contain user-supplied image assets.
+
+## Merchandise payments (branch `feat/merch-product-page`)
+
+- Schema: `supabase/migrations/20260929120000_merchandise_store.sql` — catalogue, per-size stock with a movement ledger, delivery options/zones, USD→KES rates, orders. Additive; read its header before changing anything.
+  **Applied to the live project 2026-09-29** (together with the pending `20260928100000` platter prices and `20260928130000` event hours). Verified live with the anon key: catalogue readable (6 groups / 22 products / 82 sizes), orders unreadable, every write function returns `42501`, direct table writes blocked by RLS. No FX rate recorded yet, so checkout stays closed.
+- Prices are USD; customers pay KES through Paystack at the rate in `merch_fx_rates`. **No scheduler**: `merch-checkout` refreshes the rate on demand when the stored one is > 6 h old (`_shared/fx.ts`, source open.er-api.com, `MERCH_FX_URL` to change). If the feed fails, the last rate works until 36 h old, then checkout closes. `merch-fx-refresh` (service-role key) forces a refresh by hand.
+- Edge Functions: `merch-checkout` (creates the order, opens Paystack), `merch-order` (buyer view by reference or access_token; verifies with Paystack if the webhook is late), `merch-fx-refresh`. `paystack-webhook` routes `MS…` references to merch and everything else (`MT…`) down the unchanged ticket path.
+- Storefront: `/checkout` → Paystack → `/checkout/complete?reference=…` → `/order/<access_token>`. Pay stays disabled until `NEXT_PUBLIC_MERCH_PAYMENTS=on`.
+- Go-live order: ~~apply the migration~~ (done) → ~~deploy the three merch functions and `paystack-webhook`~~ (done 2026-09-29: merch-checkout v1, merch-order v1, merch-fx-refresh v1, paystack-webhook v2 — v1 is the pre-merch rollback point) → ~~set `PAYSTACK_SECRET_KEY`~~ (done; `sk_live`) → ~~first rate~~ (done 2026-09-29: 129.5491 via a live quote) → set `NEXT_PUBLIC_MERCH_PAYMENTS=on` in Vercel → one small real purchase.
+- The frontend catalogue still comes from `src/lib/merchandise.ts`; the database is seeded from it and re-prices every order, so the two must agree until the storefront reads from the database.
+
+## Email and payment, shared across tickets, reservations and merchandise
+
+- **Email:** every message goes through `supabase/functions/_shared/resend.ts` (`sendEmail`): ticket email, reservation pass (QR attached as `cid:reservation-qr`), organiser reservation alert, merch buyer confirmation, merch organiser alert. Same `RESEND_API_KEY` / `TICKET_EMAIL_FROM`. Merch organiser alerts go to the `MERCH_NOTIFY_EMAIL` secret (comma-separated; unset = no alert).
+- **Payment:** tickets (`stk-push`), reservation preorders (`reserve`) and merch (`merch-checkout`) all initialise Paystack without a `channels` list (every method enabled on the account — card, M-Pesa, etc.) and return `accessCode`; the pages open Paystack InlineJS as a popup (`src/lib/paystack-popup.ts`), fall back to the hosted redirect if the script is blocked, and ask the server before assuming a closed popup means unpaid.
+- **Daraja (direct M-Pesa STK)** is hidden in the UI unless `NEXT_PUBLIC_DARAJA_ENABLED=on` — Safaricom has not enabled M-Pesa Express on the shortcode. The code path is intact.
+
+## Paystack webhook is shared — confirmations come from reconciliation
+
+- The Paystack account is shared with the WooCommerce store at `assets.meatsoko.com`; its single live webhook points there (`/wc-api/Tbz_WC_Paystack_Webhook/`). **Do not move it** — that would break the WooCommerce store. Our `paystack-webhook` therefore receives nothing from live Paystack.
+- Payments are confirmed (1) on the buyer's return — `merch-order` / `paystack-verify` verify with Paystack — and (2) by `paystack-reconcile`, run every 5 min by pg_cron (`20260929150000_paystack_reconcile_cron.sql`), which asks Paystack about pending MS/MT orders created 2 min – 3 h ago. It needs no key and rate-limits itself (6 runs / 10 min).
+- Longer term: a separate Paystack business for events/merch would give its own webhook and payout reporting.
+
+## Booking takeover fix (built 2026-09-29; deploys with the merge)
+
+- `reserve`: one booking per phone per event belongs to whoever booked it. Same phone + different email → `409 phone_in_use` (masked email hint), booking untouched. Same phone + same email (any case) → amended, but the pass token is **never returned**; it is emailed to the address on the booking. New bookings still return their own token.
+- `lookup` and `reservation-lookup` never return pass/QR tokens: they email passes to the address on the booking/order and reply `{found, emailed, sent_to (masked), no_email}`. `LookupForm` shows "check your email".
+- **Not yet deployed**: the live `main` frontend still expects tokens from these three functions, so deploy them together with merging `feat/merch-product-page`.
+- DB lock-down (`20260929160000_lock_down_open_functions.sql`) **is applied** and independent of the merge.

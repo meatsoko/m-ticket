@@ -2,6 +2,8 @@
 // Entirely optional — with no RESEND_API_KEY set this is a no-op, and the wa.me link
 // plus phone lookup remain the primary delivery paths (SRS A3, FR-L).
 
+import { sendEmail } from "./resend.ts";
+
 type TicketLine = { token: string; typeName: string; bundleQty: number };
 
 function esc(s: string) {
@@ -16,14 +18,8 @@ export async function sendTicketEmail(opts: {
   startsAt: string | null;
   tickets: TicketLine[];
 }): Promise<{ sent: boolean; reason?: string }> {
-  const apiKey = (Deno.env.get("RESEND_API_KEY") ?? "").trim();
-  if (!apiKey) return { sent: false, reason: "not_configured" };
-
   const appUrl = (Deno.env.get("APP_URL") ?? "").trim().replace(/\/+$/, "");
   if (!appUrl) return { sent: false, reason: "no_app_url" };
-  const from = (Deno.env.get("TICKET_EMAIL_FROM") ?? "").trim();
-  if (!from) return { sent: false, reason: "no_from_address" };
-
   const when = opts.startsAt
     ? new Date(opts.startsAt).toLocaleString("en-KE", { timeZone: "Africa/Nairobi" })
     : "";
@@ -60,24 +56,10 @@ export async function sendTicketEmail(opts: {
     `Lost this email? Find your tickets at ${appUrl}/lookup`,
   ].filter(Boolean).join("\n");
 
-  try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      signal: AbortSignal.timeout(10_000),
-      body: JSON.stringify({
-        from,
-        to: [opts.to],
-        subject: `Your ${opts.eventName} ticket${opts.tickets.length > 1 ? "s" : ""}`,
-        html,
-        text,
-      }),
-    });
-    if (!res.ok) {
-      return { sent: false, reason: `${res.status} ${(await res.text()).slice(0, 160)}` };
-    }
-    return { sent: true };
-  } catch (e) {
-    return { sent: false, reason: e instanceof Error ? e.message : String(e) };
-  }
+  return sendEmail({
+    to: opts.to,
+    subject: `Your ${opts.eventName} ticket${opts.tickets.length > 1 ? "s" : ""}`,
+    html,
+    text,
+  });
 }
