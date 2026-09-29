@@ -158,7 +158,7 @@ export const merchandiseCategories: MerchandiseCategory[] = [
     ],
   },
   {
-    id: "partnerships", name: "Partnerships", eyebrow: "SPONSORED · PARTNER PIECES",
+    id: "partnerships", name: "Partnerships", eyebrow: "MEATSOKO PARTNERS",
     description: "Collaborations with the people and brands we gather with.",
     products: [
       make("partnerships", BMB_HOODIE, "Black", "bmb-hoodie-black.jpg", 90, { slug: "bmb-hoodie-black" }),
