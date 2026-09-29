@@ -1,4 +1,5 @@
 import { verifyAndConfirm } from "../_shared/paystack.ts";
+import { MERCH_REFERENCE, verifyAndConfirmMerch } from "../_shared/merch.ts";
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
@@ -17,7 +18,12 @@ Deno.serve(async (req) => {
   try { event = JSON.parse(new TextDecoder().decode(raw)); } catch { return new Response("bad json", { status: 400 }); }
   if (event?.event === "charge.success" && typeof event?.data?.reference === "string") {
     try {
-      const result = await verifyAndConfirm(event.data.reference);
+      // One Paystack account, one webhook: merchandise references start "MS" and
+      // are confirmed against merch_orders; everything else is a ticket or
+      // reservation ("MT") and takes the original path, unchanged.
+      const result = MERCH_REFERENCE.test(event.data.reference)
+        ? await verifyAndConfirmMerch(event.data.reference)
+        : await verifyAndConfirm(event.data.reference);
       if (result.result === "not_paid") return new Response("transaction not yet verified", { status: 500 });
     }
     catch (e) {

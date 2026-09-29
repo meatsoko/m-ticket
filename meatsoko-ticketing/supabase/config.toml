@@ -32,3 +32,15 @@ verify_jwt = false
 verify_jwt = false
 [functions.reservation-lookup]
 verify_jwt = false
+
+# Merchandise. merch-checkout and merch-order are guest-facing (no sign-in); each
+# key it accepts is a 128-bit secret. merch-fx-refresh checks for the service-role
+# key itself — gateway JWT verification is off so a non-JWT secret key also works.
+[functions.merch-checkout]
+verify_jwt = false
+
+[functions.merch-order]
+verify_jwt = false
+
+[functions.merch-fx-refresh]
+verify_jwt = false

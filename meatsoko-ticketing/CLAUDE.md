@@ -67,3 +67,12 @@ The user wants the storefront to use a warm cream, black, and red visual system.
 - Preserve existing Supabase order snapshots and transaction values when updating presentation.
 - Never put Supabase secrets or payment credentials in source control.
 - Check the repository status before editing and stage only files relevant to the requested work; this repository can contain user-supplied image assets.
+
+## Merchandise payments (branch `feat/merch-product-page`)
+
+- Schema: `supabase/migrations/20260929120000_merchandise_store.sql` — catalogue, per-size stock with a movement ledger, delivery options/zones, USD→KES rates, orders. Additive; read its header before changing anything.
+- Prices are USD; customers pay KES through Paystack at the rate in `merch_fx_rates`. Checkout refuses a rate older than 36 h — `merch-fx-refresh` must run on a schedule (every ~6 h, called with the service-role key).
+- Edge Functions: `merch-checkout` (creates the order, opens Paystack), `merch-order` (buyer view by reference or access_token; verifies with Paystack if the webhook is late), `merch-fx-refresh`. `paystack-webhook` routes `MS…` references to merch and everything else (`MT…`) down the unchanged ticket path.
+- Storefront: `/checkout` → Paystack → `/checkout/complete?reference=…` → `/order/<access_token>`. Pay stays disabled until `NEXT_PUBLIC_MERCH_PAYMENTS=on`.
+- Go-live order: apply the migration → deploy the three merch functions and `paystack-webhook` → set `PAYSTACK_SECRET_KEY` → run `merch-fx-refresh` once and schedule it → set `NEXT_PUBLIC_MERCH_PAYMENTS=on` in Vercel → one small real purchase.
+- The frontend catalogue still comes from `src/lib/merchandise.ts`; the database is seeded from it and re-prices every order, so the two must agree until the storefront reads from the database.

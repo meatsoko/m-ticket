@@ -23,6 +23,8 @@ type Bag = {
   add: (slug: string, size: string, qty?: number) => void;
   setQty: (slug: string, size: string, qty: number) => void;
   remove: (slug: string, size: string) => void;
+  /** Empty the bag — after a confirmed payment. */
+  clear: () => void;
   openDrawer: () => void;
   closeDrawer: () => void;
 };
@@ -76,6 +78,8 @@ export default function BagProvider({ children }: { children: React.ReactNode })
     commit(read().filter((l) => !(l.slug === slug && l.size === size)));
   }, [commit]);
 
+  const clear = useCallback(() => commit([]), [commit]);
+
   const value = useMemo<Bag>(() => {
     // Lines for products that have since left the catalogue are dropped silently.
     const lines = raw.flatMap((l) => {
@@ -88,11 +92,11 @@ export default function BagProvider({ children }: { children: React.ReactNode })
     return {
       lines, subtotal, ready, drawerOpen,
       count: lines.reduce((n, l) => n + l.qty, 0),
-      add, setQty, remove,
+      add, setQty, remove, clear,
       openDrawer: () => setDrawerOpen(true),
       closeDrawer: () => setDrawerOpen(false),
     };
-  }, [raw, ready, drawerOpen, add, setQty, remove]);
+  }, [raw, ready, drawerOpen, add, setQty, remove, clear]);
 
   return <BagContext.Provider value={value}>{children}</BagContext.Provider>;
 }

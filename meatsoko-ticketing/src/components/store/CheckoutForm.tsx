@@ -2,16 +2,37 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useBag } from "./BagProvider";
 import { DELIVERY_OPTIONS, DELIVERY_ZONES, formatPrice, type DeliveryOption } from "@/lib/merchandise";
 import { looksLikeEmail, normalizePhone, PHONE_HINT } from "@/lib/phone";
+import { createClient } from "@/lib/supabase/client";
+import { invokeFn } from "@/lib/invoke";
 
-// Merchandise payment is not wired to a backend yet: there is no merchandise
-// order table, and the server has nothing to re-price a bag against. The form is
-// complete so the flow can be reviewed end to end, but Pay stays disabled and
-// says why. Flip this only once the order + Paystack initialisation exists.
-const PAYMENT_CONNECTED = false;
+// Merchandise payment goes live only when NEXT_PUBLIC_MERCH_PAYMENTS is "on" — set
+// it after the merchandise migration is applied and merch-checkout is deployed
+// (see supabase/migrations/20260929120000_merchandise_store.sql). Until then the
+// form works end to end but Pay stays disabled and says why.
+const PAYMENT_CONNECTED = process.env.NEXT_PUBLIC_MERCH_PAYMENTS === "on";
+
+const formatKes = (n: number) => `KSh ${Math.round(n).toLocaleString("en-KE")}`;
+
+// What merch-checkout can refuse, in the buyer's words.
+const CHECKOUT_ERRORS: Record<string, string> = {
+  sold_out: "Sorry — one of your pieces just sold out in that size. Please update your bag.",
+  unpriced: "One of your pieces doesn’t have a price yet, so it can’t be paid for online.",
+  unavailable_item: "One of your pieces is no longer available. Please update your bag.",
+  delivery_fee_unset: "That delivery option isn’t available online yet. Please choose a pickup option.",
+  fx_unavailable: "Checkout is briefly unavailable while we update prices. Please try again shortly.",
+  zone_required: "Choose your delivery area.",
+  address_required: "Enter your delivery address.",
+  town_required: "Enter the town you’ll collect from.",
+  invalid_phone: PHONE_HINT,
+  email_required: "Enter a valid email address.",
+  rate_limited: "Too many attempts — please wait a few minutes and try again.",
+  paystack_init_failed: "We couldn’t open the payment page. Please try again.",
+  paystack_misconfigured: "Online payment is temporarily unavailable. Please try again later.",
+};
 
 type Fields = {
   firstName: string; lastName: string; phone: string; email: string;
@@ -26,6 +47,22 @@ export default function CheckoutForm() {
   const [delivery, setDelivery] = useState<DeliveryOption["id"]>("event");
   const [agree, setAgree] = useState(false);
   const [touched, setTouched] = useState(false);
+  const [rate, setRate] = useState<number | null>(null);
+  const [rateState, setRateState] = useState<"idle" | "loading" | "ready" | "missing">("idle");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const supabase = useMemo(() => createClient(), []);
+
+  // The rate the server will charge at; shown here so the KSh figure is never a surprise.
+  useEffect(() => {
+    if (!PAYMENT_CONNECTED) return;
+    setRateState("loading");
+    supabase.rpc("merch_current_fx").then(({ data, error }) => {
+      const r = !error && Array.isArray(data) && data[0] ? Number(data[0].rate) : null;
+      setRate(r && r > 0 ? r : null);
+      setRateState(r && r > 0 ? "ready" : "missing");
+    });
+  }, [supabase]);
 
   const option = DELIVERY_OPTIONS.find((o) => o.id === delivery)!;
   const set = (k: keyof Fields) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
@@ -44,18 +81,41 @@ export default function CheckoutForm() {
   if (!agree) errors.agree = "Please accept the terms to continue";
 
   const total = subtotal != null && option.feeUsd != null ? subtotal + option.feeUsd : null;
+  // Mirrors merch_create_order(): each unit rounded to whole shillings, then summed.
+  // Display only — the server recomputes, and Paystack shows the final amount.
+  const totalKes = rate != null && total != null
+    ? lines.reduce((sum, l) => sum + Math.round((l.product.priceUsd as number) * rate) * l.qty, 0) + Math.round((option.feeUsd as number) * rate)
+    : null;
   const blocker =
     subtotal == null ? "Prices for these pieces are being finalised — you’ll be able to pay as soon as they’re set."
     : option.feeUsd == null ? `The ${option.label.toLowerCase()} fee is being finalised. Choose a pickup option, or check back soon.`
     : !PAYMENT_CONNECTED ? "Online payment for merchandise opens soon."
+    : rateState === "missing" ? CHECKOUT_ERRORS.fx_unavailable
+    : rateState !== "ready" ? "Getting today’s exchange rate…"
     : null;
 
   const err = (k: keyof typeof errors) => touched && errors[k] ? <small className="field-error">{errors[k]}</small> : null;
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setTouched(true);
-    // Nothing is sent anywhere while `blocker` is set; see PAYMENT_CONNECTED.
+    setSubmitError(null);
+    if (blocker || submitting || Object.keys(errors).length) return;
+
+    setSubmitting(true);
+    const res = await invokeFn<{ authorizationUrl?: string; error?: string }>(supabase, "merch-checkout", {
+      customer: { first_name: f.firstName.trim(), last_name: f.lastName.trim(), phone: f.phone, email: f.email.trim(), notes: f.notes.trim() || null },
+      delivery: { code: delivery, zone: f.zone || null, address: f.street.trim() || null, town: f.town.trim() || null, sacco: f.sacco.trim() || null },
+      lines: lines.map((l) => ({ slug: l.slug, size: l.size, qty: l.qty })),
+    });
+    if (res.data?.authorizationUrl) {
+      window.location.assign(res.data.authorizationUrl);   // stays "submitting" while the page changes
+      return;
+    }
+    setSubmitting(false);
+    setSubmitError(res.transportError
+      ? "We couldn’t reach the payment service. Check your connection and try again."
+      : CHECKOUT_ERRORS[res.errorCode ?? ""] ?? "Something went wrong starting your payment. Please try again.");
   };
 
   if (!ready) return <main className="store-subpage checkout-page" />;
@@ -159,10 +219,15 @@ export default function CheckoutForm() {
           </label>
           {err("agree")}
 
-          <button type="submit" className="store-button summary-cta" disabled={!!blocker} aria-describedby="checkout-blocker">
-            {total != null ? `Pay ${formatPrice(total)}` : "Pay"} <span>→</span>
+          {totalKes != null && (
+            <div className="summary-row kes"><span>You’ll pay (KSh, today’s rate)</span><strong>{formatKes(totalKes)}</strong></div>
+          )}
+          <button type="submit" className="store-button summary-cta" disabled={!!blocker || submitting} aria-describedby="checkout-blocker">
+            {submitting ? "Opening Paystack…" : totalKes != null ? `Pay ${formatKes(totalKes)}` : total != null ? `Pay ${formatPrice(total)}` : "Pay"} <span>→</span>
           </button>
           {blocker && <p className="summary-blocker" id="checkout-blocker">{blocker}</p>}
+          {submitError && <p className="summary-blocker error" role="alert">{submitError}</p>}
+          {rate != null && !blocker && <p className="summary-rate">Prices are in US dollars and charged in Kenya shillings at US$1 = KSh {rate.toFixed(2)}.</p>}
           <Link href="/cart" className="store-back-link">← Back to your bag</Link>
         </aside>
       </form>
