@@ -82,8 +82,8 @@ export default function BagProvider({ children }: { children: React.ReactNode })
       const product = getProduct(l.slug);
       return product ? [{ ...l, product }] : [];
     });
-    const subtotal = lines.every((l) => l.product.priceKes != null)
-      ? lines.reduce((sum, l) => sum + (l.product.priceKes as number) * l.qty, 0)
+    const subtotal = lines.every((l) => l.product.priceUsd != null)
+      ? lines.reduce((sum, l) => sum + (l.product.priceUsd as number) * l.qty, 0)
       : null;
     return {
       lines, subtotal, ready, drawerOpen,

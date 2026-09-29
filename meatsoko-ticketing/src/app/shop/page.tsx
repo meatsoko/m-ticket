@@ -31,7 +31,7 @@ export default function ShopPage({ searchParams }: { searchParams?: { q?: string
         ) : (
           <>
             <p className="store-subpage-intro">Pieces for the people, places, and moments that make a gathering.</p>
-            <div className="shop-collection-note"><span>THE COLLECTION</span><strong>Four collections · Prices coming soon</strong></div>
+            <div className="shop-collection-note"><span>THE COLLECTION</span><strong>{merchandiseCategories.length} collections · Prices in US dollars</strong></div>
             <nav className="shop-category-nav" aria-label="Merchandise categories">
               {merchandiseCategories.map((category) => (
                 <a href={`#${category.id}`} key={category.id}>{category.name}<span>{category.products.length}</span></a>
@@ -41,7 +41,7 @@ export default function ShopPage({ searchParams }: { searchParams?: { q?: string
               {merchandiseCategories.map((category) => (
                 <section className="shop-category-section" id={category.id} key={category.id}>
                   <div className="shop-category-heading">
-                    <div><span className="store-eyebrow">NYAMAFEST MERCHANDISE</span><h2>{category.name}</h2></div>
+                    <div><span className="store-eyebrow">{category.eyebrow}</span><h2>{category.name}</h2></div>
                     <p>{category.description}</p>
                   </div>
                   <div className="merch-product-grid">

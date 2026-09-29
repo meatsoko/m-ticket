@@ -29,29 +29,25 @@ export default async function Home() {
   return (
     <StoreShell>
       <main>
-        <section className="store-hero">
-          <div className="store-hero-copy">
-            <span className="store-eyebrow">THE MEATSOKO COLLECTION</span>
-            <h1>Wear the<br />good times<span>.</span></h1>
-            <p>Everyday pieces for people who bring good food and good people together.</p>
-            <Link href="/shop" className="store-button">Shop merchandise <span>↗</span></Link>
-            <small>MEATSOKO MERCHANDISE&nbsp; · &nbsp;THE NYAMAFEST COLLECTION</small>
-          </div>
-          <Link href={`/shop/${heroProduct.slug}`} className="store-hero-art" aria-label={`${heroProduct.name} in ${heroProduct.color.toLowerCase()} — view product`}>
-            <span className="hero-glow" aria-hidden="true" />
-            <span className="hero-float">
-              <Image src="/images/merchandise/green-hoodie-nyamafest-cutout.png" alt="" width={605} height={782} priority sizes="(max-width: 760px) 70vw, 34vw" />
-            </span>
-            <span className="hero-shadow" aria-hidden="true" />
-            <span className="hero-art-caption">THE NYAMAFEST DROP<br/><strong>01 / THE HOODIE</strong></span>
-          </Link>
-        </section>
-
-        <section className="store-intro">
-          <span className="store-eyebrow">GOOD THINGS, MADE TO GO PLACES</span>
-          <h2>A little MeatSoko,<br className="mobile-break"/> wherever you go.</h2>
-          <p>Shop the pieces you know from our gatherings, plus new everyday favourites.</p>
-          <div className="store-promises"><span>Thoughtful drops</span><span>Easy Kenyan checkout</span><span>Pickup or delivery</span></div>
+        <section className="store-hero-screen">
+          <div className="store-hero">
+            <div className="store-hero-copy">
+              <span className="store-eyebrow">THE MEATSOKO COLLECTION</span>
+              <h1>Wear the<br />good times<span>.</span></h1>
+              <p>Everyday pieces for people who bring good food and good people together.</p>
+              <Link href="/shop" className="store-button">Shop merchandise <span>↗</span></Link>
+              <small>MEATSOKO MERCHANDISE&nbsp; · &nbsp;THE NYAMAFEST COLLECTION</small>
+            </div>
+            <Link href={`/shop/${heroProduct.slug}`} className="store-hero-art" aria-label={`${heroProduct.name} in ${heroProduct.color.toLowerCase()} — view product`}>
+              <span className="hero-glow" aria-hidden="true" />
+              <span className="hero-float">
+                <Image src="/images/merchandise/green-hoodie-nyamafest-cutout.png" alt="" width={605} height={782} priority sizes="(max-width: 760px) 70vw, 34vw" />
+              </span>
+              <span className="hero-shadow" aria-hidden="true" />
+              <span className="hero-art-caption">THE NYAMAFEST DROP<br/><strong>01 / THE HOODIE</strong></span>
+            </Link>
+        </div>
+          <div className="store-promises" aria-label="Why shop with us"><span>Thoughtful drops</span><span>Easy Kenyan checkout</span><span>Pickup or delivery</span></div>
         </section>
 
         <section className="store-section" id="collections">

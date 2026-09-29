@@ -6,7 +6,7 @@ import { StoreShell } from "@/components/StoreChrome";
 import MerchandiseCard from "@/components/MerchandiseCard";
 import ProductPurchase from "@/components/store/ProductPurchase";
 import ProductTabs from "@/components/store/ProductTabs";
-import { allProducts, colourSiblings, formatKes, getCategory, getProduct, relatedProducts, SWATCH } from "@/lib/merchandise";
+import { allProducts, colourSiblings, formatPrice, getCategory, getProduct, relatedProducts } from "@/lib/merchandise";
 
 export function generateStaticParams() {
   return allProducts.map((p) => ({ slug: p.slug }));
@@ -43,16 +43,17 @@ export default function ProductPage({ params }: { params: { slug: string } }) {
           <div className="product-gallery">
             <div className="product-gallery-main">
               <Image src={product.image} alt={`${product.name} in ${product.color.toLowerCase()}`} fill priority sizes="(max-width: 900px) 100vw, 55vw" />
-              <span className="product-badge">NYAMAFEST 2026</span>
+              <span className="product-badge">{product.partner ? "PARTNERSHIP" : product.categoryId === "workwear" ? "MEATSOKO WORKWEAR" : "NYAMAFEST 2026"}</span>
             </div>
           </div>
 
           <div className="product-summary">
-            <span className="store-eyebrow">{category?.name ?? "Merchandise"} · THE NYAMAFEST COLLECTION</span>
+            <span className="store-eyebrow">{category?.name ?? "Merchandise"} · {category?.eyebrow ?? "MEATSOKO"}</span>
             <h1>{product.name} <span>— {product.color}</span></h1>
+            {product.partner && <span className="product-partner">In partnership with {product.partner}</span>}
             <p className="product-lede">{product.summary}</p>
             <div className="product-price">
-              {product.priceKes != null ? <strong>{formatKes(product.priceKes)}</strong> : <><strong>Price coming soon</strong><small>You can add it to your bag now — we’ll confirm the price before you pay.</small></>}
+              {product.priceUsd != null ? <><strong>{formatPrice(product.priceUsd)}</strong><small>Prices in US dollars</small></> : <><strong>Price coming soon</strong><small>You can add it to your bag now — we’ll confirm the price before you pay.</small></>}
             </div>
 
             <div className="product-option">
@@ -66,7 +67,7 @@ export default function ProductPage({ params }: { params: { slug: string } }) {
                     aria-label={`${s.color}${s.slug === product.slug ? " (selected)" : ""}`}
                     aria-current={s.slug === product.slug ? "true" : undefined}
                     title={s.color}
-                    style={{ ["--swatch" as string]: SWATCH[s.color] ?? "#ccc" }}
+                    style={{ ["--swatch" as string]: s.swatch }}
                   />
                 ))}
               </div>

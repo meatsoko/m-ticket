@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { useBag } from "./BagProvider";
 import QtyStepper from "./QtyStepper";
-import { formatKes } from "@/lib/merchandise";
+import { formatPrice } from "@/lib/merchandise";
 
 /** Header bag button: live count, opens the drawer. */
 export function BagButton() {
@@ -60,12 +60,12 @@ export default function BagDrawer() {
                       <button type="button" className="bag-remove" onClick={() => remove(l.slug, l.size)} tabIndex={drawerOpen ? 0 : -1}>Remove</button>
                     </div>
                   </div>
-                  <span className="bag-line-price">{l.product.priceKes != null ? formatKes(l.product.priceKes * l.qty) : "Price TBC"}</span>
+                  <span className="bag-line-price">{l.product.priceUsd != null ? formatPrice(l.product.priceUsd * l.qty) : "Price TBC"}</span>
                 </li>
               ))}
             </ul>
             <footer>
-              <div className="bag-subtotal"><span>Subtotal</span><strong>{subtotal != null ? formatKes(subtotal) : "Prices coming soon"}</strong></div>
+              <div className="bag-subtotal"><span>Subtotal</span><strong>{subtotal != null ? formatPrice(subtotal) : "Prices coming soon"}</strong></div>
               <small>Delivery is calculated at checkout.</small>
               <Link href="/checkout" className="store-button bag-checkout" onClick={closeDrawer} tabIndex={drawerOpen ? 0 : -1}>Checkout <span>→</span></Link>
               <Link href="/cart" className="bag-view" onClick={closeDrawer} tabIndex={drawerOpen ? 0 : -1}>View bag</Link>

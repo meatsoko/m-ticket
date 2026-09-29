@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import { useBag } from "./BagProvider";
-import { DELIVERY_OPTIONS, DELIVERY_ZONES, formatKes, type DeliveryOption } from "@/lib/merchandise";
+import { DELIVERY_OPTIONS, DELIVERY_ZONES, formatPrice, type DeliveryOption } from "@/lib/merchandise";
 import { looksLikeEmail, normalizePhone, PHONE_HINT } from "@/lib/phone";
 
 // Merchandise payment is not wired to a backend yet: there is no merchandise
@@ -43,10 +43,10 @@ export default function CheckoutForm() {
   if (delivery === "matatu" && f.town.trim().length < 2) errors.town = "Enter the town you’ll collect from";
   if (!agree) errors.agree = "Please accept the terms to continue";
 
-  const total = subtotal != null && option.feeKes != null ? subtotal + option.feeKes : null;
+  const total = subtotal != null && option.feeUsd != null ? subtotal + option.feeUsd : null;
   const blocker =
     subtotal == null ? "Prices for these pieces are being finalised — you’ll be able to pay as soon as they’re set."
-    : option.feeKes == null ? `The ${option.label.toLowerCase()} fee is being finalised. Choose a pickup option, or check back soon.`
+    : option.feeUsd == null ? `The ${option.label.toLowerCase()} fee is being finalised. Choose a pickup option, or check back soon.`
     : !PAYMENT_CONNECTED ? "Online payment for merchandise opens soon."
     : null;
 
@@ -100,7 +100,7 @@ export default function CheckoutForm() {
                 <label key={o.id} className={`delivery-option${delivery === o.id ? " active" : ""}`}>
                   <input type="radio" name="delivery" value={o.id} checked={delivery === o.id} onChange={() => setDelivery(o.id)} />
                   <span><strong>{o.label}</strong><small>{o.blurb}</small></span>
-                  <em>{o.feeKes === 0 ? "Free" : o.feeKes != null ? formatKes(o.feeKes) : "Fee TBC"}</em>
+                  <em>{o.feeUsd === 0 ? "Free" : o.feeUsd != null ? formatPrice(o.feeUsd) : "Fee TBC"}</em>
                 </label>
               ))}
             </div>
@@ -140,13 +140,13 @@ export default function CheckoutForm() {
               <li key={`${l.slug}:${l.size}`}>
                 <span className="summary-thumb"><Image src={l.product.image} alt="" fill sizes="60px" /><b>{l.qty}</b></span>
                 <span><strong>{l.product.name}</strong><small>{l.product.color} · {l.size}</small></span>
-                <span>{l.product.priceKes != null ? formatKes(l.product.priceKes * l.qty) : "TBC"}</span>
+                <span>{l.product.priceUsd != null ? formatPrice(l.product.priceUsd * l.qty) : "TBC"}</span>
               </li>
             ))}
           </ul>
-          <div className="summary-row"><span>Subtotal</span><span>{subtotal != null ? formatKes(subtotal) : "TBC"}</span></div>
-          <div className="summary-row"><span>{option.label}</span><span>{option.feeKes === 0 ? "Free" : option.feeKes != null ? formatKes(option.feeKes) : "TBC"}</span></div>
-          <div className="summary-row total"><span>Total</span><strong>{total != null ? formatKes(total) : "To be confirmed"}</strong></div>
+          <div className="summary-row"><span>Subtotal</span><span>{subtotal != null ? formatPrice(subtotal) : "TBC"}</span></div>
+          <div className="summary-row"><span>{option.label}</span><span>{option.feeUsd === 0 ? "Free" : option.feeUsd != null ? formatPrice(option.feeUsd) : "TBC"}</span></div>
+          <div className="summary-row total"><span>Total</span><strong>{total != null ? formatPrice(total) : "To be confirmed"}</strong></div>
 
           <div className="summary-payment">
             <strong>Pay with M-Pesa or card</strong>
@@ -160,7 +160,7 @@ export default function CheckoutForm() {
           {err("agree")}
 
           <button type="submit" className="store-button summary-cta" disabled={!!blocker} aria-describedby="checkout-blocker">
-            {total != null ? `Pay ${formatKes(total)}` : "Pay"} <span>→</span>
+            {total != null ? `Pay ${formatPrice(total)}` : "Pay"} <span>→</span>
           </button>
           {blocker && <p className="summary-blocker" id="checkout-blocker">{blocker}</p>}
           <Link href="/cart" className="store-back-link">← Back to your bag</Link>

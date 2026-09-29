@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useBag } from "./BagProvider";
 import QtyStepper from "./QtyStepper";
-import { formatKes } from "@/lib/merchandise";
+import { formatPrice } from "@/lib/merchandise";
 
 export default function CartView() {
   const { lines, subtotal, count, ready, setQty, remove } = useBag();
@@ -32,9 +32,9 @@ export default function CartView() {
                 <tr key={`${l.slug}:${l.size}`}>
                   <td className="cart-thumb"><Link href={`/shop/${l.slug}`}><Image src={l.product.image} alt="" fill sizes="96px" /></Link></td>
                   <td><Link href={`/shop/${l.slug}`}><strong>{l.product.name}</strong></Link><small>{l.product.color} · Size {l.size}</small></td>
-                  <td>{l.product.priceKes != null ? formatKes(l.product.priceKes) : "TBC"}</td>
+                  <td>{l.product.priceUsd != null ? formatPrice(l.product.priceUsd) : "TBC"}</td>
                   <td><QtyStepper value={l.qty} onChange={(q) => setQty(l.slug, l.size, q)} small /></td>
-                  <td><strong>{l.product.priceKes != null ? formatKes(l.product.priceKes * l.qty) : "TBC"}</strong></td>
+                  <td><strong>{l.product.priceUsd != null ? formatPrice(l.product.priceUsd * l.qty) : "TBC"}</strong></td>
                   <td><button type="button" className="cart-remove" onClick={() => remove(l.slug, l.size)} aria-label={`Remove ${l.product.name} ${l.product.color}, size ${l.size}`}>×</button></td>
                 </tr>
               ))}
@@ -44,7 +44,7 @@ export default function CartView() {
           <aside className="order-summary">
             <h2>Bag totals</h2>
             <div className="summary-row"><span>Items</span><span>{count}</span></div>
-            <div className="summary-row"><span>Subtotal</span><strong>{subtotal != null ? formatKes(subtotal) : "Prices coming soon"}</strong></div>
+            <div className="summary-row"><span>Subtotal</span><strong>{subtotal != null ? formatPrice(subtotal) : "Prices coming soon"}</strong></div>
             <div className="summary-row"><span>Delivery</span><span>Chosen at checkout</span></div>
             <Link href="/checkout" className="store-button summary-cta">Proceed to checkout <span>→</span></Link>
             <Link href="/shop" className="store-back-link">← Continue shopping</Link>
