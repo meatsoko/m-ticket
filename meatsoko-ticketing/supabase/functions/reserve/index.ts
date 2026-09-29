@@ -14,7 +14,6 @@ import { clientIp, normalizePhone, rateLimit, serviceClient } from "../_shared/s
 import { returnBase } from "../_shared/return-url.ts";
 import { notifyOrganizer } from "../_shared/notify.ts";
 import { buildAndSend } from "../_shared/reservation-email.ts";
-import { maskEmail } from "../_shared/resend.ts";
 
 // NFR-5. A reservation is cheap to submit, so the abuse surface is real; a
 // genuine guest correcting their party size needs a few attempts.
@@ -108,20 +107,17 @@ Deno.serve(async (req) => {
       }
     }
 
-    // One booking per phone per event, and it belongs to whoever booked it.
-    // create_reservation updates an existing booking in place and would hand its
-    // pass back to this caller — so a stranger who knew a guest's number could
-    // take the booking over. Now:
-    //   - a different email is refused (this also stops a shared handset silently
-    //     overwriting someone else's booking);
-    //   - the same email may amend it, but the pass is never returned here: it is
-    //     emailed to the address on the booking.
-    const { data: existing, error: exErr } = await db.from("reservations")
-      .select("id,email").eq("event_id", event_id).eq("phone", guestPhone).maybeSingle();
+    // A booking belongs to whoever booked it, keyed on phone AND email
+    // (migration 20260929170000). create_reservation updates a matching booking
+    // in place; a different email on the same phone is a separate, new booking,
+    // so a stranger who knows a guest's number never reaches their booking.
+    // An amendment never returns the pass here: it is emailed to the address on
+    // the booking.
+    const { data: sameEmail, error: exErr } = await db.from("reservations")
+      .select("id,email").eq("event_id", event_id).eq("phone", guestPhone);
     if (exErr) return fail("reservation_lookup_failed", 500, { detail: exErr.message });
-    if (existing && (existing.email ?? "").trim().toLowerCase() !== guestEmail.toLowerCase()) {
-      return fail("phone_in_use", 409, { masked_email: existing.email ? maskEmail(existing.email) : null });
-    }
+    const existing = (sameEmail ?? []).find((r: any) =>
+      (r.email ?? "").trim().toLowerCase() === guestEmail.toLowerCase());
     const isAmendment = !!existing;
     // The pass token, only for a brand-new booking made by this caller.
     const own = (token: string) => (isAmendment ? { updated: true } : { access_token: token });

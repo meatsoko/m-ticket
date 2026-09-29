@@ -92,7 +92,8 @@ The user wants the storefront to use a warm cream, black, and red visual system.
 
 ## Booking takeover fix (LIVE since 2026-09-29, PR #8)
 
-- `reserve`: one booking per phone per event belongs to whoever booked it. Same phone + different email → `409 phone_in_use` (masked email hint), booking untouched. Same phone + same email (any case) → amended, but the pass token is **never returned**; it is emailed to the address on the booking. New bookings still return their own token.
+- `reserve`: a booking is keyed on **phone + email** (since 2026-09-29, `20260929170000_booking_per_phone_and_email.sql`: unique `(event_id, phone, lower(email))` replaced `unique (event_id, phone)`). Same phone + different email → a **new, separate booking** with its own number and pass; the existing booking is untouched (a shared handset can book for several people). Same phone + same email (any case) → amended, but the pass token is **never returned**; it is emailed to the address on the booking. New bookings return their own token. `phone_in_use` is no longer returned (the form still understands it).
+- Deployed 2026-09-29: migration first, then `reserve`. Local harness 52/52; not yet exercised live with a real second booking.
 - `lookup` and `reservation-lookup` never return pass/QR tokens: they email passes to the address on the booking/order and reply `{found, emailed, sent_to (masked), no_email}`. `LookupForm` shows "check your email".
 - Deployed with the merge of PR #8 (`ec026d8`): Vercel first, then `reserve`, `lookup`, `reservation-lookup`. Verified live: takeover attempt on a known phone → `409 phone_in_use`, booking unchanged; lookups reply with counts only; `/lookup` renders the email-me flow.
 - DB lock-down (`20260929160000_lock_down_open_functions.sql`) **is applied** and independent of the merge.
