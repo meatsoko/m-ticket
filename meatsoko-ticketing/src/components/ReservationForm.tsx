@@ -21,7 +21,9 @@ type BookingStep = "selection" | "details" | "payment";
 
 type Confirmed = {
   reservation_number: string;
-  access_token: string;
+  // Absent when an existing booking was amended: the pass is then emailed to the
+  // address on the booking, never shown to whoever submitted the form.
+  access_token?: string;
   party_size: number;
   amount_kes: number;
 };
@@ -85,7 +87,7 @@ export default function ReservationForm({
   }, []);
 
   // After Paystack says the guest paid — by popup callback or by redirect back here.
-  async function completePaystack(reference: string | null, accessToken: string) {
+  async function completePaystack(reference: string | null, accessToken?: string) {
     setPhase("awaiting_payment");
     const verified = reference
       ? await invokeFn(supabase, "paystack-verify", { reference })
@@ -93,6 +95,12 @@ export default function ReservationForm({
     if (!verified.data || !["confirmed", "already"].includes(verified.data.result)) {
       setError("Paystack did not confirm this preorder. If you were charged, contact support with your payment reference.");
       setPhase("failed");
+      return;
+    }
+    // An amended booking has no token here; its pass is emailed once payment confirms.
+    if (!accessToken) {
+      window.sessionStorage.removeItem("pending_paystack_reservation");
+      setPhase("done");
       return;
     }
     const { data: status } = await invokeFn(supabase, "reservation-status", { access_token: accessToken });
@@ -253,6 +261,10 @@ export default function ReservationForm({
       return;
     }
 
+    // Amended booking: no token to poll with; the updated pass is emailed once
+    // the M-Pesa payment confirms.
+    if (!confirmed.access_token) { setPhase("done"); return; }
+
     // Preorder: the STK prompt is already on the guest's phone. Poll the
     // reservation, not the order — the access token is unguessable.
     setPhase("awaiting_payment");
@@ -281,6 +293,10 @@ export default function ReservationForm({
     if (res.transportError) return "Could not reach the reservation service. Check your connection.";
     const d = res.data ?? {};
     switch (res.errorCode) {
+      case "phone_in_use":
+        return d.masked_email
+          ? `This phone number already has a booking under ${d.masked_email}. Use that email to update it, or book with a different phone number.`
+          : "This phone number already has a booking. Book with a different phone number, or contact the organiser to change it.";
       case "rate_limited":
         return `Too many attempts. Wait ${Math.ceil((d.retry_after ?? 60) / 60)} minute(s) and try again.`;
       case "full":
@@ -322,6 +338,26 @@ export default function ReservationForm({
   }
 
   // ---------- Confirmed ----------
+  if (phase === "done" && done && !done.access_token) {
+    return (
+      <div className="stack">
+        <div className="card" style={{ alignItems: "center", textAlign: "center" }}>
+          <span className="pill ok">Booking updated</span>
+          <h2>You&apos;re all set, {name.split(" ")[0]}.</h2>
+          <strong style={{ fontSize: "1.3rem", letterSpacing: "0.04em" }}>{done.reservation_number}</strong>
+          <p className="small">
+            This phone number already had a booking, so we&apos;ve updated it. For your security the
+            pass isn&apos;t shown here — {done.amount_kes > 0 ? "once your payment is confirmed, " : ""}we&apos;ve
+            emailed it to <strong>{email.trim()}</strong>.
+          </p>
+        </div>
+        <p className="small" style={{ textAlign: "center" }}>
+          No email? Use <a href="/lookup">My Tickets</a> to send it again.
+        </p>
+      </div>
+    );
+  }
+
   if (phase === "done" && done) {
     const url = `${APP_URL()}/r/${done.access_token}`;
     return (

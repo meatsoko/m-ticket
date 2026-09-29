@@ -14,6 +14,7 @@ import { clientIp, normalizePhone, rateLimit, serviceClient } from "../_shared/s
 import { returnBase } from "../_shared/return-url.ts";
 import { notifyOrganizer } from "../_shared/notify.ts";
 import { buildAndSend } from "../_shared/reservation-email.ts";
+import { maskEmail } from "../_shared/resend.ts";
 
 // NFR-5. A reservation is cheap to submit, so the abuse surface is real; a
 // genuine guest correcting their party size needs a few attempts.
@@ -107,6 +108,24 @@ Deno.serve(async (req) => {
       }
     }
 
+    // One booking per phone per event, and it belongs to whoever booked it.
+    // create_reservation updates an existing booking in place and would hand its
+    // pass back to this caller — so a stranger who knew a guest's number could
+    // take the booking over. Now:
+    //   - a different email is refused (this also stops a shared handset silently
+    //     overwriting someone else's booking);
+    //   - the same email may amend it, but the pass is never returned here: it is
+    //     emailed to the address on the booking.
+    const { data: existing, error: exErr } = await db.from("reservations")
+      .select("id,email").eq("event_id", event_id).eq("phone", guestPhone).maybeSingle();
+    if (exErr) return fail("reservation_lookup_failed", 500, { detail: exErr.message });
+    if (existing && (existing.email ?? "").trim().toLowerCase() !== guestEmail.toLowerCase()) {
+      return fail("phone_in_use", 409, { masked_email: existing.email ? maskEmail(existing.email) : null });
+    }
+    const isAmendment = !!existing;
+    // The pass token, only for a brand-new booking made by this caller.
+    const own = (token: string) => (isAmendment ? { updated: true } : { access_token: token });
+
     // A table package's linked platter is mandatory and always quantity one.
     // Resolve the relation server-side so a modified browser request cannot
     // reserve a package while omitting its included food item.
@@ -197,7 +216,7 @@ Deno.serve(async (req) => {
       stage = "done";
       return json({
         reservation_number: res.reservation_number,
-        access_token: res.access_token,
+        ...own(res.access_token),
         party_size: res.party_size,
         status: res.status,
         amount_kes: 0,
@@ -216,7 +235,7 @@ Deno.serve(async (req) => {
         await db.from("orders").update({ status: "failed" }).eq("id", res.order_id);
         return fail("paystack_misconfigured", 500, {
           missing: [!secret && "PAYSTACK_SECRET_KEY", !appUrl && "APP_URL"].filter(Boolean),
-          reservation_number: res.reservation_number, access_token: res.access_token,
+          reservation_number: res.reservation_number, ...own(res.access_token),
         });
       }
       const reference = `MT${crypto.randomUUID().replaceAll("-", "")}`;
@@ -243,7 +262,7 @@ Deno.serve(async (req) => {
           throw new Error(response?.message ?? `Paystack returned HTTP ${init.status}`);
         }
         return json({
-          reservation_number: res.reservation_number, access_token: res.access_token,
+          reservation_number: res.reservation_number, ...own(res.access_token),
           party_size: res.party_size, status: res.status, amount_kes: amount,
           payment_required: true, authorizationUrl: response.data.authorization_url,
           accessCode: response.data.access_code,   // popup; authorizationUrl is the redirect fallback
@@ -253,7 +272,7 @@ Deno.serve(async (req) => {
         await db.from("orders").update({ status: "failed" }).eq("id", res.order_id);
         return fail("paystack_init_failed", 502, {
           detail: String(e).slice(0, 300), reservation_number: res.reservation_number,
-          access_token: res.access_token, amount_kes: amount,
+          ...own(res.access_token), amount_kes: amount,
         });
       }
     }
@@ -280,7 +299,7 @@ Deno.serve(async (req) => {
       stage = "done";
       return json({
         reservation_number: res.reservation_number,
-        access_token: res.access_token,
+        ...own(res.access_token),
         party_size: res.party_size,
         status: res.status,                       // pending_payment
         amount_kes: amount,
@@ -296,7 +315,7 @@ Deno.serve(async (req) => {
       return fail("stk_failed", 502, {
         detail: String(e).slice(0, 300),
         reservation_number: res.reservation_number,
-        access_token: res.access_token,
+        ...own(res.access_token),
         amount_kes: amount,
       });
     }

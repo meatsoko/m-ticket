@@ -398,7 +398,7 @@ Full register in `REMAINING_GAPS.md`. The ones that will bite:
 3. ~~**Verify the `authenticated` role cannot call `admit_pass`**~~ — **verified 2026-09-29**:
    `proacl` is `{postgres=X/postgres,service_role=X/postgres}` (no PUBLIC, anon or authenticated).
    Same check shows `confirm_payment` and `create_reservation` still grant `=X` (PUBLIC), anon, authenticated.
-4. **Revoke `EXECUTE` on `resolve_pass` from `PUBLIC`** — two lines, same pattern as §5.
+4. ~~**Revoke `EXECUTE` on `resolve_pass` from `PUBLIC`**~~ — **done 2026-09-29** in `20260929160000_lock_down_open_functions.sql`, together with `confirm_payment`, `create_reservation`, `gen_reservation_number`, `rate_limit_hit`, `rate_limit_gc` (service_role only) and `refund_order` (authenticated + service_role). Verified live: anon gets `42501`.
 5. **Confirm `NEXT_PUBLIC_APP_URL` and the `APP_URL` secret** are both
    `https://event.meatsokogroup.com`.
 6. **Content:** poster (`banner_url` is null), real event copy, `contact_phone`,

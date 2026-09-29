@@ -13,11 +13,17 @@ const looksLikeEmail = (s: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s.trim()
  * no M-Pesa number to remember, so the address the pass was emailed to is the
  * only identifier most of them still hold.
  */
+type Sent = { found: number; emailed: number; sent_to: string[]; no_email: number };
+
+/**
+ * Passes are never shown here: the lookup emails them to the address on the
+ * booking or order. A phone number isn't a secret, so showing the pass to
+ * whoever typed one would let a stranger take someone's place.
+ */
 export default function LookupForm() {
   const supabase = createClient();
   const [id, setId] = useState("");
-  const [tickets, setTickets] = useState<any[] | null>(null);
-  const [reservations, setReservations] = useState<any[] | null>(null);
+  const [result, setResult] = useState<Sent | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
@@ -32,37 +38,35 @@ export default function LookupForm() {
     return null;
   }
 
+  const merge = (a: Sent, b?: Partial<Sent> | null): Sent => ({
+    found: a.found + (b?.found ?? 0),
+    emailed: a.emailed + (b?.emailed ?? 0),
+    sent_to: [...a.sent_to, ...(b?.sent_to ?? [])].filter((x, i, all) => all.indexOf(x) === i),
+    no_email: a.no_email + (b?.no_email ?? 0),
+  });
+
   async function find() {
-    setBusy(true); setErr("");
-    const clear = () => { setTickets(null); setReservations(null); };
+    setBusy(true); setErr(""); setResult(null);
+    const empty: Sent = { found: 0, emailed: 0, sent_to: [], no_email: 0 };
 
     if (isEmail) {
       const res = await invokeFn(supabase, "reservation-lookup", { email: id.trim() });
       setBusy(false);
       const msg = failureOf(res);
-      if (msg) { setErr(msg); clear(); return; }
-      setReservations(res.data.reservations ?? []);
-      setTickets([]);
+      if (msg) { setErr(msg); return; }
+      setResult(merge(empty, res.data));
       return;
     }
 
     const t = await invokeFn(supabase, "lookup", { phone: id });
     const tMsg = failureOf(t);
-    if (tMsg) { setBusy(false); setErr(tMsg); clear(); return; }
-    setTickets(t.data.tickets ?? []);
-
-    // Reservation guests give a phone as well as an email, so most of them will
-    // type the number here. Without this second call they would hit the same
-    // dead end as before, just in a better-looking form. A failure is not worth
-    // surfacing — the ticket result above already succeeded.
+    if (tMsg) { setBusy(false); setErr(tMsg); return; }
+    // Reservation guests usually type their number too; a failure here is not
+    // worth surfacing — the ticket lookup above already succeeded.
     const r = await invokeFn(supabase, "reservation-lookup", { phone: id });
     setBusy(false);
-    setReservations(r.transportError ? [] : (r.data?.reservations ?? []));
+    setResult(merge(merge(empty, t.data), r.transportError ? null : r.data));
   }
-
-  const nothingFound =
-    tickets !== null && reservations !== null &&
-    tickets.length === 0 && reservations.length === 0 && !err;
 
   return (
     <div className="stack">
@@ -72,7 +76,7 @@ export default function LookupForm() {
           <input
             type="text" inputMode="text" autoComplete="email"
             placeholder="07XX XXX XXX or you@example.com"
-            value={id} onChange={(e) => setId(e.target.value)}
+            value={id} onChange={(e) => { setId(e.target.value); setResult(null); }}
           />
         </label>
         {err && <p className="small" style={{ color: "var(--danger)" }}>{err}</p>}
@@ -81,47 +85,47 @@ export default function LookupForm() {
           onClick={find}
           disabled={busy || !ready}
         >
-          {busy ? "Searching…" : "Find my pass"}
+          {busy ? "Searching…" : "Email me my pass"}
         </button>
-        <p className="small">Only unused tickets and reservations still to arrive are shown, for your privacy.</p>
+        <p className="small">For your privacy, passes are sent to the email address used when booking — never shown on this page.</p>
       </div>
 
-      {nothingFound && (
+      {result && result.found === 0 && (
         <div className="empty">
           <Icon name="search" size={28} />
           <strong>Nothing active found</strong>
           <p className="small">
             Nothing for that {isEmail ? "email address" : "number"}. Passes already
-            scanned at the door aren&apos;t listed.
+            scanned at the door aren&apos;t included.
           </p>
         </div>
       )}
 
-      {reservations?.map((r) => (
-        <a key={r.token} className="card" href={`/r/${r.token}`} style={{ textDecoration: "none", color: "inherit" }}>
-          <div className="row">
-            <div className="stack tight">
-              <strong>{r.reservation_number}</strong>
-              <span className="small">
-                {r.event}{r.party_size > 1 ? ` · party of ${r.party_size}` : ""}
-              </span>
-            </div>
-            <span className="pill ember">Open →</span>
-          </div>
-        </a>
-      ))}
+      {result && result.emailed > 0 && (
+        <div className="card" style={{ textAlign: "center" }}>
+          <span className="pill ok">Sent</span>
+          <strong>Check your email</strong>
+          <p className="small">
+            We&apos;ve emailed {result.emailed === 1 ? "your pass" : `${result.emailed} passes`} to{" "}
+            <strong>{result.sent_to.join(", ")}</strong>. It can take a minute — check your spam folder too.
+          </p>
+        </div>
+      )}
 
-      {tickets?.map((t) => (
-        <a key={t.token} className="card" href={`/t/${t.token}`} style={{ textDecoration: "none", color: "inherit" }}>
-          <div className="row">
-            <div className="stack tight">
-              <strong>{t.type}</strong>
-              {t.bundle > 1 && <span className="small">Admits {t.bundle}</span>}
-            </div>
-            <span className="pill ember">Open →</span>
-          </div>
-        </a>
-      ))}
+      {result && result.no_email > 0 && (
+        <div className="card">
+          <strong>Some passes have no email on file</strong>
+          <p className="small">
+            We found {result.no_email === 1 ? "a pass" : `${result.no_email} passes`} we can&apos;t email. Contact the organiser with your phone number to get {result.no_email === 1 ? "it" : "them"}.
+          </p>
+        </div>
+      )}
+
+      {result && result.found > 0 && result.emailed === 0 && result.no_email === 0 && (
+        <p className="small" style={{ color: "var(--danger)" }}>
+          We found your pass but couldn&apos;t send the email just now. Please try again in a few minutes.
+        </p>
+      )}
     </div>
   );
 }

@@ -1,12 +1,18 @@
 // "Find my reservation" by the phone OR the email used to reserve. Mirrors
-// lookup/ for tickets: throttled, and returns only what the holder of that
-// identifier needs.
+// lookup/ for tickets: throttled.
+//
+// The pass is EMAILED to the address on the booking, never returned here. A phone
+// number is not a secret (and an email address barely is), so handing the pass to
+// whoever typed one let a stranger take a guest's booking. The response says only
+// how many passes were found and a masked address they went to.
 //
 // Email matters more than phone here: an event running free reservations has no
 // M-Pesa number to remember, so the address the pass was sent to is the only
 // thing a guest reliably still has.
 import { json, preflight } from "../_shared/cors.ts";
 import { clientIp, normalizePhone, rateLimit, serviceClient } from "../_shared/supabase.ts";
+import { buildAndSend } from "../_shared/reservation-email.ts";
+import { maskEmail } from "../_shared/resend.ts";
 
 const PER_PHONE = { limit: 8, windowSeconds: 600 };
 // An email address is a more plausible thing for a stranger to hold than the
@@ -42,7 +48,7 @@ Deno.serve(async (req) => {
   if (!byIp.allowed) return json({ error: "rate_limited", retry_after: byIp.retryAfter }, 429);
 
   let q = db.from("reservations")
-    .select("reservation_number,access_token,party_size,status,expected_arrival,email,events(name)")
+    .select("id,email")
     // An admitted guest is withheld the way a redeemed ticket is (FR-L2): a pass
     // already used at the door is not something an arbitrary holder of the
     // address should be able to pull back out of the system.
@@ -66,15 +72,15 @@ Deno.serve(async (req) => {
     ? (data ?? []).filter((r: any) => (r.email ?? "").trim().toLowerCase() === e)
     : (data ?? []);
 
-  // email is selected for that re-check only — it is never returned.
-  return json({
-    reservations: rows.map((r: any) => ({
-      reservation_number: r.reservation_number,
-      token: r.access_token,
-      party_size: r.party_size,
-      status: r.status,
-      expected_arrival: r.expected_arrival,
-      event: r.events?.name ?? null,
-    })),
-  });
+  const appUrl = (Deno.env.get("APP_URL") ?? "").trim();
+  const sentTo = new Set<string>();
+  let emailed = 0, noEmail = 0;
+  for (const r of rows as any[]) {
+    if (!r.email || !appUrl) { noEmail++; continue; }
+    const out = await buildAndSend(db, r.id, appUrl).catch((e) => ({ sent: false, reason: String(e) }));
+    if (out.sent) { emailed++; sentTo.add(maskEmail(r.email)); }
+    else console.error(JSON.stringify({ msg: "lookup resend failed", reason: (out as any).reason }));
+  }
+  // No pass, token or reservation number in the reply — only what happened.
+  return json({ found: rows.length, emailed, sent_to: [...sentTo], no_email: noEmail });
 });

@@ -89,3 +89,10 @@ The user wants the storefront to use a warm cream, black, and red visual system.
 - The Paystack account is shared with the WooCommerce store at `assets.meatsoko.com`; its single live webhook points there (`/wc-api/Tbz_WC_Paystack_Webhook/`). **Do not move it** — that would break the WooCommerce store. Our `paystack-webhook` therefore receives nothing from live Paystack.
 - Payments are confirmed (1) on the buyer's return — `merch-order` / `paystack-verify` verify with Paystack — and (2) by `paystack-reconcile`, run every 5 min by pg_cron (`20260929150000_paystack_reconcile_cron.sql`), which asks Paystack about pending MS/MT orders created 2 min – 3 h ago. It needs no key and rate-limits itself (6 runs / 10 min).
 - Longer term: a separate Paystack business for events/merch would give its own webhook and payout reporting.
+
+## Booking takeover fix (built 2026-09-29; deploys with the merge)
+
+- `reserve`: one booking per phone per event belongs to whoever booked it. Same phone + different email → `409 phone_in_use` (masked email hint), booking untouched. Same phone + same email (any case) → amended, but the pass token is **never returned**; it is emailed to the address on the booking. New bookings still return their own token.
+- `lookup` and `reservation-lookup` never return pass/QR tokens: they email passes to the address on the booking/order and reply `{found, emailed, sent_to (masked), no_email}`. `LookupForm` shows "check your email".
+- **Not yet deployed**: the live `main` frontend still expects tokens from these three functions, so deploy them together with merging `feat/merch-product-page`.
+- DB lock-down (`20260929160000_lock_down_open_functions.sql`) **is applied** and independent of the merge.

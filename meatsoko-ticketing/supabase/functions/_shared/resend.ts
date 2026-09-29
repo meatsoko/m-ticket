@@ -45,3 +45,14 @@ export async function sendEmail(mail: Mail): Promise<{ sent: boolean; reason?: s
 
 export const escapeHtml = (s: string) =>
   s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
+
+/**
+ * "amina@gmail.com" -> "a•••@gmail.com". Tells someone which of their addresses
+ * a pass went to without disclosing the address to a stranger who typed a phone
+ * number.
+ */
+export function maskEmail(email: string): string {
+  const [local, domain] = email.trim().split("@");
+  if (!local || !domain) return "your email";
+  return `${local[0]}•••@${domain}`;
+}
