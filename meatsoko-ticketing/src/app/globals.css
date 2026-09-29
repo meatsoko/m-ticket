@@ -911,6 +911,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 /* Footer, with the oversized faded wordmark. */
 .store-footer { position: relative; isolation: isolate; overflow: hidden; padding: 46px max(5.5vw, 24px) 0; background: var(--store-ink); color: #fff; }
+.store-footer-top { position: relative; isolation: isolate; padding-bottom: 30px; }
 .store-footer-grid { position: relative; z-index: 1; display: grid; grid-template-columns: 1.6fr 1fr 1fr 1fr; gap: 30px; }
 .store-footer-grid > div:not(:first-child) { display: flex; flex-direction: column; gap: 12px; }
 .store-footer-grid strong { margin: 3px 0 5px; color: #ef7b82; font-size: 10px; letter-spacing: .12em; }
@@ -918,8 +919,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .store-footer .store-brand { color: #fff; }
 .store-footer .store-mark { color: #fff; background: var(--store-red); }
 .store-footer p { margin-top: 13px; color: #c5c1ba; font-size: 12px; }
-.store-footer-base { position: relative; z-index: 1; margin-top: 30px; padding: 18px 0 22px; display: flex; justify-content: space-between; gap: 16px; border-top: 1px solid #353535; color: #9d9892; font-size: 10px; }
-.store-footer-word { position: absolute; z-index: 0; left: max(5.5vw, 24px); bottom: 12px; width: calc(100% - 2 * max(5.5vw, 24px)); height: 68%; user-select: none; pointer-events: none; }
+.store-footer-base { position: relative; z-index: 1; padding: 18px 0 22px; display: flex; justify-content: space-between; gap: 16px; border-top: 1px solid #353535; color: #9d9892; font-size: 10px; }
+.store-footer-word { position: absolute; z-index: 0; left: 0; bottom: 0; width: 100%; height: 86%; user-select: none; pointer-events: none; }
 .store-footer-word text { font-family: Arial, Helvetica, sans-serif; font-size: 212px; font-weight: 900; letter-spacing: -8px; }
 
 /* Product page */
@@ -1158,7 +1159,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .store-footer { padding: 40px 20px 0; }
   .store-footer-grid { grid-template-columns: 1fr 1fr; gap: 26px 16px; }
   .store-footer-grid > div:first-child { grid-column: 1 / -1; }
-  .store-footer-base { flex-direction: column; gap: 6px; margin-top: 30px; }
+  .store-footer-base { flex-direction: column; gap: 6px; }
   .product-page { padding: 24px 20px 70px; }
   .product-layout { grid-template-columns: 1fr; gap: 26px; }
   .product-gallery { position: static; }
@@ -1183,8 +1184,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 }
 
 /* ---------- Merchandise payment: KES line, errors, order pages ---------- */
-.summary-row.kes { margin-top: 6px; padding: 12px 14px; border: 0; border-radius: var(--r-field); background: #f9e5e7; color: var(--store-red-dark); }
-.summary-row.kes strong { font-size: 16px; }
+.order-charged { margin-top: 2px; color: var(--store-muted); font-size: 11.5px; text-align: right; }
 .summary-blocker.error { background: #fbe3e5; color: var(--store-red-dark); font-weight: 700; }
 .summary-rate { margin-top: 10px; color: var(--store-muted); font-size: 11px; line-height: 1.5; text-align: center; }
 .order-page .checkout-steps { margin-top: 0; }

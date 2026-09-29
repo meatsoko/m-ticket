@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useBag } from "./BagProvider";
 import { DELIVERY_OPTIONS, DELIVERY_ZONES, formatPrice, type DeliveryOption } from "@/lib/merchandise";
 import { looksLikeEmail, normalizePhone, PHONE_HINT } from "@/lib/phone";
@@ -14,8 +14,6 @@ import { invokeFn } from "@/lib/invoke";
 // (see supabase/migrations/20260929120000_merchandise_store.sql). Until then the
 // form works end to end but Pay stays disabled and says why.
 const PAYMENT_CONNECTED = process.env.NEXT_PUBLIC_MERCH_PAYMENTS === "on";
-
-const formatKes = (n: number) => `KSh ${Math.round(n).toLocaleString("en-KE")}`;
 
 // What merch-checkout can refuse, in the buyer's words.
 const CHECKOUT_ERRORS: Record<string, string> = {
@@ -47,23 +45,10 @@ export default function CheckoutForm() {
   const [delivery, setDelivery] = useState<DeliveryOption["id"]>("event");
   const [agree, setAgree] = useState(false);
   const [touched, setTouched] = useState(false);
-  const [rate, setRate] = useState<number | null>(null);
-  const [rateState, setRateState] = useState<"idle" | "loading" | "ready" | "missing">("idle");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const supabase = useMemo(() => createClient(), []);
 
-  // The rate the server will charge at; shown here so the KSh figure is never a surprise.
-  useEffect(() => {
-    if (!PAYMENT_CONNECTED) return;
-    setRateState("loading");
-    // merch-checkout's quote refreshes the rate first if it is more than 6 hours old.
-    invokeFn<{ rate?: number }>(supabase, "merch-checkout", { action: "quote" }).then((res) => {
-      const r = Number(res.data?.rate);
-      setRate(r > 0 ? r : null);
-      setRateState(r > 0 ? "ready" : "missing");
-    });
-  }, [supabase]);
 
   const option = DELIVERY_OPTIONS.find((o) => o.id === delivery)!;
   const set = (k: keyof Fields) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
@@ -82,17 +67,12 @@ export default function CheckoutForm() {
   if (!agree) errors.agree = "Please accept the terms to continue";
 
   const total = subtotal != null && option.feeUsd != null ? subtotal + option.feeUsd : null;
-  // Mirrors merch_create_order(): each unit rounded to whole shillings, then summed.
-  // Display only — the server recomputes, and Paystack shows the final amount.
-  const totalKes = rate != null && total != null
-    ? lines.reduce((sum, l) => sum + Math.round((l.product.priceUsd as number) * rate) * l.qty, 0) + Math.round((option.feeUsd as number) * rate)
-    : null;
+  // Everything on the site is in US dollars. The KSh conversion happens server-side
+  // at payment time (merch-checkout refreshes the rate) and is shown only by Paystack.
   const blocker =
     subtotal == null ? "Prices for these pieces are being finalised — you’ll be able to pay as soon as they’re set."
     : option.feeUsd == null ? `The ${option.label.toLowerCase()} fee is being finalised. Choose a pickup option, or check back soon.`
     : !PAYMENT_CONNECTED ? "Online payment for merchandise opens soon."
-    : rateState === "missing" ? CHECKOUT_ERRORS.fx_unavailable
-    : rateState !== "ready" ? "Getting today’s exchange rate…"
     : null;
 
   const err = (k: keyof typeof errors) => touched && errors[k] ? <small className="field-error">{errors[k]}</small> : null;
@@ -220,15 +200,12 @@ export default function CheckoutForm() {
           </label>
           {err("agree")}
 
-          {totalKes != null && (
-            <div className="summary-row kes"><span>You’ll pay (KSh, today’s rate)</span><strong>{formatKes(totalKes)}</strong></div>
-          )}
           <button type="submit" className="store-button summary-cta" disabled={!!blocker || submitting} aria-describedby="checkout-blocker">
-            {submitting ? "Opening Paystack…" : totalKes != null ? `Pay ${formatKes(totalKes)}` : total != null ? `Pay ${formatPrice(total)}` : "Pay"} <span>→</span>
+            {submitting ? "Opening Paystack…" : total != null ? `Pay ${formatPrice(total)}` : "Pay"} <span>→</span>
           </button>
           {blocker && <p className="summary-blocker" id="checkout-blocker">{blocker}</p>}
           {submitError && <p className="summary-blocker error" role="alert">{submitError}</p>}
-          {rate != null && !blocker && <p className="summary-rate">Prices are in US dollars and charged in Kenya shillings at US$1 = KSh {rate.toFixed(2)}.</p>}
+          {!blocker && <p className="summary-rate">Prices are in US dollars. Paystack charges the equivalent in Kenya shillings at today’s rate.</p>}
           <Link href="/cart" className="store-back-link">← Back to your bag</Link>
         </aside>
       </form>

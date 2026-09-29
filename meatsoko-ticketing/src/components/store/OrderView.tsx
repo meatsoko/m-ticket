@@ -5,8 +5,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
 import { useBag } from "./BagProvider";
+import { formatPrice } from "@/lib/merchandise";
 
-type OrderItem = { product_name: string; color: string; size: string; sku: string; qty: number; unit_price_kes: number; line_total_kes: number };
+type OrderItem = { product_name: string; color: string; size: string; sku: string; qty: number; unit_price_usd: number };
 export type MerchOrder = {
   order_number: string; access_token: string; first_name: string;
   payment_status: "pending" | "paid" | "failed" | "refunded" | "flagged";
@@ -14,12 +15,13 @@ export type MerchOrder = {
   fulfilment_status: "unfulfilled" | "packed" | "ready_for_pickup" | "dispatched" | "delivered" | "collected" | "cancelled";
   delivery: { code: string; label: string; blurb: string | null; town: string | null };
   items: OrderItem[];
-  subtotal_kes: number; delivery_fee_kes: number; total_kes: number; total_usd: number;
+  subtotal_usd: number; delivery_fee_usd: number; total_usd: number; total_kes: number;
   created_at: string; paid_at: string | null; dispatched_at: string | null; completed_at: string | null;
   verification: string | null;
 };
 
 const kes = (n: number) => `KSh ${Math.round(Number(n)).toLocaleString("en-KE")}`;
+const usd = (n: number) => formatPrice(Number(n));
 const when = (iso: string | null) => iso
   ? new Intl.DateTimeFormat("en-KE", { timeZone: "Africa/Nairobi", dateStyle: "medium", timeStyle: "short" }).format(new Date(iso))
   : null;
@@ -99,12 +101,13 @@ export default function OrderView({ reference, token }: { reference?: string; to
           <h3>Items</h3>
           <ul className="order-items">
             {order.items.map((i) => (
-              <li key={i.sku}><span><strong>{i.product_name}</strong><small>{i.color} · {i.size} · × {i.qty}</small></span><span>{kes(i.line_total_kes)}</span></li>
+              <li key={i.sku}><span><strong>{i.product_name}</strong><small>{i.color} · {i.size} · × {i.qty}</small></span><span>{usd(i.unit_price_usd * i.qty)}</span></li>
             ))}
           </ul>
-          <div className="summary-row"><span>Subtotal</span><span>{kes(order.subtotal_kes)}</span></div>
-          <div className="summary-row"><span>{order.delivery.label}</span><span>{Number(order.delivery_fee_kes) ? kes(order.delivery_fee_kes) : "Free"}</span></div>
-          <div className="summary-row total"><span>Total</span><strong>{kes(order.total_kes)}</strong></div>
+          <div className="summary-row"><span>Subtotal</span><span>{usd(order.subtotal_usd)}</span></div>
+          <div className="summary-row"><span>{order.delivery.label}</span><span>{Number(order.delivery_fee_usd) ? usd(order.delivery_fee_usd) : "Free"}</span></div>
+          <div className="summary-row total"><span>Total</span><strong>{usd(order.total_usd)}</strong></div>
+          {status !== "pending" && status !== "failed" && <p className="order-charged">Charged by Paystack as {kes(order.total_kes)}</p>}
         </section>
         <section className="order-card">
           <h3>Delivery</h3>
