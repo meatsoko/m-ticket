@@ -519,11 +519,12 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .store-hero { max-width: 1600px; min-height: 570px; margin: 25px auto 0; padding: 46px 6.5%; display: grid; grid-template-columns: .92fr 1.08fr; align-items: center; gap: 5%; overflow: hidden; }
 .store-hero-copy { position: relative; z-index: 1; padding: 24px 0; }
 .store-eyebrow { display: inline-block; color: var(--store-muted); font-size: 10px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
-.store-hero h1 { margin: 22px 0 20px; font-size: clamp(48px, 6.2vw, 82px); line-height: .99; letter-spacing: -.065em; font-weight: 800; }
+.store-hero h1 { margin: 22px 0 22px; font-size: clamp(56px, 7.4vw, 124px); line-height: .99; letter-spacing: -.065em; font-weight: 800; }
 .store-hero h1 span { color: var(--store-red); }
-.store-hero-copy p { max-width: 410px; color: #5f5b56; font-size: 16px; line-height: 1.7; }
-.store-hero-copy .store-button { margin-top: 27px; min-width: 180px; }
-.store-hero-copy > small { display: block; margin-top: 38px; color: var(--store-muted); font-size: 9px; letter-spacing: .13em; }
+.store-hero-copy p { max-width: 500px; color: #5f5b56; font-size: clamp(16px, 1.25vw, 20px); line-height: 1.65; }
+.store-hero-copy .store-button { margin-top: 30px; min-width: 200px; min-height: 56px; padding: 0 28px; font-size: 14px; }
+.store-hero-copy .store-eyebrow { font-size: 12px; }
+.store-hero-copy > small { display: block; margin-top: 38px; color: var(--store-muted); font-size: 10.5px; letter-spacing: .13em; }
 .hero-art-orbit { position: absolute; border: 1px solid rgba(211,47,59,.4); border-radius: 50%; transform: rotate(-28deg); }
 .orbit-one { width: 460px; height: 130px; }
 .orbit-two { width: 510px; height: 190px; transform: rotate(26deg); border-color: rgba(23,23,23,.18); }
@@ -848,7 +849,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 /* First screen = hero + promises strip, exactly the viewport below the header
    (34px announcement + 82px header), so the strip is visible without scrolling
    and the next section starts straight after it. */
-.store-hero-screen { min-height: calc(100vh - 116px); min-height: calc(100svh - 116px); display: flex; flex-direction: column; }
+.store-hero-screen { min-height: calc(100vh - 116px); min-height: calc(100svh - 116px); padding-bottom: 28px; display: flex; flex-direction: column; }
 .store-hero-screen > .store-hero { flex: 1; width: 100%; min-height: 0; margin: 0 auto; padding-top: 18px; padding-bottom: 18px; }
 .store-hero-screen > .store-promises { width: calc(100% - 2 * max(5.5vw, 24px)); max-width: none; margin: 0 auto; padding: 20px 0; text-align: center; }
 .store-hero-screen + .store-section { padding-top: 46px; }
@@ -856,10 +857,20 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 /* Hero: the hoodie is a transparent cut-out that floats — no box behind it. */
 .store-hero-art { position: relative; height: clamp(320px, calc(100svh - 250px), 660px); display: grid; place-items: center; isolation: isolate; }
-.hero-glow { position: absolute; z-index: -1; width: 78%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle at 50% 45%, rgba(211,47,59,.13), rgba(211,47,59,.05) 42%, transparent 68%); filter: blur(6px); }
+.hero-glow { position: absolute; z-index: -1; width: 78%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle at 50% 45%, rgba(var(--glow, 211,47,59), .16), rgba(var(--glow, 211,47,59), .05) 42%, transparent 68%); filter: blur(6px); transition: background .8s; }
+.hero-stage { position: absolute; inset: 0; display: block; }
+.hero-slide { position: absolute; inset: 0; display: grid; place-items: center; opacity: 0; transform: translateY(26px) scale(.94); transition: opacity .7s ease, transform .8s cubic-bezier(.2,.8,.2,1); pointer-events: none; }
+.hero-slide.active { opacity: 1; transform: none; transition-delay: .28s; }
+.hero-slide.leaving { opacity: 0; transform: translateY(-26px) scale(.96); transition: opacity .3s ease, transform .45s ease; }
+.hero-dots { position: absolute; z-index: 4; left: 50%; bottom: -4px; display: flex; align-items: center; gap: 8px; transform: translateX(-50%); }
+.hero-dots button { width: 8px; height: 8px; border-radius: 999px; background: #cfc8bd; transition: width .3s, background .3s; cursor: pointer; }
+.hero-dots button.active { width: 26px; background: var(--store-red); }
+.hero-dots .hero-pause { width: 26px; height: 26px; margin-left: 6px; border-radius: 50%; background: transparent; color: var(--store-muted); }
+.hero-dots .hero-pause:hover { background: #ebe5dc; color: var(--store-ink); }
+.hero-dots .hero-pause svg { width: 12px; height: 12px; fill: currentColor; }
 .hero-float { position: relative; display: block; height: 88%; width: auto; aspect-ratio: 605 / 782; max-width: 74%; animation: hero-float 6.5s ease-in-out infinite; will-change: transform; }
 .hero-float img { width: 100%; height: 100%; object-fit: contain; display: block; filter: drop-shadow(0 34px 34px rgba(23,23,23,.22)) drop-shadow(0 8px 10px rgba(23,23,23,.10)); transition: transform .5s cubic-bezier(.2,.8,.2,1); }
-.store-hero-art:hover .hero-float img { transform: scale(1.03) rotate(-1deg); }
+.hero-stage:hover .hero-float img { transform: scale(1.03) rotate(-1deg); }
 .hero-shadow { position: absolute; bottom: 5%; width: 44%; height: 22px; border-radius: 50%; background: radial-gradient(ellipse at center, rgba(23,23,23,.26), transparent 70%); animation: hero-shadow 6.5s ease-in-out infinite; }
 .hero-art-caption { position: absolute; z-index: 3; right: 4%; bottom: 10%; color: var(--store-ink); font-size: 9px; line-height: 1.65; letter-spacing: .12em; }
 .hero-art-caption strong { color: var(--store-red); }
@@ -1119,6 +1130,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 @media (prefers-reduced-motion: reduce) {
   .hero-float, .hero-shadow, .size-chips.nudge button { animation: none; }
+  .hero-slide { transition: opacity .3s; transform: none !important; }
   .store-search-bar, .bag-drawer, .bag-drawer-scrim { transition: none; }
 }
 

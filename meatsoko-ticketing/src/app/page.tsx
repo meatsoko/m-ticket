@@ -2,10 +2,9 @@ import Link from "next/link";
 import Image from "next/image";
 import { StoreShell } from "@/components/StoreChrome";
 import MerchandiseCard from "@/components/MerchandiseCard";
+import HeroCarousel from "@/components/store/HeroCarousel";
 import { merchandiseCategories } from "@/lib/merchandise";
 import { createClient } from "@/lib/supabase/server";
-
-const heroProduct = merchandiseCategories[0].products[0];
 
 const featuredProducts = [
   merchandiseCategories[0].products[0],
@@ -38,15 +37,8 @@ export default async function Home() {
               <Link href="/shop" className="store-button">Shop merchandise <span>↗</span></Link>
               <small>MEATSOKO MERCHANDISE&nbsp; · &nbsp;THE NYAMAFEST COLLECTION</small>
             </div>
-            <Link href={`/shop/${heroProduct.slug}`} className="store-hero-art" aria-label={`${heroProduct.name} in ${heroProduct.color.toLowerCase()} — view product`}>
-              <span className="hero-glow" aria-hidden="true" />
-              <span className="hero-float">
-                <Image src="/images/merchandise/green-hoodie-nyamafest-cutout.png" alt="" width={605} height={782} priority sizes="(max-width: 760px) 70vw, 34vw" />
-              </span>
-              <span className="hero-shadow" aria-hidden="true" />
-              <span className="hero-art-caption">THE NYAMAFEST DROP<br/><strong>01 / THE HOODIE</strong></span>
-            </Link>
-        </div>
+            <HeroCarousel />
+          </div>
           <div className="store-promises" aria-label="Why shop with us"><span>Thoughtful drops</span><span>Easy Kenyan checkout</span><span>Pickup or delivery</span></div>
         </section>
 
