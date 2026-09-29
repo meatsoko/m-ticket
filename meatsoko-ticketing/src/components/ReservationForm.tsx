@@ -367,7 +367,7 @@ export default function ReservationForm({
         <p className="small">
           {provider === "mpesa"
             ? <>Enter your M-Pesa PIN to pay <strong>KSh {total.toLocaleString()}</strong>. Your pass will appear here after payment is confirmed.</>
-            : <>Complete your payment of <strong>KSh {total.toLocaleString()}</strong> in the Paystack window — M-Pesa or card. Your pass appears here once it&apos;s confirmed.</>}
+            : <>Taking you to Paystack to pay <strong>KSh {total.toLocaleString()}</strong> by card or M-Pesa. Your pass appears here once it&apos;s confirmed.</>}
         </p>
       </div>
     );

@@ -16,18 +16,9 @@
 import { json, preflight } from "../_shared/cors.ts";
 import { clientIp, normalizePhone, rateLimit, serviceClient } from "../_shared/supabase.ts";
 import { ensureFreshRate } from "../_shared/fx.ts";
+import { returnBase } from "../_shared/return-url.ts";
 
 const PER_PHONE = { limit: 6, windowSeconds: 600 };
-
-// Where Paystack sends the buyer back. The site they started on, if it is the real
-// domain or a local dev server; otherwise APP_URL. An allowlist, not the raw Origin:
-// the return URL must never be steerable to an arbitrary site. (A buyer pointing it
-// at their own localhost only affects their own browser.)
-function returnBase(req: Request, appUrl: string) {
-  const origin = req.headers.get("Origin") ?? "";
-  const allowed = [new URL(appUrl).origin, "http://localhost:3000", "http://localhost:3100"];
-  return allowed.includes(origin) ? origin : appUrl;
-}
 const PER_IP = { limit: 30, windowSeconds: 600 };
 
 // Business refusals from merch_create_order and the HTTP status each maps to.

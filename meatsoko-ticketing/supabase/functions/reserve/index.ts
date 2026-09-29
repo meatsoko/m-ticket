@@ -11,6 +11,7 @@
 import { json, preflight } from "../_shared/cors.ts";
 import { initiateStk } from "../_shared/daraja.ts";
 import { clientIp, normalizePhone, rateLimit, serviceClient } from "../_shared/supabase.ts";
+import { returnBase } from "../_shared/return-url.ts";
 import { notifyOrganizer } from "../_shared/notify.ts";
 import { buildAndSend } from "../_shared/reservation-email.ts";
 
@@ -233,7 +234,7 @@ Deno.serve(async (req) => {
           body: JSON.stringify({
             email: guestEmail, amount: Math.round(amount * 100), currency: "KES", reference,
             // No `channels` list: Paystack offers every method enabled on the account (card, M-Pesa and the rest).
-            callback_url: `${appUrl}/e/${encodeURIComponent((ev as any)?.slug ?? "")}?payment=paystack&flow=reservation`,
+            callback_url: `${returnBase(req, appUrl)}/e/${encodeURIComponent((ev as any)?.slug ?? "")}?payment=paystack&flow=reservation`,
             metadata: { order_id: res.order_id, event_id, reservation_id: res.reservation_id },
           }),
         });

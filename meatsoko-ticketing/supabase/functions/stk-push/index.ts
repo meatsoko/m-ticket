@@ -8,6 +8,7 @@
 import { json, preflight } from "../_shared/cors.ts";
 import { describeDarajaConfig, initiateStk } from "../_shared/daraja.ts";
 import { clientIp, normalizePhone, rateLimit, serviceClient } from "../_shared/supabase.ts";
+import { returnBase } from "../_shared/return-url.ts";
 
 // NFR-5. Generous enough for a real buyer retrying a failed PIN, tight enough that the
 // endpoint can't be used to spray PIN prompts at arbitrary numbers with our shortcode.
@@ -212,7 +213,7 @@ Deno.serve(async (req) => {
           body: JSON.stringify({
             email: String(buyerEmail).trim(), amount: Math.round(amount * 100), currency: "KES",
             // No `channels` list: Paystack offers every method enabled on the account (card, M-Pesa and the rest).
-            reference, callback_url: `${appUrl}/e/${encodeURIComponent(evForReturn?.slug ?? "")}?payment=paystack`,
+            reference, callback_url: `${returnBase(req, appUrl)}/e/${encodeURIComponent(evForReturn?.slug ?? "")}?payment=paystack`,
             metadata: { order_id: order.id, event_id },
           }),
         });

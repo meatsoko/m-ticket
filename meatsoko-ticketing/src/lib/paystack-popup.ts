@@ -5,6 +5,13 @@
 
 const SRC = "https://js.paystack.co/v2/inline.js";
 
+// Off by default: checkout goes to Paystack's hosted page, which shows every payment
+// method on the account (the popup was not showing card). Every caller already falls
+// back to the hosted page when openPaystackPopup() returns false, so this one switch
+// covers merchandise, tickets and reservations. Set NEXT_PUBLIC_PAYSTACK_POPUP=on to
+// bring the popup back.
+const POPUP_ENABLED = process.env.NEXT_PUBLIC_PAYSTACK_POPUP === "on";
+
 export type PaystackSuccess = { reference: string; status?: string; trxref?: string };
 type Callbacks = {
   onSuccess: (tx: PaystackSuccess) => void;
@@ -33,6 +40,7 @@ export function loadPaystack(timeoutMs = 8000): Promise<any | null> {
 
 /** Open the popup. Returns false if Paystack's script is unavailable, so the caller can redirect instead. */
 export async function openPaystackPopup(accessCode: string, callbacks: Callbacks): Promise<boolean> {
+  if (!POPUP_ENABLED) return false;
   const PaystackPop = await loadPaystack();
   if (!PaystackPop) return false;
   try {

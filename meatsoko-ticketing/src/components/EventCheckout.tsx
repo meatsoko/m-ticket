@@ -230,7 +230,7 @@ export default function EventCheckout({
         <h2>{provider === "mpesa" ? "Check your phone" : "Opening Paystack"}</h2>
         <p className="small">{provider === "mpesa"
           ? <>Enter your M-Pesa PIN to pay <strong>KSh {total.toLocaleString()}</strong>. This page updates on its own — don&apos;t close it.</>
-          : <>Complete your payment of <strong>KSh {total.toLocaleString()}</strong> in the Paystack window — M-Pesa or card.</>}</p>
+          : <>Taking you to Paystack to pay <strong>KSh {total.toLocaleString()}</strong> by card or M-Pesa…</>}</p>
       </div>
     );
   }
