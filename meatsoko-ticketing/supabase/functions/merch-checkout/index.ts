@@ -130,8 +130,7 @@ Deno.serve(async (req) => {
         email,
         amount: Math.round(Number(order.total_kes) * 100),   // KES in cents
         currency: "KES",
-        // Kenyan buyers pay by M-Pesa or card; hiding the rest keeps Paystack's screen short.
-        channels: ["mobile_money", "card"],
+        // No `channels` list: Paystack offers every method enabled on the account (card, M-Pesa and the rest).
         reference: order.paystack_reference,
         callback_url: `${returnBase(req, appUrl)}/checkout/complete`,   // Paystack appends ?reference=
         metadata: { kind: "merch", order_id: order.order_id, order_number: order.order_number },

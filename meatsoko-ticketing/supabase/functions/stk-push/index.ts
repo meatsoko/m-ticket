@@ -211,8 +211,7 @@ Deno.serve(async (req) => {
           headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
           body: JSON.stringify({
             email: String(buyerEmail).trim(), amount: Math.round(amount * 100), currency: "KES",
-            // Same as merchandise: M-Pesa or card only, which keeps Paystack's screen short.
-            channels: ["mobile_money", "card"],
+            // No `channels` list: Paystack offers every method enabled on the account (card, M-Pesa and the rest).
             reference, callback_url: `${appUrl}/e/${encodeURIComponent(evForReturn?.slug ?? "")}?payment=paystack`,
             metadata: { order_id: order.id, event_id },
           }),
