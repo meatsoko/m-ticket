@@ -49,6 +49,8 @@ export default function EventSettings({ event }: { event: any }) {
     venue: event.venue ?? "",
     description: event.description ?? "",
     banner_url: event.banner_url ?? "",
+    lineup: event.lineup ?? "",
+    table_plan_url: event.table_plan_url ?? "",
     starts_at: toLocalInput(event.starts_at),
     ends_at: toLocalInput(event.ends_at),
     doors_open_at: toLocalInput(event.doors_open_at),
@@ -75,6 +77,8 @@ export default function EventSettings({ event }: { event: any }) {
       venue: f.venue.trim(),
       description: f.description,
       banner_url: f.banner_url.trim() || null,
+      lineup: f.lineup.trim() || null,
+      table_plan_url: f.table_plan_url.trim() || null,
       starts_at: fromLocalInput(f.starts_at),
       ends_at: fromLocalInput(f.ends_at),
       doors_open_at: fromLocalInput(f.doors_open_at),
@@ -216,6 +220,16 @@ export default function EventSettings({ event }: { event: any }) {
             <span>Banner image URL</span>
             <input placeholder="https://…" value={f.banner_url}
               onChange={(e) => set("banner_url", e.target.value)} />
+          </label>
+          <label className="field">
+            <span>Lineup (one act per line, optional)</span>
+            <textarea rows={4} placeholder={"DJ …\nLive band …"} value={f.lineup}
+              onChange={(e) => set("lineup", e.target.value)} />
+          </label>
+          <label className="field">
+            <span>Table plan image URL (optional)</span>
+            <input placeholder="https://…" value={f.table_plan_url}
+              onChange={(e) => set("table_plan_url", e.target.value)} />
           </label>
           <div className="row" style={{ gap: 8 }}>
             <label className="field" style={{ flex: 1 }}>

@@ -4,7 +4,10 @@ import AppShell from "@/components/AppShell";
 import Icon from "@/components/Icon";
 import EventCheckout from "@/components/EventCheckout";
 import ReservationForm from "@/components/ReservationForm";
-import GeneralAdmissionForm from "@/components/GeneralAdmissionForm";
+import GetTicketsPanel from "@/components/GetTicketsPanel";
+import ShareBar from "@/components/event/ShareBar";
+import EventTabs from "@/components/event/EventTabs";
+import { SUPPORT } from "@/lib/support";
 import type { UpgradeOption } from "@/components/TableUpgrade";
 import { GA_PREVIEW, GA_PREVIEW_TYPE_ID } from "@/lib/ga-preview";
 import EarlyBirdCountdown from "@/components/EarlyBirdCountdown";
@@ -79,6 +82,10 @@ export default async function EventPage({ params }: { params: { slug: string } }
     ? ev.description.split("|").map((z: string) => z.trim()).filter(Boolean)
     : [];
   const blurb = zones.length ? "" : (ev.description ?? "");
+  const timeLabel = `${fmt(ev.starts_at, { hour: "numeric", minute: "2-digit", hour12: true })}${
+    ev.slug === "nyamafest-main" ? " till dawn"
+      : ev.ends_at && ev.ends_at !== ev.starts_at ? ` – ${fmt(ev.ends_at, { hour: "numeric", minute: "2-digit", hour12: true })}` : ""}`;
+  const pageUrl = `${(process.env.NEXT_PUBLIC_APP_URL ?? "https://event.meatsokogroup.com").replace(/\/$/, "")}/e/${ev.slug}`;
 
   return (
     <AppShell transparentBar wideEvent>
@@ -125,21 +132,43 @@ export default async function EventPage({ params }: { params: { slug: string } }
               </span>
             </div>
 
-            {zones.length > 0 && (
-              <div className="stack tight event-zones-panel">
-                <span className="eyebrow">What&apos;s inside</span>
-                <div className="scroller">
-                  {zones.map((z: string) => <span className="pill" key={z}>{z}</span>)}
-                </div>
-              </div>
-            )}
+            {/* What, where, how you get in — the questions a buyer has before paying. */}
+            <dl className="event-facts">
+              <div><dt>When</dt><dd>{fmt(ev.starts_at, { weekday: "short", day: "numeric", month: "short" })} · {timeLabel}</dd></div>
+              <div><dt>Where</dt><dd>{ev.venue || "Nairobi"}</dd></div>
+              <div><dt>Entry</dt><dd>QR scan at the gate</dd></div>
+            </dl>
+            <div className="event-trust">
+              {gaType && <span>Free entry</span>}
+              <span>Instant QR</span>
+              <span>M-Pesa &amp; card</span>
+              <a href={SUPPORT.whatsapp} target="_blank" rel="noopener noreferrer">Help: {SUPPORT.display}</a>
+            </div>
+            <ShareBar url={pageUrl} title={ev.name} />
 
-            {blurb && <p className="small event-description">{blurb}</p>}
+            <EventTabs
+              eventName={ev.name}
+              lineup={ev.lineup}
+              venue={ev.venue}
+              tablePlanUrl={ev.table_plan_url}
+              overview={<>
+              {zones.length > 0 && (
+                <div className="stack tight event-zones-panel">
+                  <span className="eyebrow">What&apos;s inside</span>
+                  <div className="scroller">
+                    {zones.map((z: string) => <span className="pill" key={z}>{z}</span>)}
+                  </div>
+                </div>
+              )}
+
+              {blurb && <p className="small event-description">{blurb}</p>}
+              </>}
+            />
           </section>
 
           <section className="event-booking" aria-label={isReservation ? "Reserve your place" : "Buy tickets"}>
             {isReservation && gaType ? (
-              <GeneralAdmissionForm event={ev as Event} gaTypeId={gaType.id} options={upgradeOptions}
+              <GetTicketsPanel event={ev as Event} gaTypeId={gaType.id} options={upgradeOptions}
                 preview={gaType.id === GA_PREVIEW_TYPE_ID} />
             ) : isReservation ? (
               <ReservationForm
