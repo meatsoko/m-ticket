@@ -6,6 +6,7 @@ const I = {
   overview: "M4 13h6V4H4v9Zm0 7h6v-5H4v5Zm10 0h6v-9h-6v9Zm0-16v5h6V4h-6Z",
   orders: "M5 8h14l-1 12H6L5 8Zm4 0V6a3 3 0 0 1 6 0v2",
   inventory: "M4 7l8-4 8 4v10l-8 4-8-4V7Zm0 0 8 4 8-4M12 11v10",
+  tickets: "M3 9a2 2 0 0 0 0 6v3a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-3a2 2 0 0 0 0-6V6a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v3ZM14 5v14",
   events: "M4 8V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 0 0 8v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-8Z",
   scan: "M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M7 12h10",
 };
@@ -20,6 +21,7 @@ export default function DashboardNav({ toFulfil }: { toFulfil: number }) {
     { href: "/dashboard/orders", label: "Orders", icon: I.orders, badge: toFulfil },
     { href: "/dashboard/inventory", label: "Inventory", icon: I.inventory },
     { href: "/dashboard/events", label: "Events & bookings", icon: I.events },
+    { href: "/dashboard/tickets", label: "Tickets", icon: I.tickets },
   ];
   const more = [
     // The scanner is phone-only (it needs a camera at the gate), so the link is too.
