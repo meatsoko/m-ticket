@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import NewEventForm from "@/components/dashboard/NewEventForm";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +22,7 @@ export default async function DashboardEventsPage() {
     <div className="dash-stack">
       <div className="dash-title-row">
         <div className="dash-title"><h1>Events &amp; bookings</h1><p>Every event, its bookings and settings.</p></div>
-        <NewEventForm />
+        <Link href="/dashboard/events/new" className="dash-btn primary">+ New event</Link>
       </div>
       <div className="dash-card">
         <table className="dash-table dash-events-table">

@@ -8,7 +8,6 @@ const I = {
   inventory: "M4 7l8-4 8 4v10l-8 4-8-4V7Zm0 0 8 4 8-4M12 11v10",
   events: "M4 8V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 0 0 8v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-8Z",
   scan: "M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M7 12h10",
-  store: "M4 9l1-5h14l1 5M4 9v11h16V9M4 9h16M9 20v-6h6v6",
 };
 const Icon = ({ d }: { d: string }) => (
   <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>
@@ -25,7 +24,6 @@ export default function DashboardNav({ toFulfil }: { toFulfil: number }) {
   const more = [
     // The scanner is phone-only (it needs a camera at the gate), so the link is too.
     { href: "/scan", label: "Gate scanner", icon: I.scan, phoneOnly: true },
-    { href: "/", label: "View store", icon: I.store, external: true },
   ];
   const active = (h: string, exact?: boolean) => (exact ? path === h : path === h || path.startsWith(`${h}/`));
   return (

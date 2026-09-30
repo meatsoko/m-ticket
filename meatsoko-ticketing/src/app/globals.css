@@ -1477,3 +1477,20 @@ a.dash-kpi:hover { border-color: var(--store-ink); }
 .dash .dash-toolbar-right { align-items: center; }
 .dash .dash-search { width: auto; min-width: min(300px, 100%); padding: 10px 14px; font-size: 14px; }
 .dash .dash-select { width: auto; }
+
+/* ---------- Dashboard: new event (desktop form) ---------- */
+.dash-create { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+.dash-form { gap: 14px; }
+.dash-form label { display: grid; gap: 6px; font-size: 12px; font-weight: 700; color: #4f4b46; }
+.dash .dash-form input, .dash .dash-form textarea { width: 100%; padding: 11px 13px; border: 1px solid var(--store-line); border-radius: 10px; font-size: 14px; font-weight: 400; }
+.dash .dash-form input:focus, .dash .dash-form textarea:focus { outline: none; border-color: var(--store-ink); box-shadow: 0 0 0 3px rgba(23,23,23,.07); }
+.dash-form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.dash-mode-list { display: grid; gap: 8px; }
+.dash-mode { width: 100%; display: grid; justify-content: stretch; justify-items: start; gap: 4px; padding: 14px 16px; border: 1.5px solid var(--store-line); border-radius: 12px; background: #fff; text-align: left; cursor: pointer; }
+.dash-mode strong { font-size: 14px; }
+.dash-mode span { color: var(--store-muted); font-size: 12.5px; line-height: 1.5; }
+.dash-mode:hover { border-color: #b9b3aa; }
+.dash-mode.on { border-color: var(--store-red); box-shadow: 0 0 0 3px #fbe9ea; }
+.dash-create-summary ol { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 13.5px; color: #4f4b46; }
+.dash-create-btn { width: 100%; padding: 13px 16px; font-size: 14px; }
+@media (max-width: 1100px) { .dash-create { grid-template-columns: 1fr; } }
