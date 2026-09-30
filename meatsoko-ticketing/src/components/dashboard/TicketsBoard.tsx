@@ -33,14 +33,14 @@ const localPhone = (p: string) => p?.startsWith("254") ? `0${p.slice(3)}` : p;
 const preorderLine = (p: TicketPass) => p.preorders.map((i) => `${i.qty}× ${i.name}`).join(", ");
 const isPaid = (p: TicketPass) => p.payment?.status === "paid";
 
-export default function TicketsBoard({ passes, events }: { passes: TicketPass[]; events: { id: string; name: string }[] }) {
-  const [event, setEvent] = useState("all");
+// The "Passes" tab of TicketsHub. `passes` arrive already filtered by event.
+export default function TicketsBoard({ passes }: { passes: TicketPass[] }) {
   const [kind, setKind] = useState<(typeof KINDS)[number]["id"]>("all");
   const [status, setStatus] = useState<"all" | TicketPass["status"]>("all");
   const [q, setQ] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
 
-  const inEvent = passes.filter((p) => event === "all" || p.eventId === event);
+  const inEvent = passes;
   const shown = useMemo(() => {
     const term = q.trim().toLowerCase();
     return inEvent.filter((p) => (kind === "all" || p.kind === kind) && (status === "all" || p.status === status) &&
@@ -67,14 +67,6 @@ export default function TicketsBoard({ passes, events }: { passes: TicketPass[];
 
   return (
     <div className="dash-stack">
-      <div className="dash-title-row">
-        <div className="dash-title"><h1>Tickets</h1><p>Every pass: free tickets, tables with their preorders, RSVPs and paid tickets.</p></div>
-        <select className="dash-select" value={event} onChange={(e) => setEvent(e.target.value)} aria-label="Event">
-          <option value="all">All events</option>
-          {events.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-        </select>
-      </div>
-
       <div className="dash-kpis">
         <div className="dash-kpi"><span className="dash-kpi-label">Valid passes</span><div className="dash-kpi-row"><strong>{live.length}</strong></div><small>{inEvent.length - live.length} cancelled</small></div>
         <div className="dash-kpi"><span className="dash-kpi-label">Guests covered</span><div className="dash-kpi-row"><strong>{live.reduce((s, p) => s + p.people, 0)}</strong></div><small>people these passes admit</small></div>

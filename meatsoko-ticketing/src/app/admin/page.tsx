@@ -1,8 +1,7 @@
-import { createClient } from "@/lib/supabase/server";
-import EventManager from "@/components/EventManager";
+import { redirect } from "next/navigation";
 
-export default async function AdminEventsPage() {
-  const supabase = createClient();
-  const { data: events } = await supabase.from("events").select("*").order("created_at", { ascending: false });
-  return <EventManager events={events ?? []} />;
+// Events are managed in the dashboard now (desktop-wide, store theme):
+// Events & tickets > Create event. The admin layout still requires an admin.
+export default function AdminEventsPage() {
+  redirect("/dashboard/events");
 }

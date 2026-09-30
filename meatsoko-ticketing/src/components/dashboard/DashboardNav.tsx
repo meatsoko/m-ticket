@@ -20,7 +20,10 @@ export default function DashboardNav({ toFulfil }: { toFulfil: number }) {
     { href: "/dashboard", label: "Overview", icon: I.overview, exact: true },
     { href: "/dashboard/orders", label: "Orders", icon: I.orders, badge: toFulfil },
     { href: "/dashboard/inventory", label: "Inventory", icon: I.inventory },
-    { href: "/dashboard/events", label: "Events & bookings", icon: I.events },
+  ];
+  // Events & tickets: two options, like a sub-menu.
+  const eventsGroup = [
+    { href: "/dashboard/events", label: "Create event", icon: I.events },
     { href: "/dashboard/tickets", label: "Tickets", icon: I.tickets },
   ];
   const more = [
@@ -34,6 +37,12 @@ export default function DashboardNav({ toFulfil }: { toFulfil: number }) {
         <Link key={l.href} href={l.href} aria-current={active(l.href, l.exact) ? "page" : undefined}>
           <Icon d={l.icon} /><span>{l.label}</span>
           {!!l.badge && <b className="dash-nav-badge">{l.badge}</b>}
+        </Link>
+      ))}
+      <span className="dash-nav-group">Events &amp; tickets</span>
+      {eventsGroup.map((l) => (
+        <Link key={l.href} href={l.href} className="dash-nav-sub" aria-current={active(l.href) ? "page" : undefined}>
+          <Icon d={l.icon} /><span>{l.label}</span>
         </Link>
       ))}
       <hr />

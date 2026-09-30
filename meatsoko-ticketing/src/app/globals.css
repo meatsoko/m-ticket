@@ -1524,3 +1524,29 @@ a.dash-kpi:hover { border-color: var(--store-ink); }
 .dash-drawer-actions { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 12px; border-top: 1px solid var(--store-line); }
 .dash-confirm { display: grid; gap: 8px; width: 100%; padding: 12px; background: #fbe9ea; border-radius: 12px; }
 .dash-confirm p { margin: 0; font-size: 13px; }
+
+/* ---------- Dashboard: nav group, tickets hub ---------- */
+.dash-nav-group { margin: 14px 0 4px; padding: 0 12px; font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--store-muted); }
+.dash-nav a.dash-nav-sub { padding-left: 22px; }
+.dash-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--store-line); }
+.dash-tabs button { display: inline-flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 2px solid transparent; color: var(--store-muted); font-size: 14px; font-weight: 800; cursor: pointer; }
+.dash-tabs button.on { color: var(--store-ink); border-bottom-color: var(--store-red); }
+.dash-tabs .dash-nav-badge { margin-left: 0; }
+.dash-kpi.warn { border-color: var(--store-red); }
+.dash-kpi.warn strong { color: var(--store-red); }
+.dash-feed { list-style: none; margin: 0; padding: 0; display: grid; }
+.dash-feed li { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto 120px; gap: 14px; align-items: center; padding: 12px 4px; border-bottom: 1px solid #f0ece6; }
+.dash-feed li:last-child { border-bottom: 0; }
+.dash-feed li div { display: grid; gap: 2px; min-width: 0; }
+.dash-feed strong { font-size: 14px; }
+.dash-feed small { color: var(--store-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-feed time { color: var(--store-muted); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+.dash-feed-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--store-muted); }
+.dash-feed-kind { padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 800; background: #eeeae4; color: var(--store-ink); }
+.a-booked { --c: #2f6fb3; } .a-paid { --c: #2f7a4a; } .a-upgraded { --c: #8a5a00; } .a-in { --c: #171717; } .a-refund { --c: #77736e; } .a-flag { --c: #d32f3b; }
+.dash-feed-dot.a-booked, .dash-feed-dot.a-paid, .dash-feed-dot.a-upgraded, .dash-feed-dot.a-in, .dash-feed-dot.a-refund, .dash-feed-dot.a-flag { background: var(--c); }
+.dash-feed-kind.a-booked, .dash-feed-kind.a-paid, .dash-feed-kind.a-upgraded, .dash-feed-kind.a-in, .dash-feed-kind.a-refund, .dash-feed-kind.a-flag { color: var(--c); background: color-mix(in srgb, var(--c) 12%, #fff); }
+.dash-badge.pay-paid { background: #e3f0e7; color: #2f7a4a; }
+.dash-refund-step { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--store-line); }
+.dash-refund-step p { margin: 0; }
+@media (max-width: 760px) { .dash-feed li { grid-template-columns: 12px minmax(0, 1fr); } .dash-feed-kind, .dash-feed time { display: none; } }
