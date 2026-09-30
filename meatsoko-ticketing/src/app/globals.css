@@ -632,6 +632,10 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .checkout-selected-product > div:last-child > span:last-child { color: var(--store-muted); font-size: 12px; }
 @media (min-width: 900px) {
   .app.wide-event-shell {
+    /* The desktop event layout is light-only: re-apply the text colour here,
+       or it is inherited from <body>, computed with the dark-mode --ink. */
+    color: var(--ink);
+    color-scheme: light;
     --bg: #f6f3ed;
     --surface: #fff;
     --surface-2: #f0ede7;
@@ -1344,4 +1348,60 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .dash-order-who { grid-column: 1 / -1; grid-row: 2; }
   .dash-order-badges { grid-column: 1 / -1; justify-items: start; }
   .dash-order-grid { grid-template-columns: 1fr; gap: 0; }
+}
+
+/* ---------- Event page: facts, trust strip, share bar, tabs ---------- */
+.event-facts { margin: 0; display: grid; gap: 10px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+.event-facts > div { display: grid; grid-template-columns: 64px 1fr; gap: 10px; align-items: baseline; }
+.event-facts dt { font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.event-facts dd { margin: 0; font-weight: 700; }
+.event-trust { display: flex; flex-wrap: wrap; gap: 6px; }
+.event-trust > * { padding: 5px 10px; border-radius: 999px; background: var(--ember-soft); color: var(--ember); font-size: 12px; font-weight: 800; text-decoration: none; }
+.event-trust a { background: var(--surface); color: var(--ink); border: 1px solid var(--line); }
+.share-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; }
+.share-bar > span { color: var(--muted); font-weight: 700; margin-right: 4px; }
+.share-bar a, .share-bar button { min-height: 0; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-size: 12px; font-weight: 700; text-decoration: none; cursor: pointer; }
+.share-bar a:hover, .share-bar button:hover { border-color: var(--ember); color: var(--ember); }
+.event-tabs { display: grid; gap: 14px; }
+.event-tab-list { display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
+.event-tab-list button { min-height: 0; padding: 10px 14px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--muted); font-size: 14px; font-weight: 700; cursor: pointer; }
+.event-tab-list button.on { color: var(--ink); border-bottom-color: var(--ember); }
+.event-lineup { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.event-lineup li { padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; font-weight: 700; }
+.event-venue { display: grid; gap: 10px; }
+.event-table-plan { width: 100%; border-radius: 14px; border: 1px solid var(--line); }
+
+/* ---------- Get tickets panel ---------- */
+.ticket-panel { display: grid; gap: 14px; padding: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow-1); }
+.ticket-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.ticket-panel-head h2 { margin: 0; font-size: 1.35rem; letter-spacing: -.02em; }
+.ticket-badges { display: flex; gap: 6px; }
+.ticket-badges span { padding: 4px 9px; border-radius: 999px; background: var(--ok-soft); color: var(--ok); font-size: 11px; font-weight: 800; }
+.ticket-options { display: grid; gap: 8px; }
+.ticket-option { width: 100%; min-height: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px; border: 1.5px solid var(--line); border-radius: 12px; background: var(--bg, #fff); color: var(--ink); text-align: left; font: inherit; cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+.ticket-option:hover { border-color: var(--ink-2); }
+.ticket-option.on { border-color: var(--ember); box-shadow: 0 0 0 3px var(--ember-soft); }
+.ticket-option-main { display: grid; gap: 3px; min-width: 0; }
+.ticket-option-main strong { font-size: 15px; }
+.ticket-option-main small { color: var(--muted); font-size: 12.5px; }
+.ticket-option-price { display: grid; justify-items: end; gap: 1px; flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+.ticket-option-price strong { color: var(--ember); font-size: 16px; }
+.ticket-option-price em { font-style: normal; font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--ok); }
+.ticket-option-price s { color: var(--muted); font-size: 12px; }
+.ticket-panel-hint { margin: 0; padding: 14px; text-align: center; color: var(--muted); font-size: 13px; border: 1px dashed var(--line); border-radius: 12px; }
+.ticket-buyer { display: grid; gap: 10px; padding-top: 4px; border-top: 1px dashed var(--line); }
+.ticket-section-label { margin-top: 8px; font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.ticket-delivery-note { margin: 0; color: var(--muted); }
+.ticket-agree { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; cursor: pointer; }
+.ticket-agree input { width: 18px; height: 18px; min-height: 0; margin: 2px 0 0; accent-color: var(--ember); }
+.ticket-agree a { color: var(--ember); font-weight: 700; }
+.ticket-total { display: flex; justify-content: space-between; align-items: baseline; padding-top: 12px; border-top: 1px solid var(--line); }
+.ticket-total span { color: var(--muted); font-size: 13px; }
+.ticket-total strong { font-size: 1.4rem; font-variant-numeric: tabular-nums; }
+.ticket-pay-note { margin: 0; text-align: center; color: var(--muted); }
+.ticket-mobile-bar { display: none; }
+@media (max-width: 760px) {
+  /* A reminder of the pick at the bottom of the screen; tapping it returns to the panel. */
+  .ticket-mobile-bar { position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 40; display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 16px; border-radius: 999px; background: var(--ink); color: var(--bg, #fff); font-size: 14px; text-decoration: none; box-shadow: var(--shadow-2); }
+  .ticket-mobile-bar strong { color: var(--ember); }
 }

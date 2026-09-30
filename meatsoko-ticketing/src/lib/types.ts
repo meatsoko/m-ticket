@@ -12,6 +12,10 @@ export type Event = {
   doors_open_at?: string | null;
   contact_phone?: string | null;
   contact_email?: string | null;
+  /** One act per line; the event page shows a Lineup tab when set. */
+  lineup?: string | null;
+  /** Venue/table layout image; the event page shows a Table plan tab when set. */
+  table_plan_url?: string | null;
   /** False while M-Pesa provisioning is pending: preorders show but can't be bought. */
   payments_enabled?: boolean;
 };

@@ -14,6 +14,7 @@ import { clientIp, normalizePhone, rateLimit, serviceClient } from "../_shared/s
 import { returnBase } from "../_shared/return-url.ts";
 import { notifyOrganizer } from "../_shared/notify.ts";
 import { buildAndSend } from "../_shared/reservation-email.ts";
+import { startTableUpgrade } from "../_shared/table-upgrade.ts";
 
 // NFR-5. A reservation is cheap to submit, so the abuse surface is real; a
 // genuine guest correcting their party size needs a few attempts.
@@ -48,6 +49,9 @@ Deno.serve(async (req) => {
       event_id, guest_name, phone, email,
       accompanying_guests = 0, expected_arrival, preorders = [],
       reservation_type_id,
+      // General Admission events: a table chosen in the same step. The free
+      // ticket is created first, then upgraded — see "Table in one step" below.
+      table_type_id,
       provider = "mpesa",
       // Set by the guest answering "this is a separate booking" to the warning
       // below. A deliberate choice, so it is theirs to make and not ours.
@@ -72,6 +76,8 @@ Deno.serve(async (req) => {
       ? expected_arrival : null;
     if (!Array.isArray(preorders)) return fail("bad_preorders", 400);
     if (provider !== "mpesa" && provider !== "paystack") return fail("bad_provider", 400);
+    const tableTypeId = typeof table_type_id === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(table_type_id) ? table_type_id : null;
 
     const db = serviceClient();
 
@@ -231,6 +237,25 @@ Deno.serve(async (req) => {
         }
       ).catch((e) => console.error("notify failed", e));
 
+      // Table in one step. Only for a booking CREATED by this request: we hold its
+      // pass token legitimately, exactly as the pass holder would. An existing
+      // booking matched by phone + email is never upgraded here (that is the
+      // takeover the pass-token rule prevents) — its owner upgrades from the pass.
+      let upgrade: Record<string, unknown> | undefined;
+      if (tableTypeId) {
+        stage = "paystack_init";
+        if (res.result !== "created") {
+          upgrade = { error: "existing_booking" };
+        } else {
+          const out = await startTableUpgrade(db, req, res.access_token, tableTypeId);
+          upgrade = out.ok
+            ? { authorizationUrl: out.authorizationUrl, accessCode: out.accessCode, reference: out.reference,
+                amount_kes: out.amount_kes, type_name: out.type_name, party_size: out.party_size }
+            : { error: out.error, ...(out.extra ?? {}) };
+          log("table in one step", { number: res.reservation_number, ok: out.ok, ...(out.ok ? {} : { error: out.error }) });
+        }
+      }
+
       stage = "done";
       return json({
         reservation_number: res.reservation_number,
@@ -240,6 +265,7 @@ Deno.serve(async (req) => {
         amount_kes: 0,
         payment_required: false,
         emailed,
+        ...(upgrade ? { upgrade } : {}),
         request_id: rid,
       });
     }
