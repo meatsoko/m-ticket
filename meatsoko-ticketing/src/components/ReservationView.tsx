@@ -116,7 +116,8 @@ export default function ReservationView({ token }: { token: string }) {
       )}
       {r.event?.contact_phone && (
         <p className="small" style={{ textAlign: "center" }}>
-          Questions? <a href={`tel:${r.event.contact_phone}`}>{r.event.contact_phone}</a>
+          Questions? Call <a href={`tel:${String(r.event.contact_phone).replace(/[^\d+]/g, "")}`}>{r.event.contact_phone}</a>
+          {" "}or <a href={`https://wa.me/${String(r.event.contact_phone).replace(/\D/g, "").replace(/^0/, "254")}`} target="_blank" rel="noopener noreferrer">WhatsApp</a>
         </p>
       )}
     </div>

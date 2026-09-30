@@ -5,6 +5,7 @@
 // Merchandise references are "MS" + 32 hex. Ticket/reservation references are "MT"
 // + 32 hex and never reach this file — paystack-webhook routes on the prefix.
 import { serviceClient } from "./supabase.ts";
+import { SUPPORT } from "./support.ts";
 import { escapeHtml as esc, sendEmail } from "./resend.ts";
 
 export const MERCH_REFERENCE = /^MS[a-f0-9]{32}$/;
@@ -136,6 +137,9 @@ export async function sendMerchOrderEmail(db: Db, orderId: string): Promise<{ se
   </p>
   <p style="font-size:13px;color:#77736e">Keep your order number — you may be asked for it at pickup.<br>
     <a href="${esc(url)}" style="color:#d32f3b">${esc(url)}</a></p>
+  <p style="font-size:13px;color:#77736e">Questions? Call or WhatsApp
+    <a href="${SUPPORT.tel}" style="color:#d32f3b">${SUPPORT.display}</a>
+    (<a href="${SUPPORT.whatsapp}" style="color:#d32f3b">WhatsApp</a>).</p>
 </div>`;
 
   const text = [
@@ -145,6 +149,7 @@ export async function sendMerchOrderEmail(db: Db, orderId: string): Promise<{ se
     `  ${delivery}: ${deliveryFee}`,
     `  Total: ${usd(o.total_usd)} (charged by Paystack as ${kes(o.total_kes)})`, "",
     `Track your order: ${url}`,
+    `Questions? Call or WhatsApp ${SUPPORT.display}`,
   ].join("\n");
 
   return sendEmail({ to: o.email, subject: `Your MeatSoko order ${o.order_number}`, html, text });

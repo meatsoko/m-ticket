@@ -1238,3 +1238,6 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .hero-actions { gap: 10px; }
   .store-hero-copy .hero-actions .store-button { min-width: 0; flex: 1 1 150px; }
 }
+
+.order-support { margin: 22px 0 0; color: var(--store-muted); font-size: 13px; }
+.order-support a { color: var(--store-red); font-weight: 700; }

@@ -101,7 +101,7 @@ export async function sendReservationEmail(
       (3, 7 or 10 people). Same booking, same QR code.</p>
     <a href="${esc(r.upgradeUrl)}" style="color:#D1481F;font-weight:700">Upgrade to a table</a>
   </div>` : ""}
-  ${r.contactPhone ? `<p style="font-size:13px;color:#6E615A">Questions? ${esc(r.contactPhone)}</p>` : ""}
+  ${r.contactPhone ? `<p style="font-size:13px;color:#6E615A">Questions? Call or WhatsApp ${esc(r.contactPhone)}</p>` : ""}
 </div>`;
 
   const text = [

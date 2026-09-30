@@ -2,6 +2,7 @@ import Link from "next/link";
 import BagProvider from "@/components/store/BagProvider";
 import BagDrawer, { BagButton } from "@/components/store/BagDrawer";
 import StoreSearch from "@/components/store/StoreSearch";
+import { SUPPORT } from "@/lib/support";
 
 export function StoreHeader() {
   return (
@@ -64,7 +65,7 @@ export function StoreFooter() {
             <p>Good things for good gatherings.</p>
           </div>
           <div><strong>SHOP</strong><Link href="/shop">All merchandise</Link><Link href="/shop#hoodies">Hoodies</Link><Link href="/shop#t-shirts">T-shirts &amp; polos</Link><Link href="/shop#headwear">Headwear</Link><Link href="/shop#workwear">Overalls &amp; dust coats</Link><Link href="/shop#partnerships">Partnerships</Link></div>
-          <div><strong>HELP</strong><Link href="/cart">Your bag</Link><Link href="/lookup">Find my pass</Link><Link href="/checkout">Checkout</Link></div>
+          <div><strong>HELP</strong><Link href="/cart">Your bag</Link><Link href="/lookup">Find my pass</Link><Link href="/checkout">Checkout</Link><a href={SUPPORT.tel}>Call {SUPPORT.display}</a><a href={SUPPORT.whatsapp} target="_blank" rel="noopener noreferrer">WhatsApp us</a></div>
           <div><strong>EVENTS</strong><Link href="/events">Upcoming events</Link><Link href="/events">Tickets</Link></div>
         </div>
       </div>

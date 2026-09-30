@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
 import { useBag } from "./BagProvider";
 import { formatPrice } from "@/lib/merchandise";
+import { SUPPORT } from "@/lib/support";
 
 type OrderItem = { product_name: string; color: string; size: string; sku: string; qty: number; unit_price_usd: number };
 export type MerchOrder = {
@@ -71,7 +72,7 @@ export default function OrderView({ reference, token }: { reference?: string; to
     return <div className="order-panel order-loading"><span className="order-spinner" aria-hidden="true" /><p>{reference ? "Confirming your payment…" : "Loading your order…"}</p></div>;
   }
   if (state === "not_found") {
-    return <div className="order-panel"><h2>We couldn’t find that order</h2><p>Check the link in your confirmation email, or contact us with your order number.</p><Link href="/shop" className="store-button">Back to the shop <span>↗</span></Link></div>;
+    return <div className="order-panel"><h2>We couldn’t find that order</h2><p>Check the link in your confirmation email, or call or WhatsApp us on <a href={SUPPORT.tel}>{SUPPORT.display}</a> with your order number.</p><Link href="/shop" className="store-button">Back to the shop <span>↗</span></Link></div>;
   }
   if (state === "error" || !order) {
     return <div className="order-panel"><h2>Something went wrong</h2><p>We couldn’t load your order just now. Please refresh in a moment.</p></div>;
@@ -87,7 +88,7 @@ export default function OrderView({ reference, token }: { reference?: string; to
         {status === "pending" && <><span className="store-eyebrow">ORDER {order.order_number}</span><h2>Waiting for payment confirmation</h2><p>This usually takes a few seconds. If you’ve paid, you’ll get a confirmation email as soon as Paystack tells us — you can safely close this page.</p></>}
         {status === "failed" && <><span className="store-eyebrow">ORDER {order.order_number}</span><h2>Your payment didn’t go through</h2><p>Nothing was charged. Your bag is still saved — you can try again.</p><Link href="/checkout" className="store-button">Back to checkout <span>→</span></Link></>}
         {status === "flagged" && <><span className="store-eyebrow">ORDER {order.order_number}</span><h2>We’re checking your order</h2><p>Your payment reached us, but something needs a quick look from our team. We’ll contact you by email — you don’t need to pay again.</p></>}
-        {status === "refunded" && <><span className="store-eyebrow">ORDER {order.order_number}</span><h2>This order was refunded</h2><p>If you have questions about the refund, contact us with your order number.</p></>}
+        {status === "refunded" && <><span className="store-eyebrow">ORDER {order.order_number}</span><h2>This order was refunded</h2><p>Questions about the refund? Call or WhatsApp <a href={SUPPORT.tel}>{SUPPORT.display}</a> with your order number.</p></>}
       </div>
 
       {status === "paid" && order.fulfilment_status !== "cancelled" && (
@@ -122,6 +123,10 @@ export default function OrderView({ reference, token }: { reference?: string; to
           {reference && <Link href={`/order/${order.access_token}`} className="store-back-link">Bookmark your order page →</Link>}
         </section>
       </div>
+      <p className="order-support">
+        Questions about your order? Call or WhatsApp{" "}
+        <a href={SUPPORT.tel}>{SUPPORT.display}</a> · <a href={SUPPORT.whatsapp} target="_blank" rel="noopener noreferrer">Chat on WhatsApp</a>
+      </p>
       <Link href="/shop" className="store-back-link">← Continue shopping</Link>
     </div>
   );
