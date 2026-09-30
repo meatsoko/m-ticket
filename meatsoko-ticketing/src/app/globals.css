@@ -1651,3 +1651,46 @@ a.dash-kpi:hover { border-color: var(--store-ink); }
    the food band (goat, chicken, fire) behind the title, not the poster's own
    lettering. Scoped to this image so other event banners stay centred. */
 .hero img[src*="nyamafest-hero"] { object-position: center 64%; }
+
+/* ---------- Home hero: the next event as a ticket card in the slideshow ---------- */
+.hero-slide-ticket { container-type: size; }
+.event-ticket {
+  --tk-green: #133d26; --tk-green-2: #1f6b3a; --tk-gold: #d9b24a; --tk-cream: #f4efe3;
+  position: relative; display: grid; grid-template-rows: 47% 1fr auto; gap: 1.6cqh;
+  height: min(94cqh, 600px); aspect-ratio: .53; max-width: 92cqw; padding: 1.6cqh;
+  background: radial-gradient(120% 60% at 80% 0%, rgba(217,178,74,.18), transparent 60%), linear-gradient(165deg, var(--tk-green-2), var(--tk-green) 58%, #0c2a19);
+  color: var(--tk-cream); border-radius: 6px; font-family: Arial, Helvetica, sans-serif;
+  box-shadow: 0 30px 50px rgba(19,61,38,.32), 0 8px 14px rgba(23,23,23,.14);
+  animation: hero-float 6.5s ease-in-out infinite; will-change: transform; transition: transform .35s ease, box-shadow .35s ease;
+}
+.hero-stage:hover .event-ticket { box-shadow: 0 36px 60px rgba(19,61,38,.42), 0 10px 16px rgba(23,23,23,.16); }
+.event-ticket-photo { position: relative; overflow: hidden; border-radius: 3px; background: #0c2a19; }
+.event-ticket-photo img, .event-ticket-photo-fallback { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 62%; }
+/* The NyamaFest poster carries its own logo; zoom into the food so the card's
+   title isn't repeated by the photo above it. */
+.event-ticket-photo img[src*="nyamafest-hero"] { transform: scale(2.3); transform-origin: 50% 78%; }
+.event-ticket-photo-fallback { background: radial-gradient(circle at 40% 60%, #c2410c, #7c2d12 45%, #0c2a19 80%); }
+.event-ticket-photo::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 55%, rgba(12,42,25,.55)); }
+.event-ticket-repeat { position: absolute; z-index: 1; top: -1cqh; bottom: 0; right: 3%; overflow: hidden; writing-mode: vertical-rl; font-size: 2.6cqh; font-weight: 900; line-height: .95; letter-spacing: -.02em; color: rgba(255,255,255,.5); mix-blend-mode: soft-light; white-space: normal; width: 4.2cqh; word-break: break-all; }
+.event-ticket-gem { position: absolute; z-index: 2; top: 4%; right: 6%; width: 5.4cqh; height: 5.4cqh; transform: rotate(45deg); border: .45cqh solid #0c2a19; background: linear-gradient(135deg, #b8f3ff, #f6d7ff 35%, #fff2b0 60%, #9ee7c9); box-shadow: 0 2px 6px rgba(0,0,0,.25); }
+.event-ticket-body { display: grid; align-content: start; gap: 1.2cqh; padding: 0 1.4cqh; min-height: 0; }
+.event-ticket-title { display: grid; font-size: 9.2cqh; font-weight: 900; line-height: .86; letter-spacing: -.035em; text-transform: uppercase; color: var(--tk-cream); text-shadow: 0 2px 0 rgba(0,0,0,.18); }
+.event-ticket-title span:last-child { color: var(--tk-gold); }
+.event-ticket-sub { font-size: 1.45cqh; font-weight: 800; letter-spacing: .1em; color: var(--tk-gold); }
+.event-ticket-when { display: flex; justify-content: space-between; align-items: flex-end; gap: 1cqh; margin-top: auto; font-size: 1.55cqh; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; line-height: 1.35; color: rgba(244,239,227,.86); }
+.event-ticket-date { display: grid; justify-items: end; flex: 0 0 auto; }
+.event-ticket-date b { font-size: 4.6cqh; font-weight: 900; letter-spacing: -.03em; line-height: 1; color: var(--tk-gold); }
+.event-ticket-date small { font-size: 1.5cqh; }
+.event-ticket-stub { position: relative; display: flex; justify-content: space-between; align-items: flex-end; gap: 1.2cqh; padding: 1.6cqh 1.8cqh; border-radius: 4px; background: var(--tk-gold); color: #0f2d1c; outline: .35cqh dashed rgba(15,45,28,.45); outline-offset: -.9cqh; }
+.event-ticket-stub > span:first-child { display: grid; gap: .8cqh; }
+.event-ticket-stub small { font-size: 1.35cqh; font-weight: 800; letter-spacing: .06em; }
+.event-ticket-barcode { display: block; width: 12cqh; height: 4.2cqh; background: repeating-linear-gradient(90deg, #0f2d1c 0 .35cqh, transparent .35cqh .6cqh, #0f2d1c .6cqh .75cqh, transparent .75cqh 1.2cqh, #0f2d1c 1.2cqh 1.75cqh, transparent 1.75cqh 2.05cqh); }
+.event-ticket-cta { display: grid; justify-items: end; gap: .4cqh; text-align: right; }
+.event-ticket-cta b { font-size: 3.1cqh; font-weight: 900; letter-spacing: -.02em; line-height: 1; }
+.hero-dots .hero-dot-ticket { width: 14px; height: 9px; border-radius: 2px; background: #1f6b3a; opacity: .45; }
+.hero-dots .hero-dot-ticket.active { width: 30px; opacity: 1; background: #1f6b3a; }
+.store-hero-art.on-event .hero-shadow { background: radial-gradient(ellipse at center, rgba(19,61,38,.3), transparent 70%); }
+.store-hero-art.on-event .hero-art-caption strong { color: #1f6b3a; }
+@media (prefers-reduced-motion: reduce) { .event-ticket { animation: none; } }
+/* Phones: the caption would sit on the ticket's stub, and the ticket says it all. */
+@media (max-width: 760px) { .store-hero-art.on-event .hero-art-caption { display: none; } }
