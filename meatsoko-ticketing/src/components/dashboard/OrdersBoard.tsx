@@ -83,7 +83,10 @@ export default function OrdersBoard({ orders }: { orders: DashOrder[] }) {
               onClick={() => setFilter(f.id)}>{f.label}</button>
           ))}
         </div>
-        <input className="dash-search" type="search" placeholder="Search order, name, phone, email" value={q} onChange={(e) => setQ(e.target.value)} />
+        <div className="dash-toolbar-right">
+          <input className="dash-search" type="search" placeholder="Search order, name, phone, email" value={q} onChange={(e) => setQ(e.target.value)} />
+          <button type="button" className="dash-btn primary" onClick={() => exportCsv(shown)} disabled={!shown.length}>Export CSV</button>
+        </div>
       </div>
 
       {shown.length === 0 ? (
@@ -97,6 +100,30 @@ export default function OrdersBoard({ orders }: { orders: DashOrder[] }) {
       )}
     </div>
   );
+}
+
+// The orders currently shown (filter + search), for a spreadsheet. Built in the
+// browser from data the admin can already see; nothing is sent anywhere.
+function exportCsv(rows: DashOrder[]) {
+  const cell = (v: unknown) => {
+    const t = String(v ?? "");
+    // Quote everything; neutralise leading =,+,-,@ so a spreadsheet never runs it as a formula.
+    return `"${(/^[=+\-@]/.test(t) ? `'${t}` : t).replace(/"/g, '""')}"`;
+  };
+  const head = ["Order", "Placed", "Paid", "First name", "Last name", "Phone", "Email", "Items", "Delivery", "Area / address / town", "Total USD", "Total KSh", "Payment", "Fulfilment", "Notes"];
+  const lines = rows.map((o) => [
+    o.order_number, o.created_at, o.paid_at ?? "", o.first_name, o.last_name, localPhone(o.phone), o.email,
+    o.merch_order_items.map((i) => `${i.qty} x ${i.product_name} (${i.color}, ${i.size})`).join("; "),
+    o.merch_delivery_options?.label ?? o.delivery_code,
+    [o.merch_delivery_zones?.name, o.delivery_address, o.delivery_town, o.delivery_sacco].filter(Boolean).join(" · "),
+    o.total_usd, o.total_kes, o.payment_status, STATUS_LABEL[o.fulfilment_status] ?? o.fulfilment_status, o.notes ?? "",
+  ].map(cell).join(","));
+  const blob = new Blob([[head.map(cell).join(","), ...lines].join("\r\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `meatsoko-orders-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 function OrderRow({ order: o, open, onToggle }: { order: DashOrder; open: boolean; onToggle: () => void }) {
