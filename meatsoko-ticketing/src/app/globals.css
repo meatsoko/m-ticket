@@ -490,7 +490,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .ev-date .m { font-size: .58rem; text-transform: uppercase; letter-spacing: .1em; margin-top: 3px; }
 
 /* ---------- MeatSoko retail storefront -------------------------------- */
-.storefront {
+.storefront, .dash {
   --store-red: #d32f3b;
   --store-red-dark: #a71f2b;
   --store-cream: #f6f3ed;
@@ -841,10 +841,10 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .storefront button { font-family: inherit; }
 /* The ticketing app styles bare <button>/<input> globally (rounded, dark, 48px).
    Zero-specificity reset so every storefront class below still wins. */
-:where(.storefront) button { min-height: 0; padding: 0; border-radius: 0; background: none; color: inherit; font-size: inherit; font-weight: inherit; display: inline-flex; align-items: center; justify-content: center; gap: 0; }
-:where(.storefront) button:active { transform: none; }
-:where(.storefront) ul, :where(.storefront) dl, :where(.storefront) dd, :where(.storefront) fieldset { margin: 0; padding: 0; }
-:where(.storefront) input, :where(.storefront) select, :where(.storefront) textarea { border-radius: 0; }
+:where(.storefront, .dash) button { min-height: 0; padding: 0; border-radius: 0; background: none; color: inherit; font-size: inherit; font-weight: inherit; display: inline-flex; align-items: center; justify-content: center; gap: 0; }
+:where(.storefront, .dash) button:active { transform: none; }
+:where(.storefront, .dash) ul, :where(.storefront, .dash) dl, :where(.storefront, .dash) dd, :where(.storefront, .dash) fieldset { margin: 0; padding: 0; }
+:where(.storefront, .dash) input, :where(.storefront, .dash) select, :where(.storefront, .dash) textarea { border-radius: 0; }
 /* Storefront pages share the header's gutter so content lines up with the logo. */
 .store-hero, .store-section, .store-campaign, .events-teaser, .store-subpage, .product-page { max-width: 1800px; padding-left: max(5.5vw, 24px); padding-right: max(5.5vw, 24px); }
 
@@ -1256,7 +1256,12 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .product-add:disabled, .product-buy:disabled { opacity: .5; cursor: not-allowed; }
 
 /* ---------- /dashboard: store orders and inventory (admins) ---------- */
-.dash { min-height: 100dvh; background: var(--store-cream); color: var(--store-ink); font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.dash { min-height: 100dvh; color-scheme: light; background: var(--store-cream); color: var(--store-ink); font-family: Arial, Helvetica, sans-serif; }
+.dash button, .dash input, .dash select { font-family: inherit; }
+.dash input, .dash select, .dash textarea { color: var(--store-ink); background: #fff; min-height: 0; }
+.dash a { color: inherit; }
+.dash .icon-btn { width: 36px; height: 36px; border-radius: 999px; border: 1px solid var(--store-line); background: #fff; color: var(--store-ink); }
+.dash .icon-btn:hover { border-color: var(--store-ink); }
 .dash-header { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 22px; padding: 12px max(4vw, 16px); background: #fff; border-bottom: 1px solid var(--store-line); flex-wrap: wrap; }
 .dash-brand { display: inline-flex; align-items: center; gap: 10px; color: var(--store-ink); font-weight: 800; letter-spacing: .02em; text-decoration: none; }
 .dash-brand em { font-style: normal; font-weight: 500; color: var(--store-muted); }
