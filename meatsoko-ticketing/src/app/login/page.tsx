@@ -23,35 +23,33 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="app">
-      <main className="app-body">
-        <div className="pad" style={{ justifyContent: "center", minHeight: "70dvh" }}>
-          <div className="stack tight" style={{ alignItems: "center", textAlign: "center" }}>
-            <span className="brand-mark" style={{ width: 44, height: 44, fontSize: 20, borderRadius: 12 }}>M</span>
-            <h1>Staff sign in</h1>
-            <p className="small">Store dashboard, scanner and gate.</p>
-          </div>
-          <div className="card">
-            <label className="field">
-              <span>Email</span>
-              <input type="email" inputMode="email" autoComplete="username"
-                value={email} onChange={(e) => setEmail(e.target.value)} />
-            </label>
-            <label className="field">
-              <span>Password</span>
-              <input type="password" autoComplete="current-password"
-                value={password} onChange={(e) => setPassword(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && email && password && login()} />
-            </label>
-            {err && <p className="small" style={{ color: "var(--danger)" }}>{err}</p>}
-            <button className="btn-primary btn-block" onClick={login} disabled={busy || !email || !password}>
-              {busy ? "Signing in…" : "Sign in"}
-            </button>
-          </div>
-          <p className="small" style={{ textAlign: "center" }}>
-            Buying a ticket? <a href="/">Go to the event</a>.
-          </p>
+    // Store theme (cream, ink, red) — the login is the front door to the dashboard.
+    // .dash supplies the storefront tokens and control resets, always light.
+    <div className="dash login-page">
+      <main className="login-card">
+        <div className="login-brand">
+          <span className="store-mark">M</span>
+          <span>MEATSOKO</span>
         </div>
+        <h1>Staff sign in</h1>
+        <p className="login-sub">Store dashboard, gate scanner and events.</p>
+        <form className="login-form" onSubmit={(e) => { e.preventDefault(); if (email && password && !busy) login(); }}>
+          <label className="store-field">
+            <span>Email</span>
+            <input type="email" inputMode="email" autoComplete="username" placeholder="you@example.com"
+              value={email} onChange={(e) => setEmail(e.target.value)} />
+          </label>
+          <label className="store-field">
+            <span>Password</span>
+            <input type="password" autoComplete="current-password"
+              value={password} onChange={(e) => setPassword(e.target.value)} />
+          </label>
+          {err && <p className="login-error" role="alert">{err}</p>}
+          <button type="submit" className="store-button login-submit" disabled={busy || !email || !password}>
+            {busy ? "Signing in…" : <>Sign in <span aria-hidden="true">→</span></>}
+          </button>
+        </form>
+        <p className="login-foot">Looking for the shop or a ticket? <a href="/">Go to MeatSoko</a></p>
       </main>
     </div>
   );
