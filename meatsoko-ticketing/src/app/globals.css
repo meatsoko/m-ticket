@@ -1416,3 +1416,20 @@ a.dash-kpi:hover { border-color: var(--store-ink); }
 }
 /* Phone-only dashboard links (the gate scanner): hidden on desktop pointers. */
 @media (hover: hover) and (pointer: fine) { .dash-nav a.dash-phone-only { display: none; } }
+
+/* ---------- /login: store theme ---------- */
+.login-page { min-height: 100dvh; display: grid; place-items: center; padding: 24px 16px; }
+.login-card { width: min(420px, 100%); display: grid; gap: 14px; padding: 34px 30px; background: #fff; border: 1px solid var(--store-line); border-radius: 20px; box-shadow: 0 18px 50px rgba(23,23,23,.07); }
+.login-brand { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: .06em; font-size: 15px; }
+.login-card h1 { margin: 10px 0 0; font-size: 1.8rem; letter-spacing: -.03em; }
+.login-sub { margin: 0; color: var(--store-muted); font-size: 14px; }
+.login-form { display: grid; gap: 14px; margin-top: 8px; }
+.login-form .store-field { display: grid; gap: 6px; }
+.login-form .store-field span { font-size: 12px; font-weight: 700; color: #4f4b46; }
+.login-form .store-field input { width: 100%; min-height: 48px; padding: 0 14px; border: 1px solid var(--store-line); border-radius: 12px; font-size: 15px; }
+.login-form .store-field input:focus { outline: none; border-color: var(--store-ink); box-shadow: 0 0 0 3px rgba(23,23,23,.08); }
+.login-submit { width: 100%; min-height: 50px; margin-top: 4px; border-radius: 999px; }
+.login-submit:disabled { opacity: .5; cursor: not-allowed; }
+.login-error { margin: 0; color: var(--store-red); font-size: 13px; font-weight: 700; }
+.login-foot { margin: 6px 0 0; text-align: center; color: var(--store-muted); font-size: 13px; }
+.login-foot a { color: var(--store-red); font-weight: 700; }
