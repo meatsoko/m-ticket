@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
 import { openPaystackPopup } from "@/lib/paystack-popup";
@@ -16,6 +17,8 @@ const TYPES = [
   { id: "services", label: "Services" }, { id: "other", label: "Other" },
 ];
 
+// Shown inside the event hero image (right-hand side on desktop, under the
+// event details on phones) so vendors can't miss it.
 export default function VendorSignup({ eventId, eventName }: { eventId: string; eventName: string }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -66,15 +69,19 @@ export default function VendorSignup({ eventId, eventName }: { eventId: string; 
 
   return (
     <>
-      <div className="vendor-cta">
-        <div>
+      <div className="hero-vendor">
+        <div className="hero-vendor-copy">
+          <span className="hero-vendor-kicker">Vendors wanted</span>
           <strong>Selling at {eventName}?</strong>
-          <span>Become a vendor — secure a tent for KSh {VENDOR_FEE_KES.toLocaleString("en-KE")}.</span>
+          <span>Secure a tent for KSh {VENDOR_FEE_KES.toLocaleString("en-KE")}</span>
         </div>
-        <button type="button" className="btn-ghost" onClick={() => setOpen(true)}>Become a vendor</button>
+        <button type="button" className="btn-primary hero-vendor-btn" onClick={() => setOpen(true)}>Become a vendor</button>
       </div>
 
-      {open && (
+      {/* Portalled out of the hero (its own stacking context, so a dialog inside
+          it could sit under the page) into the app shell, which keeps the event
+          page's colours (light on the desktop layout). */}
+      {open && createPortal(
         <div className="vendor-modal-root" role="dialog" aria-modal="true" aria-labelledby="vendor-title">
           <button type="button" className="vendor-modal-scrim" aria-label="Close" onClick={() => !busy && setOpen(false)} />
           <div className="vendor-modal">
@@ -110,7 +117,8 @@ export default function VendorSignup({ eventId, eventName }: { eventId: string; 
             </button>
             <p className="small" style={{ textAlign: "center" }}>M-Pesa or card through Paystack.</p>
           </div>
-        </div>
+        </div>,
+        document.querySelector(".app") ?? document.body,
       )}
     </>
   );

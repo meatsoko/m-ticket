@@ -112,6 +112,7 @@ export default async function EventPage({ params }: { params: { slug: string } }
                 : ""}
             </span>
           </div>
+          <VendorSignup eventId={ev.id} eventName={ev.name} />
         </div>
       </section>
 
@@ -185,7 +186,6 @@ export default async function EventPage({ params }: { params: { slug: string } }
                 sold={sold}
               />
             )}
-            <VendorSignup eventId={ev.id} eventName={ev.name} />
           </section>
         </div>
         <div className="bottom-gap" />
