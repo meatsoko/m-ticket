@@ -6,7 +6,11 @@ import { escapeHtml as esc, sendEmail } from "./resend.ts";
 import { SUPPORT } from "./support.ts";
 
 export const VENDOR_REFERENCE = /^MV[a-f0-9]{32}$/;
-export const VENDOR_FEE_KES = 3500;
+// Tent fee in KES. 3,500 unless the VENDOR_FEE_KES secret overrides it (used to
+// run a cheap live test; unset the secret to go back to 3,500). Each
+// registration stores the fee it was charged, and confirmation checks against that.
+const feeOverride = Number(Deno.env.get("VENDOR_FEE_KES") ?? "");
+export const VENDOR_FEE_KES = Number.isInteger(feeOverride) && feeOverride > 0 ? feeOverride : 3500;
 export const VENDOR_TYPES: Record<string, string> = {
   food: "Food", drinks: "Drinks", merchandise: "Merchandise", services: "Services", other: "Other",
 };
