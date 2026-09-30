@@ -8,6 +8,7 @@ import GetTicketsPanel from "@/components/GetTicketsPanel";
 import ShareBar from "@/components/event/ShareBar";
 import EventTabs from "@/components/event/EventTabs";
 import { SUPPORT } from "@/lib/support";
+import VendorSignup from "@/components/VendorSignup";
 import type { UpgradeOption } from "@/components/TableUpgrade";
 import { GA_PREVIEW, GA_PREVIEW_TYPE_ID } from "@/lib/ga-preview";
 import EarlyBirdCountdown from "@/components/EarlyBirdCountdown";
@@ -184,6 +185,7 @@ export default async function EventPage({ params }: { params: { slug: string } }
                 sold={sold}
               />
             )}
+            <VendorSignup eventId={ev.id} eventName={ev.name} />
           </section>
         </div>
         <div className="bottom-gap" />
