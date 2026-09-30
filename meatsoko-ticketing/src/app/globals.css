@@ -1646,3 +1646,8 @@ a.dash-kpi:hover { border-color: var(--store-ink); }
 .dash-badge.v-cancelled, .dash-badge.v-refunded { background: #eeeae4; color: var(--store-muted); }
 .dash-inline-confirm { display: flex; gap: 6px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
 .dash .dash-inline-confirm input { width: 190px; padding: 6px 10px; border: 1px solid var(--store-line); border-radius: 8px; font-size: 12px; }
+
+/* NyamaFest poster as the event hero: a portrait poster in a wide hero, so show
+   the food band (goat, chicken, fire) behind the title, not the poster's own
+   lettering. Scoped to this image so other event banners stay centred. */
+.hero img[src*="nyamafest-hero"] { object-position: center 64%; }
