@@ -4,6 +4,7 @@ import AppShell from "@/components/AppShell";
 import Scanner from "@/components/Scanner";
 import ScanTabs from "@/components/ScanTabs";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
+import PhoneOnly from "@/components/PhoneOnly";
 
 export default async function ScanPage() {
   const { user, role } = await requireStaff();
@@ -32,11 +33,13 @@ export default async function ScanPage() {
       <ServiceWorkerRegister />
       <AppShell title="Scanner" role={role}>
         <div className="pad">
-          {event ? (
-            <ScanTabs userId={user.id} eventId={event.id} reservations={rows} stats={stats} />
-          ) : (
-            <Scanner userId={user.id} />
-          )}
+          <PhoneOnly>
+            {event ? (
+              <ScanTabs userId={user.id} eventId={event.id} reservations={rows} stats={stats} />
+            ) : (
+              <Scanner userId={user.id} />
+            )}
+          </PhoneOnly>
           <div className="bottom-gap" />
         </div>
       </AppShell>

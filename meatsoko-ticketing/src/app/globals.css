@@ -1414,3 +1414,5 @@ a.dash-kpi:hover { border-color: var(--store-ink); }
   .dash-side-foot { margin: 0 0 0 auto; padding: 0; border: 0; }
   .dash-side-foot span { display: none; }
 }
+/* Phone-only dashboard links (the gate scanner): hidden on desktop pointers. */
+@media (hover: hover) and (pointer: fine) { .dash-nav a.dash-phone-only { display: none; } }
