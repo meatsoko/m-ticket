@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useBag } from "./BagProvider";
-import { DELIVERY_OPTIONS, DELIVERY_ZONES, formatPrice, type DeliveryOption } from "@/lib/merchandise";
+import { DELIVERY_OPTIONS, DELIVERY_ZONES, STANDARD_FROM_USD, formatPrice, type DeliveryOption } from "@/lib/merchandise";
 import { looksLikeEmail, normalizePhone, PHONE_HINT } from "@/lib/phone";
 import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
@@ -85,12 +85,17 @@ export default function CheckoutForm() {
   if (delivery === "matatu" && f.town.trim().length < 2) errors.town = "Enter the town you’ll collect from";
   if (!agree) errors.agree = "Please accept the terms to continue";
 
-  const total = subtotal != null && option.feeUsd != null ? subtotal + option.feeUsd : null;
+  // Standard delivery is priced by area; everything else has one fee.
+  const fee = delivery === "standard"
+    ? DELIVERY_ZONES.find((z) => z.name === f.zone)?.feeUsd ?? null
+    : option.feeUsd;
+  const feeLabel = fee === 0 ? "Free" : fee != null ? formatPrice(fee) : delivery === "standard" ? "Choose your area" : "TBC";
+  const total = subtotal != null && fee != null ? subtotal + fee : null;
   // Everything on the site is in US dollars. The KSh conversion happens server-side
   // at payment time (merch-checkout refreshes the rate) and is shown only by Paystack.
   const blocker =
     subtotal == null ? "Prices for these pieces are being finalised — you’ll be able to pay as soon as they’re set."
-    : option.feeUsd == null ? `The ${option.label.toLowerCase()} fee is being finalised. Choose a pickup option, or check back soon.`
+    : delivery !== "standard" && option.feeUsd == null ? `The ${option.label.toLowerCase()} fee is being finalised. Choose a pickup option, or check back soon.`
     : !PAYMENT_CONNECTED ? "Online payment for merchandise opens soon."
     : null;
 
@@ -181,7 +186,7 @@ export default function CheckoutForm() {
                 <label key={o.id} className={`delivery-option${delivery === o.id ? " active" : ""}`}>
                   <input type="radio" name="delivery" value={o.id} checked={delivery === o.id} onChange={() => setDelivery(o.id)} />
                   <span><strong>{o.label}</strong><small>{o.blurb}</small></span>
-                  <em>{o.feeUsd === 0 ? "Free" : o.feeUsd != null ? formatPrice(o.feeUsd) : "Fee TBC"}</em>
+                  <em>{o.feeUsd === 0 ? "Free" : o.feeUsd != null ? formatPrice(o.feeUsd) : o.id === "standard" ? `From ${formatPrice(STANDARD_FROM_USD)}` : "Fee TBC"}</em>
                 </label>
               ))}
             </div>
@@ -189,7 +194,7 @@ export default function CheckoutForm() {
             {delivery === "standard" && (
               <div className="field-grid two delivery-fields">
                 <label className="store-field"><span>Area *</span>
-                  <select value={f.zone} onChange={set("zone")}><option value="">Select your area</option>{DELIVERY_ZONES.map((z) => <option key={z}>{z}</option>)}</select>{err("zone")}
+                  <select value={f.zone} onChange={set("zone")}><option value="">Select your area</option>{DELIVERY_ZONES.map((z) => <option key={z.name} value={z.name}>{z.name} — {formatPrice(z.feeUsd)}</option>)}</select>{err("zone")}
                 </label>
                 <label className="store-field"><span>Street address or landmark *</span><input value={f.street} onChange={set("street")} autoComplete="street-address" placeholder="House, street, estate" />{err("street")}</label>
               </div>
@@ -203,7 +208,15 @@ export default function CheckoutForm() {
                 </div>
               </>
             )}
-            {(delivery === "pickup" || delivery === "event") && (
+            {delivery === "pickup" && (
+              <>
+                <p className="delivery-notice">{option.blurb} Bring the order confirmation we email you.</p>
+                <div className="field-grid two delivery-fields">
+                  <label className="store-field"><span>Nearest franchise or area (optional)</span><input value={f.town} onChange={set("town")} placeholder="e.g. Githurai, Thika Road" /></label>
+                </div>
+              </>
+            )}
+            {delivery === "event" && (
               <p className="delivery-notice">{option.blurb} Bring the order confirmation we email you.</p>
             )}
           </fieldset>
@@ -226,7 +239,7 @@ export default function CheckoutForm() {
             ))}
           </ul>
           <div className="summary-row"><span>Subtotal</span><span>{subtotal != null ? formatPrice(subtotal) : "TBC"}</span></div>
-          <div className="summary-row"><span>{option.label}</span><span>{option.feeUsd === 0 ? "Free" : option.feeUsd != null ? formatPrice(option.feeUsd) : "TBC"}</span></div>
+          <div className="summary-row"><span>{option.label}</span><span>{feeLabel}</span></div>
           <div className="summary-row total"><span>Total</span><strong>{total != null ? formatPrice(total) : "To be confirmed"}</strong></div>
 
           <div className="summary-payment">
@@ -236,7 +249,7 @@ export default function CheckoutForm() {
 
           <label className="summary-agree">
             <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
-            <span>I agree to the terms, and to the delivery &amp; returns policy.</span>
+            <span>I agree to the <a href="/returns" target="_blank" rel="noopener">delivery &amp; returns policy</a>.</span>
           </label>
           {err("agree")}
 

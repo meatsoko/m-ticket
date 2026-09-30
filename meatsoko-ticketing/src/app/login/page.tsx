@@ -16,7 +16,9 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setBusy(false);
     if (error) { setErr("Login failed. Check your email and password."); return; }
-    router.push("/scan");
+    // Admins land on the store dashboard; the dashboard's requireAdmin() sends
+    // gate staff on to the scanner, so the role is decided server-side.
+    router.push("/dashboard");
     router.refresh(); // the shell resolves the role server-side
   }
 
@@ -27,7 +29,7 @@ export default function LoginPage() {
           <div className="stack tight" style={{ alignItems: "center", textAlign: "center" }}>
             <span className="brand-mark" style={{ width: 44, height: 44, fontSize: 20, borderRadius: 12 }}>M</span>
             <h1>Staff sign in</h1>
-            <p className="small">Scanner, gate sales and admin.</p>
+            <p className="small">Store dashboard, scanner and gate.</p>
           </div>
           <div className="card">
             <label className="field">

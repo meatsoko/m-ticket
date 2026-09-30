@@ -223,9 +223,18 @@ export type DeliveryOption = {
 
 export const DELIVERY_OPTIONS: DeliveryOption[] = [
   { id: "event", label: "Collect at NyamaFest", blurb: "Pick up your order at the merchandise stand on event day, 17 October.", feeUsd: 0 },
-  { id: "pickup", label: "Pickup in Nairobi", blurb: "Collect from our Nairobi pickup point. We’ll text you when it’s ready.", feeUsd: 0 },
+  { id: "pickup", label: "Collect at a MeatSoko franchise", blurb: "Free. Collect from your nearest MeatSoko franchise — we’ll call or WhatsApp you when your order is ready and confirm where.", feeUsd: 0 },
+  // Standard delivery is priced per area (DELIVERY_ZONES), so it has no single fee.
   { id: "standard", label: "Standard delivery", blurb: "Delivered to your door. The fee depends on your area.", feeUsd: null },
-  { id: "matatu", label: "Matatu / Sacco", blurb: "Outside Nairobi: we send it to your chosen Sacco office for collection.", feeUsd: null },
+  { id: "matatu", label: "Matatu / Sacco", blurb: "Outside Nairobi: we send it to your chosen Sacco office for collection.", feeUsd: 3 },
 ];
 
-export const DELIVERY_ZONES = ["Nairobi CBD", "Greater Nairobi", "Major towns", "Rest of Kenya"];
+// Must match merch_delivery_zones (migration 20260930090000): checkout charges
+// the database's fee; these are for display.
+export const DELIVERY_ZONES: { name: string; feeUsd: number }[] = [
+  { name: "Nairobi CBD", feeUsd: 2 },
+  { name: "Greater Nairobi", feeUsd: 3 },
+  { name: "Major towns", feeUsd: 5 },
+  { name: "Rest of Kenya", feeUsd: 7 },
+];
+export const STANDARD_FROM_USD = Math.min(...DELIVERY_ZONES.map((z) => z.feeUsd));

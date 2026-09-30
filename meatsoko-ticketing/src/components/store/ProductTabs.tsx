@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { DELIVERY_OPTIONS, formatPrice, type MerchandiseProduct } from "@/lib/merchandise";
+import { DELIVERY_OPTIONS, STANDARD_FROM_USD, formatPrice, type MerchandiseProduct } from "@/lib/merchandise";
 
 const TABS = [
   { id: "description", label: "Description" },
@@ -62,13 +62,14 @@ export default function ProductTabs({ product }: { product: MerchandiseProduct }
               <h3>Delivery options</h3>
               <ul className="delivery-list">
                 {DELIVERY_OPTIONS.map((o) => (
-                  <li key={o.id}><strong>{o.label}</strong><span>{o.blurb}</span><em>{o.feeUsd === 0 ? "Free" : o.feeUsd != null ? formatPrice(o.feeUsd) : "Fee confirmed at checkout"}</em></li>
+                  <li key={o.id}><strong>{o.label}</strong><span>{o.blurb}</span><em>{o.feeUsd === 0 ? "Free" : o.feeUsd != null ? formatPrice(o.feeUsd) : o.id === "standard" ? `From ${formatPrice(STANDARD_FROM_USD)}` : "Fee confirmed at checkout"}</em></li>
                 ))}
               </ul>
             </div>
             <div>
               <h3>Returns &amp; exchanges</h3>
-              <p>Our returns and exchange policy will be published here before checkout opens. If something isn’t right with your order, contact us and we’ll sort it out.</p>
+              <p>Return or exchange unworn items within 7 days of delivery or collection — exchanges are free at any MeatSoko franchise. Faulty or wrong items are replaced or refunded in full.</p>
+              <p><a href="/returns" className="text-link">Read the full delivery &amp; returns policy</a></p>
             </div>
           </div>
         )}
