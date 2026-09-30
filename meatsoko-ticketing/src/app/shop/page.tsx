@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { StoreShell } from "@/components/StoreChrome";
 import MerchandiseCard from "@/components/MerchandiseCard";
+import CategoryFocus from "@/components/store/CategoryFocus";
 import { merchandiseCategories, searchProducts, allProducts } from "@/lib/merchandise";
 
 export default function ShopPage({ searchParams }: { searchParams?: { q?: string } }) {
@@ -30,6 +31,7 @@ export default function ShopPage({ searchParams }: { searchParams?: { q?: string
         ) : (
           <>
             <p className="store-subpage-intro">Pieces for the people, places, and moments that make a gathering.</p>
+            <CategoryFocus />
             <nav className="shop-category-nav" aria-label="Merchandise categories">
               {merchandiseCategories.map((category) => (
                 <a href={`#${category.id}`} key={category.id}>{category.name}<span>{category.products.length}</span></a>
