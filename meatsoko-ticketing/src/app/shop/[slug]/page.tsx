@@ -53,7 +53,7 @@ export default function ProductPage({ params }: { params: { slug: string } }) {
             {product.partner && <span className="product-partner">In partnership with {product.partner}</span>}
             <p className="product-lede">{product.summary}</p>
             <div className="product-price">
-              {product.priceUsd != null ? <><strong>{formatPrice(product.priceUsd)}</strong><small>Prices in US dollars</small></> : <><strong>Price coming soon</strong><small>You can add it to your bag now — we’ll confirm the price before you pay.</small></>}
+              {product.priceUsd != null ? <strong>{formatPrice(product.priceUsd)}</strong> : <><strong>Price coming soon</strong><small>You can add it to your bag now — we’ll confirm the price before you pay.</small></>}
             </div>
 
             <div className="product-option">

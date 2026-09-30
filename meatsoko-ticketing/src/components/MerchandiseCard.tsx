@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { formatPrice, type MerchandiseProduct } from "@/lib/merchandise";
+import type { MerchandiseProduct } from "@/lib/merchandise";
 
 export default function MerchandiseCard({ product }: { product: MerchandiseProduct }) {
   return (
@@ -17,7 +17,6 @@ export default function MerchandiseCard({ product }: { product: MerchandiseProdu
       <div className="merch-product-info">
         <h3><Link href={`/shop/${product.slug}`}>{product.name}</Link></h3>
         <span>{product.color}</span>
-        <em>{product.priceUsd != null ? formatPrice(product.priceUsd) : "Price coming soon"}</em>
       </div>
     </article>
   );

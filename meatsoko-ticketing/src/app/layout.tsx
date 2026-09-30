@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import SiteAnalytics from "@/components/SiteAnalytics";
 
 export const metadata: Metadata = {
   title: "MeatSoko — Good Things for Good Gatherings",
@@ -25,7 +26,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        {children}
+        <SiteAnalytics />
+      </body>
     </html>
   );
 }
