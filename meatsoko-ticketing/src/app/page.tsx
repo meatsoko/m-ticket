@@ -58,8 +58,8 @@ export default async function Home() {
               <h1>Wear the<br />good times<span>.</span></h1>
               <p>Everyday pieces for people who bring good food and good people together.</p>
               <div className="hero-actions">
-                <Link href="/shop" className="store-button">Shop merchandise <span>↗</span></Link>
-                <Link href={currentEventHref} className="store-button store-button-outline">Book ticket <span>↗</span></Link>
+                <Link href={currentEventHref} className="store-button">Book ticket <span>↗</span></Link>
+                <Link href="/shop" className="store-button store-button-outline">Shop merchandise <span>↗</span></Link>
               </div>
               <small>MEATSOKO MERCHANDISE&nbsp; · &nbsp;THE NYAMAFEST COLLECTION</small>
             </div>
