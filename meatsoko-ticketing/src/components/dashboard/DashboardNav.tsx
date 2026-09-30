@@ -20,9 +20,9 @@ export default function DashboardNav({ toFulfil }: { toFulfil: number }) {
     { href: "/dashboard", label: "Overview", icon: I.overview, exact: true },
     { href: "/dashboard/orders", label: "Orders", icon: I.orders, badge: toFulfil },
     { href: "/dashboard/inventory", label: "Inventory", icon: I.inventory },
+    { href: "/dashboard/events", label: "Events & bookings", icon: I.events },
   ];
   const more = [
-    { href: "/admin", label: "Events & bookings", icon: I.events },
     // The scanner is phone-only (it needs a camera at the gate), so the link is too.
     { href: "/scan", label: "Gate scanner", icon: I.scan, phoneOnly: true },
     { href: "/", label: "View store", icon: I.store, external: true },

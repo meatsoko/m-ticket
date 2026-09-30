@@ -55,7 +55,7 @@ export async function loadOverview(db: SupabaseClient, days: Range): Promise<Ove
       previous: sum(m, "total_kes", inPrev, "paid_at") + sum(t, "amount_kes", inPrev, "paid_at") },
     { label: "Merch orders", format: "count", href: "/dashboard/orders",
       value: m.filter((r) => inRange(r.paid_at)).length, previous: m.filter((r) => inPrev(r.paid_at)).length },
-    { label: "Event bookings", format: "count", href: "/admin",
+    { label: "Event bookings", format: "count", href: "/dashboard/events",
       value: b.filter((r) => inRange(r.created_at)).length, previous: b.filter((r) => inPrev(r.created_at)).length },
     { label: "Orders to fulfil", format: "count", href: "/dashboard/orders", value: fulfil.count ?? 0, previous: null },
   ];

@@ -85,7 +85,8 @@ export type IconName = "ticket" | "search" | "scan" | "sell" | "grid" | "chart";
  * and the staff app are literally the same component with a different filter.
  */
 export const NAV: NavItem[] = [
-  { href: "/", label: "Event", icon: "ticket", capability: "buy_tickets" },
+  // "/" is the merchandise storefront now; the ticketing app's home is /events.
+  { href: "/events", label: "Event", icon: "ticket", capability: "buy_tickets" },
   { href: "/lookup", label: "My Tickets", icon: "search", capability: "lookup_tickets" },
   { href: "/scan", label: "Scan", icon: "scan", capability: "scan" },
   { href: "/gate", label: "Gate", icon: "sell", capability: "gate_sales" },
@@ -104,7 +105,7 @@ export function navFor(role: Role): NavItem[] {
 
 export function isActive(pathname: string, item: NavItem): boolean {
   if (item.prefix) return pathname === item.href || pathname.startsWith(item.href + "/");
-  if (item.href === "/") return pathname === "/" || pathname.startsWith("/e/");
+  if (item.href === "/events") return pathname === "/events" || pathname.startsWith("/e/");
   return pathname === item.href;
 }
 
