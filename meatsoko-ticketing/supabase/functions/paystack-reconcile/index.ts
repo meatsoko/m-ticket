@@ -15,6 +15,7 @@ import { json } from "../_shared/cors.ts";
 import { rateLimit, serviceClient } from "../_shared/supabase.ts";
 import { verifyAndConfirm } from "../_shared/paystack.ts";
 import { verifyAndConfirmMerch } from "../_shared/merch.ts";
+import { verifyAndConfirmVendor } from "../_shared/vendor.ts";
 
 // Give a buyer still on Paystack's page time to finish; stop re-asking about
 // abandoned checkouts after a few hours.
@@ -33,7 +34,7 @@ Deno.serve(async (req) => {
   const newest = new Date(Date.now() - MIN_AGE_MS).toISOString();
   const oldest = new Date(Date.now() - MAX_AGE_MS).toISOString();
 
-  const [{ data: merch, error: mErr }, { data: events, error: eErr }] = await Promise.all([
+  const [{ data: merch, error: mErr }, { data: events, error: eErr }, { data: vendors, error: vErr }] = await Promise.all([
     // 'failed' too: an abandoned merch checkout can still be paid from the same
     // Paystack page, and merch_confirm_payment accepts a failed order.
     db.from("merch_orders").select("paystack_reference")
@@ -44,19 +45,28 @@ Deno.serve(async (req) => {
       .eq("status", "pending").eq("payment_provider", "paystack").not("paystack_reference", "is", null)
       .gte("created_at", oldest).lte("created_at", newest)
       .order("created_at", { ascending: true }).limit(MAX_PER_RUN),
+    // Vendor tent fees: a retried registration gets a new reference, so the
+    // window runs from updated_at (when this payment was opened).
+    db.from("vendor_applications").select("paystack_reference")
+      .eq("status", "pending_payment").not("paystack_reference", "is", null)
+      .gte("updated_at", oldest).lte("updated_at", newest)
+      .order("updated_at", { ascending: true }).limit(MAX_PER_RUN),
   ]);
-  if (mErr || eErr) return json({ error: "query_failed", detail: (mErr ?? eErr)!.message }, 500);
+  if (mErr || eErr || vErr) return json({ error: "query_failed", detail: (mErr ?? eErr ?? vErr)!.message }, 500);
 
   const outcome: Record<string, number> = {};
   const tally = (k: string) => { outcome[k] = (outcome[k] ?? 0) + 1; };
   const jobs = [
     ...(merch ?? []).map((r) => ({ kind: "merch", ref: r.paystack_reference as string })),
     ...(events ?? []).map((r) => ({ kind: "event", ref: r.paystack_reference as string })),
+    ...(vendors ?? []).map((r) => ({ kind: "vendor", ref: r.paystack_reference as string })),
   ].slice(0, MAX_PER_RUN);
 
   for (const job of jobs) {
     try {
-      const r: any = job.kind === "merch" ? await verifyAndConfirmMerch(job.ref, db) : await verifyAndConfirm(job.ref);
+      const r: any = job.kind === "merch" ? await verifyAndConfirmMerch(job.ref, db)
+        : job.kind === "vendor" ? await verifyAndConfirmVendor(job.ref, db)
+        : await verifyAndConfirm(job.ref);
       tally(`${job.kind}:${r?.result ?? "unknown"}`);
       if (r?.result === "confirmed") {
         console.log(JSON.stringify({ msg: "reconciled payment", kind: job.kind, ref: job.ref.slice(0, 10) }));

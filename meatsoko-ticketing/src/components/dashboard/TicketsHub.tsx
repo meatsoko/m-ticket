@@ -15,7 +15,7 @@ export type PaymentRow = {
   pass: { id: string; number: string; holder: string; status: TicketPass["status"] } | null;
 };
 export type ActivityItem = {
-  at: string; kind: "booked" | "paid" | "upgraded" | "checked_in" | "refunded" | "flagged";
+  at: string; kind: "booked" | "paid" | "upgraded" | "checked_in" | "refunded" | "flagged" | "vendor";
   eventId: string; eventName: string; title: string; detail: string;
 };
 
@@ -60,6 +60,7 @@ export default function TicketsHub({ passes, payments, activity, events }: {
 const KIND: Record<ActivityItem["kind"], { label: string; cls: string }> = {
   booked: { label: "Booking", cls: "a-booked" }, paid: { label: "Payment", cls: "a-paid" }, upgraded: { label: "Upgrade", cls: "a-upgraded" },
   checked_in: { label: "Check-in", cls: "a-in" }, refunded: { label: "Refund", cls: "a-refund" }, flagged: { label: "Needs a look", cls: "a-flag" },
+  vendor: { label: "Vendor", cls: "a-vendor" },
 };
 
 function ActivityFeed({ items }: { items: ActivityItem[] }) {

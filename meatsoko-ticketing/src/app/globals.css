@@ -1603,10 +1603,36 @@ a.dash-kpi:hover { border-color: var(--store-ink); }
 .dash-feed time { color: var(--store-muted); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
 .dash-feed-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--store-muted); }
 .dash-feed-kind { padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 800; background: #eeeae4; color: var(--store-ink); }
-.a-booked { --c: #2f6fb3; } .a-paid { --c: #2f7a4a; } .a-upgraded { --c: #8a5a00; } .a-in { --c: #171717; } .a-refund { --c: #77736e; } .a-flag { --c: #d32f3b; }
-.dash-feed-dot.a-booked, .dash-feed-dot.a-paid, .dash-feed-dot.a-upgraded, .dash-feed-dot.a-in, .dash-feed-dot.a-refund, .dash-feed-dot.a-flag { background: var(--c); }
-.dash-feed-kind.a-booked, .dash-feed-kind.a-paid, .dash-feed-kind.a-upgraded, .dash-feed-kind.a-in, .dash-feed-kind.a-refund, .dash-feed-kind.a-flag { color: var(--c); background: color-mix(in srgb, var(--c) 12%, #fff); }
+.a-booked { --c: #2f6fb3; } .a-paid { --c: #2f7a4a; } .a-upgraded { --c: #8a5a00; } .a-in { --c: #171717; } .a-refund { --c: #77736e; } .a-flag { --c: #d32f3b; } .a-vendor { --c: #6b3fa0; }
+.dash-feed-dot.a-booked, .dash-feed-dot.a-paid, .dash-feed-dot.a-upgraded, .dash-feed-dot.a-in, .dash-feed-dot.a-refund, .dash-feed-dot.a-flag, .dash-feed-dot.a-vendor { background: var(--c); }
+.dash-feed-kind.a-booked, .dash-feed-kind.a-paid, .dash-feed-kind.a-upgraded, .dash-feed-kind.a-in, .dash-feed-kind.a-refund, .dash-feed-kind.a-flag, .dash-feed-kind.a-vendor { color: var(--c); background: color-mix(in srgb, var(--c) 12%, #fff); }
 .dash-badge.pay-paid { background: #e3f0e7; color: #2f7a4a; }
 .dash-refund-step { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--store-line); }
 .dash-refund-step p { margin: 0; }
 @media (max-width: 760px) { .dash-feed li { grid-template-columns: 12px minmax(0, 1fr); } .dash-feed-kind, .dash-feed time { display: none; } }
+
+/* ---------- Event page: Become a vendor ---------- */
+.vendor-cta { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-top: 14px; padding: 16px; background: var(--surface); border: 1px dashed var(--line); border-radius: 14px; }
+.vendor-cta > div { display: grid; gap: 3px; min-width: 0; }
+.vendor-cta strong { font-size: 15px; }
+.vendor-cta span { color: var(--muted); font-size: 13px; }
+.vendor-cta .btn-ghost { min-height: 42px; padding: 10px 18px; }
+.vendor-modal-root { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 16px; }
+.vendor-modal-scrim { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; padding: 0; border: 0; border-radius: 0; background: var(--scrim); }
+.vendor-modal { position: relative; width: min(480px, 100%); max-height: calc(100dvh - 32px); overflow-y: auto; display: grid; gap: 12px; padding: 22px; background: var(--surface); color: var(--ink); border-radius: 18px; box-shadow: var(--shadow-2); }
+.vendor-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.vendor-modal-head h2 { margin: 0; }
+.vendor-close { min-height: 0; width: 36px; height: 36px; padding: 0; border-radius: 50%; background: var(--surface-2); color: var(--ink); font-size: 22px; line-height: 1; }
+.vendor-types { display: flex; flex-wrap: wrap; gap: 6px; }
+.vendor-types button { min-height: 0; padding: 8px 14px; border-radius: 999px; background: var(--surface-2); color: var(--ink); font-size: 14px; font-weight: 700; border: 1.5px solid transparent; }
+.vendor-types button.on { border-color: var(--ember); background: var(--ember-soft); color: var(--ember); }
+@media (max-width: 560px) { .vendor-modal-root { place-items: end center; padding: 0; } .vendor-modal { width: 100%; border-radius: 18px 18px 0 0; max-height: 92dvh; } }
+/* ---------- Dashboard: vendors ---------- */
+.dash-vendors-table td small { display: block; }
+.dash-vendors-table .dash-about { max-width: 280px; font-size: 13px; color: #4f4b46; }
+.dash-badge.v-paid { background: #e3f0e7; color: #2f7a4a; }
+.dash-badge.v-pending_payment { background: #fdf0d9; color: #8a5a00; }
+.dash-badge.v-flagged { background: #fbe3e5; color: var(--store-red); }
+.dash-badge.v-cancelled, .dash-badge.v-refunded { background: #eeeae4; color: var(--store-muted); }
+.dash-inline-confirm { display: flex; gap: 6px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
+.dash .dash-inline-confirm input { width: 190px; padding: 6px 10px; border: 1px solid var(--store-line); border-radius: 8px; font-size: 12px; }

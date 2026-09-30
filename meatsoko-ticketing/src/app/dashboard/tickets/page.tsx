@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 // session: RLS "staff read" on reservations, orders, order_items and tickets.
 export default async function TicketsPage() {
   const supabase = createClient();
-  const [{ data: res, error: rErr }, { data: tix, error: tErr }, { data: events }, { data: pays }, { data: ups }, { data: scans }] = await Promise.all([
+  const [{ data: res, error: rErr }, { data: tix, error: tErr }, { data: events }, { data: pays }, { data: ups }, { data: scans }, { data: vendors }] = await Promise.all([
     supabase.from("reservations")
       .select(`id,event_id,order_id,reservation_number,access_token,guest_name,phone,email,party_size,status,created_at,checked_in_at,arrived_party_size,
                events(name,slug),reservation_types(name,is_general_admission),
@@ -25,6 +25,7 @@ export default async function TicketsPage() {
       .in("status", ["paid", "flagged", "refunded"]).order("created_at", { ascending: false }).limit(2000),
     supabase.from("reservation_upgrades").select("order_id,reservation_id,status,created_at,applied_at,reservation_types(name)").limit(4000),
     supabase.from("redemptions").select("scanned_at,station,reservation_id,ticket_id").order("scanned_at", { ascending: false }).limit(1000),
+    supabase.from("vendor_applications").select("event_id,reference_number,name,vendor_type,status,amount_kes,created_at,paid_at,events(name)").limit(2000),
   ]);
   if (rErr || tErr) return <p className="dash-error">Couldn&apos;t load tickets: {(rErr ?? tErr)!.message}</p>;
 
@@ -98,6 +99,12 @@ export default async function TicketsPage() {
     }),
     ...payments.filter((p) => p.refundedAt).map((p): ActivityItem => ({ at: p.refundedAt!, kind: "refunded", eventId: p.eventId, eventName: p.eventName,
       title: `Refunded KSh ${Math.round(p.amountKes).toLocaleString("en-KE")}${p.pass ? ` to ${p.pass.holder}` : ""}`, detail: p.refundReason ?? "" })),
+    ...((vendors ?? []) as any[]).flatMap((v): ActivityItem[] => [
+      { at: v.created_at, kind: "vendor", eventId: v.event_id, eventName: v.events?.name ?? "—",
+        title: `${v.name} registered as a vendor`, detail: `${v.reference_number} · ${v.vendor_type}${v.status === "pending_payment" ? " · payment pending" : ""}` },
+      ...(v.paid_at ? [{ at: v.paid_at, kind: "paid" as const, eventId: v.event_id, eventName: v.events?.name ?? "—",
+        title: `Vendor tent paid KSh ${Math.round(Number(v.amount_kes)).toLocaleString("en-KE")} · ${v.name}`, detail: v.reference_number }] : []),
+    ]),
   ].sort((a, b) => b.at.localeCompare(a.at));
 
   return <TicketsHub passes={passes} payments={payments} activity={activity}
