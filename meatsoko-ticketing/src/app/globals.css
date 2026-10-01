@@ -1694,3 +1694,33 @@ a.dash-kpi:hover { border-color: var(--store-ink); }
 .login-link:hover, .login-link:focus-visible { text-decoration: underline; }
 .login-forgot { justify-self: end; margin-top: -6px; }
 a.login-submit { display: grid; place-items: center; text-decoration: none; }
+
+/* ---------- Investors' visit form (/investors) ---------- */
+.investor-kicker { display: block; color: var(--store-red); font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.investor-card { max-width: 720px; margin-top: 30px; padding: 28px; display: grid; gap: 20px; background: #fff; border: 1px solid var(--store-line); border-radius: 20px; }
+.investor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.investor-salutations { display: flex; flex-wrap: wrap; gap: 8px; }
+.investor-salutations button { min-width: 58px; min-height: 42px; padding: 0 16px; border: 1px solid var(--store-line); border-radius: 999px; background: #fbf9f5; color: var(--store-ink); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+.investor-salutations button.on { border-color: var(--store-ink); background: var(--store-ink); color: #fff; }
+.investor-guests { margin: 0; padding: 18px; display: grid; gap: 10px; border: 1px dashed var(--store-line); border-radius: 14px; }
+.investor-guests legend { padding: 0 6px; color: #55514d; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.investor-guests legend small { color: var(--store-muted); }
+.investor-guest-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: start; }
+.investor-remove { width: 48px; height: 48px; border: 1px solid var(--store-line); border-radius: var(--r-field); background: #fff; color: var(--store-muted); font-size: 22px; line-height: 1; cursor: pointer; }
+.investor-remove:hover { color: var(--store-red); border-color: var(--store-red); }
+.investor-add { justify-self: start; padding: 10px 0; border: 0; background: none; color: var(--store-red); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+.investor-muted { margin: 0; color: var(--store-muted); font-size: 12px; }
+.investor-submit { justify-self: start; min-width: 200px; }
+.investor-submit:disabled { opacity: .55; cursor: not-allowed; }
+.investor-done p { margin: 0; line-height: 1.6; }
+.investor-ref { font-size: 28px; font-weight: 800; letter-spacing: .06em; }
+.investor-summary { margin: 0; display: grid; gap: 8px; }
+.investor-summary div { display: grid; grid-template-columns: 140px 1fr; gap: 12px; font-size: 14px; }
+.investor-summary dt { color: var(--store-muted); }
+.investor-summary dd { margin: 0; font-weight: 600; }
+@media (max-width: 640px) {
+  .investor-card { padding: 20px 16px; margin-top: 22px; }
+  .investor-grid { grid-template-columns: 1fr; }
+  .investor-submit { justify-self: stretch; }
+  .investor-summary div { grid-template-columns: 1fr; gap: 2px; }
+}

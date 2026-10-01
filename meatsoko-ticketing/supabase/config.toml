@@ -69,3 +69,9 @@ verify_jwt = false
 # Platter add-ons: the pass token in the body is the authorisation. Rate-limited.
 [functions.platter-addon]
 verify_jwt = false
+
+# Investors' visit: public registration form (no account; rate-limited per IP
+# and per email). Writes with the service role; never overwrites an existing
+# registration.
+[functions.investor-register]
+verify_jwt = false

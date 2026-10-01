@@ -8,6 +8,7 @@ const I = {
   inventory: "M4 7l8-4 8 4v10l-8 4-8-4V7Zm0 0 8 4 8-4M12 11v10",
   tickets: "M3 9a2 2 0 0 0 0 6v3a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-3a2 2 0 0 0 0-6V6a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v3ZM14 5v14",
   vendors: "M3 10l2-6h14l2 6M3 10v10h18V10M3 10c0 1.7 1.3 3 3 3s3-1.3 3-3c0 1.7 1.3 3 3 3s3-1.3 3-3c0 1.7 1.3 3 3 3s3-1.3 3-3",
+  investors: "M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9Zm0 4h18",
   events: "M4 8V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 0 0 8v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-8Z",
   scan: "M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M7 12h10",
 };
@@ -27,6 +28,7 @@ export default function DashboardNav({ toFulfil }: { toFulfil: number }) {
     { href: "/dashboard/events", label: "Create event", icon: I.events },
     { href: "/dashboard/tickets", label: "Tickets", icon: I.tickets },
     { href: "/dashboard/vendors", label: "Vendors", icon: I.vendors },
+    { href: "/dashboard/investors", label: "Investors", icon: I.investors },
   ];
   const more = [
     // The scanner is phone-only (it needs a camera at the gate), so the link is too.

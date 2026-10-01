@@ -14,6 +14,7 @@ export function StoreHeader() {
           <Link href="/shop#partnerships">Partnerships <span>↗</span></Link>
           <Link href="/#collections">Collections <span>↗</span></Link>
           <Link href="/events">Events and tickets <span>↗</span></Link>
+          <Link href="/investors">Investors <span>↗</span></Link>
           <Link href="/cart">Your bag <span>↗</span></Link>
         </nav>
       </details>
@@ -24,6 +25,7 @@ export function StoreHeader() {
         <Link href="/shop">Shop</Link>
         <Link href="/#collections">Collections</Link>
         <Link href="/events">Events</Link>
+        <Link href="/investors">Investors</Link>
       </nav>
       <div className="store-actions">
         <StoreSearch />
@@ -66,7 +68,7 @@ export function StoreFooter() {
           </div>
           <div><strong>SHOP</strong><Link href="/shop">All merchandise</Link><Link href="/shop#hoodies">Hoodies</Link><Link href="/shop#t-shirts">T-shirts &amp; polos</Link><Link href="/shop#headwear">Headwear</Link><Link href="/shop#workwear">Overalls &amp; dust coats</Link><Link href="/shop#partnerships">Partnerships</Link></div>
           <div><strong>HELP</strong><Link href="/cart">Your bag</Link><Link href="/lookup">Find my pass</Link><Link href="/checkout">Checkout</Link><Link href="/returns">Returns &amp; exchanges</Link><Link href="/ticket-terms">Ticket terms</Link><a href={SUPPORT.tel}>Call {SUPPORT.display}</a><a href={SUPPORT.whatsapp} target="_blank" rel="noopener noreferrer">WhatsApp us</a></div>
-          <div><strong>EVENTS</strong><Link href="/events">Upcoming events</Link><Link href="/events">Tickets</Link></div>
+          <div><strong>EVENTS</strong><Link href="/events">Upcoming events</Link><Link href="/events">Tickets</Link><Link href="/investors">Investors</Link></div>
         </div>
       </div>
       <div className="store-footer-base">
