@@ -1749,3 +1749,14 @@ a.dash-kpi:hover { border-color: var(--store-ink); }
   .wide-event-shell .event-booking:has(.ticket-screens) { display: flex; flex-direction: column; }
   .wide-event-shell .event-booking > .ticket-screens { flex: 1; align-content: start; }
 }
+
+/* ---------- Brand logo (MEATsoko Ecosystem) ----------
+   The bars-only mark sits in headers; the full logo with the tagline is on the
+   login card, where it is large enough to read. Height drives the size. */
+.brand-logo { display: block; height: 28px; width: auto; flex: 0 0 auto; }
+.store-brand .brand-logo { height: 40px; }
+.store-footer .store-brand .brand-logo { height: 44px; }
+.dash-brand .brand-logo { height: 34px; }
+.login-logo { display: block; width: 220px; max-width: 100%; height: auto; }
+@media (min-width: 900px) { .wide-event-shell .app-bar .brand-logo { height: 34px; } }
+@media (max-width: 760px) { .store-brand .brand-logo { height: 30px; } }

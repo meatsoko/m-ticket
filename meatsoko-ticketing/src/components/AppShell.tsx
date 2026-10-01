@@ -40,8 +40,7 @@ export default async function AppShell({
           <span className="title">{title}</span>
         ) : (
           <span className="brand">
-            <span className="brand-mark" aria-hidden="true">M</span>
-            MeatSoko
+            <img className="brand-logo" src="/images/brand/meatsoko-logo-mark.png" alt="MeatSoko" width={480} height={176} />
           </span>
         )}
 

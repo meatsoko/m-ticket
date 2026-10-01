@@ -18,7 +18,7 @@ export function StoreHeader() {
         </nav>
       </details>
       <Link href="/" className="store-brand" aria-label="MeatSoko home">
-        <span className="store-mark">M</span><span>MEATSOKO</span>
+        <img className="brand-logo" src="/images/brand/meatsoko-logo-mark.png" alt="MeatSoko" width={480} height={176} />
       </Link>
       <nav className="store-nav" aria-label="Main navigation">
         <Link href="/shop">Shop</Link>
@@ -61,7 +61,7 @@ export function StoreFooter() {
         </svg>
         <div className="store-footer-grid">
           <div>
-            <Link href="/" className="store-brand"><span className="store-mark">M</span><span>MEATSOKO</span></Link>
+            <Link href="/" className="store-brand"><img className="brand-logo" src="/images/brand/meatsoko-logo-mark.png" alt="MeatSoko" width={480} height={176} /></Link>
             <p>Good things for good gatherings.</p>
           </div>
           <div><strong>SHOP</strong><Link href="/shop">All merchandise</Link><Link href="/shop#hoodies">Hoodies</Link><Link href="/shop#t-shirts">T-shirts &amp; polos</Link><Link href="/shop#headwear">Headwear</Link><Link href="/shop#workwear">Overalls &amp; dust coats</Link><Link href="/shop#partnerships">Partnerships</Link></div>

@@ -17,7 +17,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <div className="dash dash-shell">
       <aside className="dash-side">
-        <Link href="/dashboard" className="dash-brand"><span className="store-mark">M</span><span>MeatSoko</span></Link>
+        <Link href="/dashboard" className="dash-brand"><img className="brand-logo" src="/images/brand/meatsoko-logo-mark.png" alt="MeatSoko" width={480} height={176} /></Link>
         <DashboardNav toFulfil={count ?? 0} />
         <div className="dash-side-foot">
           <span title={user.email ?? ""}>{user.email}</span>

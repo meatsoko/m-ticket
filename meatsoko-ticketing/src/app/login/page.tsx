@@ -28,8 +28,7 @@ export default function LoginPage() {
     <div className="dash login-page">
       <main className="login-card">
         <div className="login-brand">
-          <span className="store-mark">M</span>
-          <span>MEATSOKO</span>
+          <img className="login-logo" src="/images/brand/meatsoko-logo.png" alt="MeatSoko Ecosystem" width={720} height={325} />
         </div>
         <h1>Staff sign in</h1>
         <p className="login-sub">Store dashboard, gate scanner and events.</p>
