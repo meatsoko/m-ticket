@@ -87,7 +87,7 @@ export default function LookupForm() {
         >
           {busy ? "Searching…" : "Email me my pass"}
         </button>
-        <p className="small">For your privacy, passes are sent to the email address used when booking — never shown on this page.</p>
+        <p className="small">For your privacy, passes are sent to the email address used when booking — never shown on this page. Registered to watch online? Enter your email and we&apos;ll resend your private watch link.</p>
       </div>
 
       {result && result.found === 0 && (
