@@ -647,6 +647,10 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     --ember: #d32f3b;
     --ember-soft: #f9e5e7;
     --on-ember: #fff;
+    /* Status colours too, or they keep their dark-mode values on this light layout. */
+    --ok: #1B7A4B; --ok-soft: #DCEFE3;
+    --warn: #8E5B00; --warn-soft: #F8EBD2;
+    --danger: #B23222; --danger-soft: #F9E0DC;
     max-width: 1600px;
     width: calc(100% - 64px);
     height: auto;
@@ -1716,3 +1720,32 @@ a.dash-kpi:hover { border-color: var(--store-ink); }
 /* Platter add-ons on the pass / confirmation */
 .platter-addon-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border: 1.5px solid var(--line); border-radius: 12px; }
 .platter-addon-row.on { border-color: var(--ember); background: var(--ember-soft); }
+
+/* ---------- Get tickets: two screens (choose, then your details) ---------- */
+.ticket-screen { display: grid; gap: 12px; align-content: start; }
+.ticket-primary-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.ticket-primary-row.single { grid-template-columns: 1fr; }
+.ticket-primary { min-height: 0; display: grid; gap: 4px; align-content: start; justify-content: stretch; justify-items: start; width: 100%; padding: 16px; border: 1.5px solid var(--line); border-radius: 14px; background: var(--bg, #fff); color: var(--ink); text-align: left; font: inherit; cursor: pointer; transition: border-color .15s, box-shadow .15s, transform .15s; }
+.ticket-primary:hover { border-color: var(--ember); box-shadow: 0 0 0 3px var(--ember-soft); transform: translateY(-1px); }
+.ticket-primary-kicker { font-size: 10.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--ember); }
+.ticket-primary-online .ticket-primary-kicker { color: var(--ok); }
+.ticket-primary strong { font-size: 17px; letter-spacing: -.01em; }
+.ticket-primary small { color: var(--muted); font-size: 12.5px; }
+.ticket-primary-price { margin-top: 8px; display: flex; width: 100%; justify-content: space-between; align-items: center; font-weight: 800; color: var(--ok); }
+.ticket-primary-price b { color: var(--ink); font-size: 16px; }
+.ticket-back { justify-self: start; min-height: 0; padding: 6px 0; background: none; color: var(--muted); font-size: 13px; font-weight: 700; border: 0; cursor: pointer; }
+.ticket-back:hover { color: var(--ink); }
+.ticket-chosen { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px; border-radius: 12px; border: 1.5px solid var(--ember); background: var(--ember-soft); }
+.ticket-chosen.online { border-color: var(--ok); background: var(--ok-soft); }
+.ticket-chosen-price { color: var(--ember); font-size: 16px; }
+.ticket-chosen.online .ticket-chosen-price { color: var(--ok); }
+.ticket-screen-details .ticket-buyer { border-top: 0; padding-top: 0; }
+.ticket-screen-foot { display: grid; gap: 10px; }
+@media (max-width: 420px) { .ticket-primary { padding: 13px; } .ticket-primary strong { font-size: 15px; } }
+/* Desktop: the ticket panel stands as tall as the event-info card beside it. */
+@media (min-width: 900px) {
+  .wide-event-shell .event-purchase-layout:has(.ticket-screens) { align-items: stretch; }
+  .wide-event-shell .event-purchase-layout:has(.ticket-screens) .event-overview { align-self: stretch; position: static; }
+  .wide-event-shell .event-booking:has(.ticket-screens) { display: flex; flex-direction: column; }
+  .wide-event-shell .event-booking > .ticket-screens { flex: 1; align-content: start; }
+}

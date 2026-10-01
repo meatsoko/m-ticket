@@ -252,120 +252,140 @@ export default function GetTicketsPanel({
     );
   }
 
-  // ---------- Panel ----------
+  // ---------- Panel: two screens — choose a ticket, then your details ----------
   const total = table ? priceLabel(table) : "Free";
   const pickLabel = isOnline ? "Online attendance" : table ? table.name : "General Admission";
+  const pickSub = isOnline ? "Watch the live stream from anywhere" : table ? `${table.party_size} people · includes ${table.platter.name}` : "Entry for one person";
+  const choose = (id: string) => {
+    setPick(id); setError(""); setFieldErr({}); setDup(null);
+    // Bring the details screen into view on phones, where the panel may be mid-page.
+    requestAnimationFrame(() => panelRef.current?.scrollIntoView({ block: "start", behavior: "smooth" }));
+  };
+  const back = () => { setPick(null); setError(""); setFieldErr({}); setDup(null); };
+
   return (
-    <div className="ticket-panel" id="get-tickets" ref={panelRef}>
+    <div className={`ticket-panel ticket-screens${pick ? " on-details" : ""}`} id="get-tickets" ref={panelRef}>
       <div className="ticket-panel-head">
-        <h2>Get tickets</h2>
+        <h2>{pick ? "Your details" : "Get tickets"}</h2>
         <div className="ticket-badges"><span>Instant QR</span><span>M-Pesa &amp; card</span></div>
       </div>
       {preview && <p className="small" style={{ color: "var(--danger)", margin: 0 }}>Design preview — nothing is booked, charged or emailed.</p>}
 
-      <div className="ticket-options" role="radiogroup" aria-label="Tickets">
-        <button type="button" role="radio" aria-checked={pick === GA} className={`ticket-option${pick === GA ? " on" : ""}`} onClick={() => setPick(GA)}>
-          <span className="ticket-option-main">
-            <strong>General Admission</strong>
-            <small>Entry for one person</small>
-          </span>
-          <span className="ticket-option-price"><strong>Free</strong></span>
-        </button>
-        {event.online_enabled && (
-          <button type="button" role="radio" aria-checked={isOnline} className={`ticket-option ticket-option-online${isOnline ? " on" : ""}`} onClick={() => setPick(ONLINE)}>
-            <span className="ticket-option-main">
-              <strong>Online attendance</strong>
-              <small>Watch the live stream from anywhere</small>
-            </span>
-            <span className="ticket-option-price"><strong>Free</strong></span>
-          </button>
-        )}
-        {options.map((o) => {
-          const p = usd(o);
-          const eb = earlyBird(o);
-          return (
-            <button type="button" role="radio" key={o.id} aria-checked={pick === o.id} className={`ticket-option${pick === o.id ? " on" : ""}`} onClick={() => setPick(o.id)}>
-              <span className="ticket-option-main">
-                <strong>{o.name}</strong>
-                <small>{o.party_size} people · includes {o.platter.name}</small>
-              </span>
-              <span className="ticket-option-price">
-                {eb && <em>Early bird</em>}
-                <strong>{priceLabel(o)}</strong>
-                {eb && p && <s>{formatUsd(p.regular)}</s>}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
       {!pick ? (
-        <p className="ticket-panel-hint">Select a ticket above to continue.</p>
-      ) : (
-        <div className="ticket-buyer">
-          <span className="ticket-section-label">Your details</span>
-          <label className="field">
-            <span>Full name</span>
-            <input data-field="name" autoComplete="name" placeholder="Amina Wanjiru" aria-invalid={!!fieldErr.name}
-              value={name} onChange={(e) => { setName(e.target.value); setFieldErr({ ...fieldErr, name: undefined }); }} />
-            {fieldErr.name && <span className="field-error">{fieldErr.name}</span>}
-          </label>
-          {isOnline ? (
-            <label className="field">
-              <span>Country</span>
-              <select data-field="phone" autoComplete="country" value={country} aria-invalid={!!fieldErr.phone}
-                onChange={(e) => { setCountry(e.target.value); setFieldErr({ ...fieldErr, phone: undefined }); }}>
-                <option value="">Choose your country</option>
-                {COUNTRIES.map(([code, label]) => <option key={code} value={code}>{label}</option>)}
-              </select>
-              {fieldErr.phone && <span className="field-error">{fieldErr.phone}</span>}
-            </label>
-          ) : (
-            <label className="field">
-              <span>Phone number</span>
-              <input data-field="phone" type="tel" inputMode="numeric" autoComplete="tel" placeholder="07XX XXX XXX" aria-invalid={!!fieldErr.phone}
-                value={phone} onChange={(e) => { setPhone(e.target.value); setFieldErr({ ...fieldErr, phone: undefined }); }} />
-              {fieldErr.phone && <span className="field-error">{fieldErr.phone}</span>}
-            </label>
-          )}
-          <label className="field">
-            <span>Email</span>
-            <input data-field="email" type="email" inputMode="email" autoComplete="email" placeholder="you@example.com" aria-invalid={!!fieldErr.email}
-              value={email} onChange={(e) => { setEmail(e.target.value); setFieldErr({ ...fieldErr, email: undefined }); }} />
-            {fieldErr.email ? <span className="field-error">{fieldErr.email}</span> : <span className="small">{EMAIL_HINT}.</span>}
-          </label>
-          <p className="small ticket-delivery-note">{isOnline
-            ? "No phone needed. We email your private watch link — it works from anywhere in the world."
-            : <>Your ticket and QR code are emailed instantly{table ? " — your table is added as soon as the payment goes through" : ""}.</>}</p>
-          <label className="ticket-agree">
-            <input data-field="agree" type="checkbox" checked={agree} onChange={(e) => { setAgree(e.target.checked); setFieldErr({ ...fieldErr, agree: undefined }); }} />
-            <span>I accept the <a href="/ticket-terms" target="_blank" rel="noopener">ticket terms &amp; refund policy</a>.</span>
-          </label>
-          {fieldErr.agree && <span className="field-error">{fieldErr.agree}</span>}
+        // ---------- Screen 1: choose ----------
+        <div className="ticket-screen ticket-screen-choose">
+          <div className={`ticket-primary-row${event.online_enabled ? "" : " single"}`}>
+            <button type="button" className="ticket-primary" onClick={() => choose(GA)}>
+              <span className="ticket-primary-kicker">In person</span>
+              <strong>General Admission</strong>
+              <small>Entry for one person</small>
+              <span className="ticket-primary-price">Free <b aria-hidden="true">→</b></span>
+            </button>
+            {event.online_enabled && (
+              <button type="button" className="ticket-primary ticket-primary-online" onClick={() => choose(ONLINE)}>
+                <span className="ticket-primary-kicker">From anywhere</span>
+                <strong>Attend online</strong>
+                <small>Watch the live stream</small>
+                <span className="ticket-primary-price">Free <b aria-hidden="true">→</b></span>
+              </button>
+            )}
+          </div>
 
-          {dup && (
-            <div className="card quiet" style={{ gap: "var(--s3)" }}>
-              <strong style={{ fontSize: ".95rem" }}>You may already have a ticket</strong>
-              <p className="small">{email.trim()} already has booking <strong>{dup}</strong> at this event. If that is yours, there is no need to book again.</p>
-              <a className="btn-ghost btn-block" href="/lookup">Find my existing pass</a>
-              <button className="btn-primary btn-block" onClick={() => submit(true)} disabled={busy}>This is a separate person — continue</button>
+          {options.length > 0 && <span className="ticket-section-label">Tables with a family platter</span>}
+          <div className="ticket-options">
+            {options.map((o) => {
+              const p = usd(o);
+              const eb = earlyBird(o);
+              return (
+                <button type="button" key={o.id} className="ticket-option" onClick={() => choose(o.id)}>
+                  <span className="ticket-option-main">
+                    <strong>{o.name}</strong>
+                    <small>{o.party_size} people · includes {o.platter.name}</small>
+                  </span>
+                  <span className="ticket-option-price">
+                    {eb && <em>Early bird</em>}
+                    <strong>{priceLabel(o)}</strong>
+                    {eb && p && <s>{formatUsd(p.regular)}</s>}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        // ---------- Screen 2: your details ----------
+        <div className="ticket-screen ticket-screen-details">
+          <button type="button" className="ticket-back" onClick={back}>← Change ticket</button>
+          <div className={`ticket-chosen${isOnline ? " online" : ""}`}>
+            <span className="ticket-option-main"><strong>{pickLabel}</strong><small>{pickSub}</small></span>
+            <strong className="ticket-chosen-price">{total}</strong>
+          </div>
+
+          <div className="ticket-buyer">
+            <label className="field">
+              <span>Full name</span>
+              <input data-field="name" autoComplete="name" placeholder="Amina Wanjiru" aria-invalid={!!fieldErr.name}
+                value={name} onChange={(e) => { setName(e.target.value); setFieldErr({ ...fieldErr, name: undefined }); }} />
+              {fieldErr.name && <span className="field-error">{fieldErr.name}</span>}
+            </label>
+            {isOnline ? (
+              <label className="field">
+                <span>Country</span>
+                <select data-field="phone" autoComplete="country" value={country} aria-invalid={!!fieldErr.phone}
+                  onChange={(e) => { setCountry(e.target.value); setFieldErr({ ...fieldErr, phone: undefined }); }}>
+                  <option value="">Choose your country</option>
+                  {COUNTRIES.map(([code, label]) => <option key={code} value={code}>{label}</option>)}
+                </select>
+                {fieldErr.phone && <span className="field-error">{fieldErr.phone}</span>}
+              </label>
+            ) : (
+              <label className="field">
+                <span>Phone number</span>
+                <input data-field="phone" type="tel" inputMode="numeric" autoComplete="tel" placeholder="07XX XXX XXX" aria-invalid={!!fieldErr.phone}
+                  value={phone} onChange={(e) => { setPhone(e.target.value); setFieldErr({ ...fieldErr, phone: undefined }); }} />
+                {fieldErr.phone && <span className="field-error">{fieldErr.phone}</span>}
+              </label>
+            )}
+            <label className="field">
+              <span>Email</span>
+              <input data-field="email" type="email" inputMode="email" autoComplete="email" placeholder="you@example.com" aria-invalid={!!fieldErr.email}
+                value={email} onChange={(e) => { setEmail(e.target.value); setFieldErr({ ...fieldErr, email: undefined }); }} />
+              {fieldErr.email ? <span className="field-error">{fieldErr.email}</span> : <span className="small">{isOnline ? "We send your private watch link here" : EMAIL_HINT}.</span>}
+            </label>
+            <p className="small ticket-delivery-note">{isOnline
+              ? "No phone needed. We email your private watch link — it works from anywhere in the world."
+              : <>Your ticket and QR code are emailed instantly{table ? " — your table is added as soon as the payment goes through" : ""}.</>}</p>
+            <label className="ticket-agree">
+              <input data-field="agree" type="checkbox" checked={agree} onChange={(e) => { setAgree(e.target.checked); setFieldErr({ ...fieldErr, agree: undefined }); }} />
+              <span>I accept the <a href="/ticket-terms" target="_blank" rel="noopener">ticket terms &amp; refund policy</a>.</span>
+            </label>
+            {fieldErr.agree && <span className="field-error">{fieldErr.agree}</span>}
+
+            {dup && (
+              <div className="card quiet" style={{ gap: "var(--s3)" }}>
+                <strong style={{ fontSize: ".95rem" }}>You may already have a ticket</strong>
+                <p className="small">{email.trim()} already has booking <strong>{dup}</strong> at this event. If that is yours, there is no need to book again.</p>
+                <a className="btn-ghost btn-block" href="/lookup">Find my existing pass</a>
+                <button className="btn-primary btn-block" onClick={() => submit(true)} disabled={busy}>This is a separate person — continue</button>
+              </div>
+            )}
+            {error && <p className="small" style={{ color: "var(--danger)" }}>{error}</p>}
+          </div>
+
+          <div className="ticket-screen-foot">
+            <div className="ticket-total">
+              <span>Total · 1 {isOnline ? "online pass" : table ? "table" : "ticket"}</span>
+              <strong>{total}</strong>
             </div>
-          )}
-          {error && <p className="small" style={{ color: "var(--danger)" }}>{error}</p>}
+            <button type="button" className={table ? "btn-pay btn-block" : "btn-primary btn-block"} disabled={busy} onClick={() => submit()}>
+              {busy ? (isOnline ? "Registering…" : table ? "Opening Paystack…" : "Getting your ticket…")
+                : isOnline ? "Register to watch online"
+                : table ? `Continue to payment · ${total}` : "Get my free ticket"}
+            </button>
+            {table && <p className="small ticket-pay-note">Pay by M-Pesa or card on Paystack (charged in KSh). If you don&apos;t finish paying, you keep your free General Admission ticket.</p>}
+          </div>
         </div>
       )}
-
-      <div className="ticket-total">
-        <span>Total{pick ? ` · 1 ${isOnline ? "online pass" : table ? "table" : "ticket"}` : ""}</span>
-        <strong>{pick ? total : "—"}</strong>
-      </div>
-      <button type="button" className={table ? "btn-pay btn-block" : "btn-primary btn-block"} disabled={!pick || busy} onClick={() => submit()}>
-        {busy ? (isOnline ? "Registering…" : table ? "Opening Paystack…" : "Getting your ticket…")
-          : !pick ? "Select a ticket"
-          : isOnline ? "Register to watch online"
-          : table ? `Continue to payment · ${total}` : "Get my free ticket"}
-      </button>
-      {table && <p className="small ticket-pay-note">Pay by M-Pesa or card on Paystack (charged in KSh). If you don&apos;t finish paying, you keep your free General Admission ticket.</p>}
 
       {pick && !panelVisible && (
         <a href="#get-tickets" className="ticket-mobile-bar" aria-hidden="true" tabIndex={-1}>
