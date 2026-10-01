@@ -2,13 +2,14 @@
 // Body: { code } — the 32-hex access code from /watch/<code>.
 //
 // 404 invalid, 410 revoked; otherwise event info and a state computed from the
-// event's own timestamps: before | live (from 15 min before start) | ended.
+// event's own timestamps: before (countdown) | live (from the start time) | ended.
 // The YouTube stream ID is returned ONLY while live: it is never in the page
 // source before then, and never published anywhere else on the site.
 import { json, preflight } from "../_shared/cors.ts";
 import { clientIp, rateLimit, serviceClient } from "../_shared/supabase.ts";
 
-const OPENS_BEFORE_MS = 15 * 60 * 1000;
+// The countdown runs right up to the event's start; the stream shows from then.
+const OPENS_BEFORE_MS = 0;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return preflight();

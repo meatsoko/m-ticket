@@ -167,7 +167,7 @@ export default function EventSettings({ event }: { event: any }) {
                 <span>YouTube Live video ID or link</span>
                 <input placeholder="e.g. dQw4w9WgXcQ or https://youtube.com/live/…" value={f.stream_youtube_id}
                   onChange={(e) => set("stream_youtube_id", e.target.value)} />
-                <span className="small">Use an unlisted YouTube Live stream. It plays only on attendees&apos; private watch pages, from 15 minutes before the start time.</span>
+                <span className="small">Use an unlisted YouTube Live stream. It plays only on attendees&apos; private watch pages, from the event&apos;s start time (a countdown runs until then).</span>
               </label>
 
               <span className="eyebrow">Reservation rules</span>

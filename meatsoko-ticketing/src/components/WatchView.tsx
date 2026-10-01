@@ -35,7 +35,8 @@ export default function WatchView({ code }: { code: string }) {
   useEffect(() => { const t = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(t); }, []);
 
   // Countdown runs on the real event timestamp (corrected for a wrong device clock).
-  const startMs = a ? new Date(a.event.starts_at).getTime() - 15 * 60 * 1000 : 0;
+  // Counts down to the event's start time; the stream appears at the start.
+  const startMs = a ? new Date(a.event.starts_at).getTime() : 0;
   const endMs = a ? new Date(a.event.ends_at ?? a.event.starts_at).getTime() : 0;
   const serverNow = now + skew;
   // Ask again exactly when the state should change (doors open / event ends).
