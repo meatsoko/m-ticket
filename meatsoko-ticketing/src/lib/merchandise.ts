@@ -177,6 +177,11 @@ export const merchandiseCategories: MerchandiseCategory[] = [
         summary: "A partnership tee with Brian Munyolo Boxing: the BMB mark up front and the MeatSoko Ecosystem print on the back.",
         details: ["BMB — Brian Munyolo Boxing print on the chest", "MeatSoko Ecosystem print across the back", "Crew neck, short sleeves"],
       }, "Blue", "bmb-tee-blue.jpg", 15, { slug: "bmb-t-shirt-blue" }),
+      make("partnerships", {
+        style: "Hustle Game 21 Hoodie", name: "Hustle Game 21 Hoodie", sizes: APPAREL_SIZES,
+        summary: "A black hoodie with the Hustle Game 21 script up front and the MeatSoko Ecosystem print across the back.",
+        details: ["“Hustle Game 21” script on the chest with “They doubt the dream — right up until the jet hits the sky.”", "MeatSoko Ecosystem print across the back with “Convenient . Reliable . Sustainable”", "Drawstring hood and front kangaroo pocket", "Ribbed cuffs and hem"],
+      }, "Black", "hustle-game-21-hoodie-black.jpg", null, { slug: "hustle-game-21-hoodie-black" }),
     ],
   },
 ];
