@@ -58,12 +58,6 @@ export function can(role: Role, capability: Capability): boolean {
   return capabilitiesOf(role).has(capability);
 }
 
-/** True when the role is at least as privileged as `min`. */
-export function atLeast(role: Role, min: Role): boolean {
-  const rank: Record<Role, number> = { public: 0, staff: 1, admin: 2 };
-  return rank[role] >= rank[min];
-}
-
 // ---------------------------------------------------------------------------
 // Navigation
 // ---------------------------------------------------------------------------

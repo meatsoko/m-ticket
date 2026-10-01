@@ -17,7 +17,7 @@ The user wants the storefront to use a warm cream, black, and red visual system.
 - `npm run dev` starts the local app.
 - `npm run lint` runs Next lint.
 - `npm run build` creates a production build.
-- Supabase migrations are in `supabase/migrations/`; schema reference is `supabase/schema.sql`.
+- Supabase migrations are in `supabase/migrations/` and are the source of truth; `supabase/schema.sql` is a historical SRS v1.0 snapshot — do not apply it.
 
 ## Main routes
 
@@ -57,7 +57,7 @@ The user wants the storefront to use a warm cream, black, and red visual system.
 - Event details and layout: `src/app/e/[slug]/page.tsx`, `src/app/events/page.tsx`, `src/components/AppShell.tsx`.
 - Ticket checkout: `src/components/EventCheckout.tsx`.
 - Reservation and platter checkout: `src/components/ReservationForm.tsx`.
-- Admin and Supabase context: `TECHNICAL_DOCUMENTATION.md`, `FOLDER_GUIDE.md`, `ADMIN_ACCESS.md`, `INTAKE.md`, `REMAINING_GAPS.md`, `REMAINING_WORK.md`, and `LAUNCH_CHECKLIST.md`.
+- Admin and Supabase context: `TECHNICAL_DOCUMENTATION.md` (§13: traps and failure drills), `ADMIN_ACCESS.md`, `INTAKE.md`, `REMAINING_GAPS.md`, `REMAINING_WORK.md`, and `LAUNCH_CHECKLIST.md`.
 
 ## Working guidance
 
@@ -94,7 +94,7 @@ The user wants the storefront to use a warm cream, black, and red visual system.
 
 - `reserve`: a booking is keyed on **phone + email** (since 2026-09-29, `20260929170000_booking_per_phone_and_email.sql`: unique `(event_id, phone, lower(email))` replaced `unique (event_id, phone)`). Same phone + different email → a **new, separate booking** with its own number and pass; the existing booking is untouched (a shared handset can book for several people). Same phone + same email (any case) → amended, but the pass token is **never returned**; it is emailed to the address on the booking. New bookings return their own token. `phone_in_use` is no longer returned (the form still understands it).
 - Deployed 2026-09-29: migration first, then `reserve`. Local harness 52/52; not yet exercised live with a real second booking.
-- **General Admission first, tables as an upgrade (LIVE 2026-09-29, `nyamafest-main`, migration `20260929180000`).** An event with an active `reservation_types.is_general_admission` type shows `GeneralAdmissionForm` (free, 1 person) instead of `ReservationForm`; the booking form can then only issue/amend that free ticket (`create_reservation` returns `upgrade_required` / `already_booked`). Tables are bought via `upgrade-reservation`, authorised by the pass `access_token` only; `start_reservation_upgrade` creates a pending order (+`reservation_upgrades` row, 30-min seat hold) and `confirm_paystack_payment` applies it on payment — same number/token/QR, headcount = table size. A second paid upgrade is flagged for refund. `NEXT_PUBLIC_GA_PREVIEW=on` is a dev-only design preview (off in production builds). Local harness 111/111; live probes checked; no real end-to-end purchase yet.
+- **General Admission first, tables as an upgrade (LIVE 2026-09-29, `nyamafest-main`, migration `20260929180000`).** An event with an active `reservation_types.is_general_admission` type shows `GeneralAdmissionForm` (free, 1 person) instead of `ReservationForm`; the booking form can then only issue/amend that free ticket (`create_reservation` returns `upgrade_required` / `already_booked`). Tables are bought via `upgrade-reservation`, authorised by the pass `access_token` only; `start_reservation_upgrade` creates a pending order (+`reservation_upgrades` row, 30-min seat hold) and `confirm_paystack_payment` applies it on payment — same number/token/QR, headcount = table size. A second paid upgrade is flagged for refund. Local harness 111/111; live probes checked; no real end-to-end purchase yet.
 - **"Get tickets" panel (branch `feat/ticket-panel`, 2026-09-30).** `GetTicketsPanel` replaces the free-ticket form on General Admission events: GA + tables in one list, details after a pick, one button. Choosing a table sends `table_type_id` to `reserve`, which creates the free ticket and — only for a booking it just CREATED — starts the upgrade via `_shared/table-upgrade.ts` (shared with `upgrade-reservation`). An existing booking matched by phone + email gets `upgrade.error = "existing_booking"`, never an upgrade. Event page adds facts/trust strip, share bar, tabs (`events.lineup`, `events.table_plan_url`, migration `20260930120000`), and `/ticket-terms`. Harness 123/123.
 - `lookup` and `reservation-lookup` never return pass/QR tokens: they email passes to the address on the booking/order and reply `{found, emailed, sent_to (masked), no_email}`. `LookupForm` shows "check your email".
 - Deployed with the merge of PR #8 (`ec026d8`): Vercel first, then `reserve`, `lookup`, `reservation-lookup`. Verified live: takeover attempt on a known phone → `409 phone_in_use`, booking unchanged; lookups reply with counts only; `/lookup` renders the email-me flow.

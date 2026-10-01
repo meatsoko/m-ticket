@@ -129,8 +129,8 @@ account. Nobody can work the gate until this is done.
 
 Closed, dated 2026-09-06, still `payments_enabled = true` with `capacity = null`. Harmless
 — it is closed and `reservation_mode = 'off'` — but unreachable from Event settings, which
-renders those fields only for reservation modes. `scripts/fix-nyamafest-launch.sql` is
-written and **not applied**.
+renders those fields only for reservation modes. **Won't fix (2026-10-01):** the event is
+closed and payments now run through Paystack, so the old fix script was retired unapplied.
 
 ---
 

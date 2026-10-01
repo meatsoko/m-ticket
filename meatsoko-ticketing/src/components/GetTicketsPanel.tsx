@@ -30,13 +30,11 @@ type OnlineDone = { registration_number?: string; access_code?: string; existing
 type Done = { reservation_number: string; access_token?: string; unchanged?: boolean; emailed: boolean; upgradeError?: string };
 
 export default function GetTicketsPanel({
-  event, gaTypeId, options, preview = false,
+  event, gaTypeId, options,
 }: {
   event: Event;
   gaTypeId: string;
   options: UpgradeOption[];
-  /** Local design preview (lib/ga-preview): simulate, never call the server. */
-  preview?: boolean;
 }) {
   const supabase = createClient();
   const [pick, setPick] = useState<string | null>(null);
@@ -103,10 +101,6 @@ export default function GetTicketsPanel({
     if (!allowDuplicate) setDup(null);
     if (!validate()) return;
     if (isOnline) return submitOnline();
-    if (preview) {
-      setDone({ reservation_number: "NFM-PREVIEW", access_token: "0".repeat(32), emailed: true });
-      return;
-    }
     setBusy(true);
     const res = await invokeFn(supabase, "reserve", {
       event_id: event.id,
@@ -155,7 +149,6 @@ export default function GetTicketsPanel({
   }
 
   async function submitOnline() {
-    if (preview) { setOnlineDone({ registration_number: "ONL-PREVIEW", access_code: "0".repeat(32), existing: false, emailed: true }); return; }
     setBusy(true);
     const res = await invokeFn(supabase, "online-register", { event_id: event.id, name: name.trim(), email: email.trim(), country });
     setBusy(false);
@@ -186,7 +179,7 @@ export default function GetTicketsPanel({
             ? <>For your security the watch link isn&apos;t shown here — {onlineDone.emailed ? <>we&apos;ve emailed it again to <strong>{email.trim()}</strong></> : "use My Tickets to have it emailed"}.</>
             : <>Your private watch page counts down to the event and plays the live stream when it starts.{onlineDone.emailed ? <> We&apos;ve emailed the link to <strong>{email.trim()}</strong>.</> : ""}</>}
         </p>
-        {watch && !preview && <a className="btn-primary btn-block" href={watch}>Open my watch page</a>}
+        {watch && <a className="btn-primary btn-block" href={watch}>Open my watch page</a>}
         <p className="small">Please keep the link to yourself — it&apos;s personal to you.</p>
       </div>
     );
@@ -217,17 +210,17 @@ export default function GetTicketsPanel({
           <a className="btn btn-ghost btn-block" href={`https://wa.me/?text=${encodeURIComponent(`My ${event.name} ticket (${done.reservation_number}) — open at the door: ${url}`)}`}>
             <Icon name="share" size={18} /> Send via WhatsApp
           </a>
-          {!preview && <a className="btn-ghost btn-block" href={`/r/${done.access_token}`}>Open my pass</a>}
+          <a className="btn-ghost btn-block" href={`/r/${done.access_token}`}>Open my pass</a>
         </div>
         {options.length > 0 && (
           <div className="card">
-            <PlatterAddons token={done.access_token} preview={preview}
+            <PlatterAddons token={done.access_token}
               platters={Array.from(new Map(options.map((o) => [o.platter.id, o.platter])).values())} />
           </div>
         )}
         {options.length > 0 && (
           <div className="card">
-            <TableUpgrade token={done.access_token} options={options} preview={preview}
+            <TableUpgrade token={done.access_token} options={options}
               onUpgraded={() => window.location.assign(`/r/${done.access_token}`)} />
           </div>
         )}
@@ -269,7 +262,6 @@ export default function GetTicketsPanel({
         <h2>{pick ? "Your details" : "Get tickets"}</h2>
         <div className="ticket-badges"><span>Instant QR</span><span>M-Pesa &amp; card</span></div>
       </div>
-      {preview && <p className="small" style={{ color: "var(--danger)", margin: 0 }}>Design preview — nothing is booked, charged or emailed.</p>}
 
       {!pick ? (
         // ---------- Screen 1: choose ----------

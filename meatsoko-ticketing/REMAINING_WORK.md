@@ -16,7 +16,7 @@
 - [ ] Verify the current NyamaFest data: correct event date/capacity, poster and copy, event contact, organizer notification email, preorder items/prices, and the existence or removal of the documented test reservation.
 - [ ] Set up and validate a real notification provider for WhatsApp if that option remains visible; currently a `WHATSAPP_WEBHOOK_URL` and provider integration are not configured. Prefer a verified email destination until WhatsApp delivery is implemented.
 - [ ] Reconcile `supabase/schema.sql` with ordered migrations. The schema snapshot is not an accurate fresh-project bootstrap for current reservation/preorder and Paystack behavior; use migrations as the deployment source of truth until reconciled.
-- [ ] Replace or clearly archive stale state in `LAUNCH_CHECKLIST.md`, `REMAINING_GAPS.md`, `DARAJA_PRODUCTION.md`, and `FOLDER_GUIDE.md`; some describe payments as disabled/M-Pesa-only and omit reservation and Paystack functions.
+- [ ] Replace or clearly archive stale state in `LAUNCH_CHECKLIST.md`, `REMAINING_GAPS.md`, and `DARAJA_PRODUCTION.md`; some describe payments as disabled/M-Pesa-only and omit reservation and Paystack functions.
 - [ ] Fix the scanner cache metadata: `sync-tokens` can filter by `event_id`, but the scanner currently makes an unfiltered request and stores the cache under the literal event id `live`. Return/store the actual event scope and require the scanner to select it.
 
 ## P2 — resilience, support, and product improvements

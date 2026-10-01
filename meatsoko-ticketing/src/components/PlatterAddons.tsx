@@ -12,7 +12,7 @@ import { PENDING_UPGRADE_KEY, upgradePriceKes, type UpgradePlatter } from "@/com
 
 export type AddonPlatter = UpgradePlatter & { max_per_reservation?: number };
 
-export default function PlatterAddons({ token, platters, preview = false }: { token: string; platters: AddonPlatter[]; preview?: boolean }) {
+export default function PlatterAddons({ token, platters }: { token: string; platters: AddonPlatter[] }) {
   const [qty, setQty] = useState<Record<string, number>>({});
   const [now, setNow] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
@@ -26,7 +26,6 @@ export default function PlatterAddons({ token, platters, preview = false }: { to
   async function pay() {
     setErr("");
     if (!lines.length) { setErr("Choose at least one platter."); return; }
-    if (preview) { setErr("Design preview — no payment."); return; }
     setBusy(true);
     const res = await invokeFn(createClient(), "platter-addon", {
       access_token: token, items: lines.map((p) => ({ preorder_item_id: p.id, qty: qty[p.id] })),

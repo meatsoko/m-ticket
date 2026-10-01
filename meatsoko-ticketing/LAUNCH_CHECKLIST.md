@@ -159,9 +159,8 @@ date has passed, and `reservation_mode = 'off'`, so nothing can transact against
 
 It cannot be fixed from **Event settings**: `EventSettings.tsx` renders the payments
 checkbox and the capacity field only for reservation modes, and this event is Ticketed.
-The update is written and committed but **not applied** —
-`./scripts/db.sh < scripts/fix-nyamafest-launch.sql` sets payments off and capacity 500
-once `SUPABASE_DB_PASSWORD` is in `.env.local`.
+The fix script was retired unapplied on 2026-10-01: the event is closed and payments now run
+through Paystack, so there is nothing to change.
 
 ### `admit_pass` / `resolve_pass` may be callable by anyone — **verify before Sunday**
 Neither `supabase/schema.sql` nor any migration contains a `REVOKE EXECUTE`, and only
@@ -245,7 +244,7 @@ That is where to look when a reservation fails, when a pass does not arrive (`re
 logs the send result and its reason), or when the duplicate-email check misbehaves
 (`reserve` logs `dup check failed` if the RPC errors, because that check fails open).
 
-Worth knowing from `FOLDER_GUIDE.md`: a CORS problem looks like a **successful boot
+Worth knowing from `TECHNICAL_DOCUMENTATION.md` §13: a CORS problem looks like a **successful boot
 followed by EarlyDrop with no application logs** — the isolate answered the `OPTIONS` and
 exited, and the `POST` never ran. `curl` will work perfectly in that state, because curl
 does not preflight.
@@ -326,4 +325,3 @@ gate readiness rather than launch.
    gets slower by waiting
 9. When M-Pesa clears: set the secrets, tick the payments box, test with one shilling
 
-Tidy-up, any time: apply `scripts/fix-nyamafest-launch.sql`.

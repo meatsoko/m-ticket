@@ -209,7 +209,6 @@ Deploy the Next.js application through the hosting provider configured for this 
 - [Admin access and staff account procedure](ADMIN_ACCESS.md)
 - [Daraja production provisioning](DARAJA_PRODUCTION.md)
 - [Launch checklist](LAUNCH_CHECKLIST.md) — historical checklist; some statements are stale and must be revalidated.
-- [Folder guide](FOLDER_GUIDE.md) — earlier architecture notes; update where they conflict with this document.
 
 For an incident, capture the order ID/reference, event, timestamp, payment provider, function request ID, and provider transaction reference. Never send secret keys, full bearer QR tokens, or unredacted customer data in logs or support channels.
 
@@ -236,3 +235,51 @@ The public Ticketyetu site presents event/artist/venue search, city/date filters
 - [Ticketyetu privacy policy](https://ticketyetu.com/privacy-policy)
 
 The product recommendations in `REMAINING_WORK.md` adapt these visible patterns to this project's current data and operations: buyer payment recovery, audit-friendly refunds/reconciliation, richer event pages, city/date/category discovery, optional seating, organizer tools, and buyer communication preferences. Treat them as proposals for product validation, not as implementation commitments or verified Ticketyetu backend capabilities.
+
+## 13. Traps and failure drills
+
+Carried over from the retired `FOLDER_GUIDE.md`.
+
+### Edge function auth — the one thing not to get wrong
+
+`redeem` and `sync-tokens` need the caller's identity **and** service-role database
+access. Do not do this:
+
+```ts
+// WRONG — PostgREST resolves the role from the JWT, not the service key, so RLS applies
+createClient(url, SERVICE_ROLE_KEY, { global: { headers: { Authorization: userJwt } } })
+```
+
+`redemptions` intentionally has no INSERT policy (NFR-4), so the write above fails with
+*"new row violates row-level security policy"* and **every gate scan is rejected**. Use
+`requireStaff(req)` from `_shared/supabase.ts`: it verifies the token explicitly via
+`auth.getUser(token)` and hands back a clean service-role client.
+
+### CORS — the other thing not to get wrong
+
+`supabase-js` sends `apikey` and `x-client-info` on **every** `functions.invoke()` call.
+Any header missing from `Access-Control-Allow-Headers` makes the browser reject the
+preflight and never send the real request. The symptom is deeply misleading:
+
+- the browser shows only a generic failure (the `fetch` never completed);
+- the function logs show a **successful boot followed by EarlyDrop with no application
+  logs** — that is the isolate answering the `OPTIONS` and exiting. The `POST` never ran;
+- nothing is written to the database and no rate-limit bucket moves;
+- `curl` works perfectly, because curl does not preflight.
+
+Keep `_shared/cors.ts` as the single source of allowed headers, and reply to `OPTIONS`
+with `preflight()` from that module.
+
+Relatedly, on the client: `functions.invoke()` sets `data: null` for any non-2xx response
+and puts the `Response` on `error.context`. Reading only `data` throws away the server's
+error code, collapsing throttles, sold-out types and Daraja rejections into one generic
+message. Use `invokeFn()` from `src/lib/invoke.ts`, which always returns the parsed body.
+
+### SRS failure drills — how to simulate them
+
+| SRS §5.4 failure | How to simulate |
+|---|---|
+| Duplicate Daraja callback | Re-send the same callback payload twice to daraja-callback (curl); expect one `confirmed`, one `already` |
+| STK timeout/cancel | Cancel the prompt on the phone; order → `failed`, retry works |
+| Offline scan | Load scanner, sync cache, enable airplane mode: admit a valid ticket (queues), rescan same code (rejected from cache), disable airplane mode → outbox syncs, rescan → `already_redeemed` with first timestamp |
+| Cap exceeded | Set cap=1, buy 2 bundles in two orders; second payment → order `flagged`, dashboard shows it |

@@ -252,4 +252,3 @@ export const COUNTRIES: [code: string, name: string][] = [
 ];
 
 export const COUNTRY_CODES = new Set(COUNTRIES.map(([c]) => c));
-export const countryName = (code: string) => COUNTRIES.find(([c]) => c === code)?.[1] ?? code;

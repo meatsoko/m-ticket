@@ -21,7 +21,7 @@ Default branch is `main`, and **`main` is the production branch** — pushing de
 |---|---|---|
 | Node | **22.23.1** | `package.json` says `>=18.17.0`; Vercel warns that an unpinned `engines` range auto-upgrades on new majors |
 | npm | 10.9.8 | lockfile is `package-lock.json` |
-| Supabase CLI | **2.67.1** | `brew install supabase/tap/supabase`. **No `functions logs` subcommand** — see `CLAUDE.md` §9 |
+| Supabase CLI | **2.67.1** | `brew install supabase/tap/supabase`. **No `functions logs` subcommand** — see `CLAUDE.md` §7 |
 | Deno | 2.6.3 | type-checking Edge Functions only (`deno check`); not needed to run the app |
 | psql | any recent | only for `scripts/db.sh` |
 | gh | any recent | optional, for PRs |
@@ -118,7 +118,7 @@ JWT; the guest-facing ones do not. **Do not change these to make something work.
 |---|---|
 | Vercel project | `m-ticket-azure` |
 | **Root Directory** | **`meatsoko-ticketing`** |
-| **Framework Preset** | **`Next.js`** — not "Other". See `CLAUDE.md` §4; getting this wrong produces a green build that 404s on every route |
+| **Framework Preset** | **`Next.js`** — not "Other". See `CLAUDE.md` §2; getting this wrong produces a green build that 404s on every route |
 | Output Directory | framework default — **not** `public` |
 | Production branch | `main` |
 | Domain | `event.meatsokogroup.com` (DNS already correct; Valid Configuration) |
@@ -158,6 +158,6 @@ npm run dev                     # http://localhost:3000
 Then read, in order: `CLAUDE.md` → `meatsoko-ticketing/LAUNCH_CHECKLIST.md` →
 `meatsoko-ticketing/REMAINING_GAPS.md`.
 
-> **Before changing anything**, note that the event is **Sunday 27 September 2026** and the
-> site is taking real bookings. `CLAUDE.md` §11 lists what not to do; §12 lists what is
-> genuinely outstanding.
+> **Before changing anything**, note that the site is live and taking real bookings and
+> payments. `CLAUDE.md` §8 lists what not to do; `meatsoko-ticketing/CLAUDE.md` has the
+> current state of each feature.

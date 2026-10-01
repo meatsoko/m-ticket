@@ -1,6 +1,11 @@
 -- ============================================================
--- MeatSoko Ticketing — database schema (SRS v1.0)
--- Apply with: supabase db push   (or paste into SQL editor)
+-- MeatSoko Ticketing — database schema (SRS v1.0) — HISTORICAL SNAPSHOT
+--
+-- Do NOT apply this file. It stops at SRS v1.0 and has none of the later
+-- reservations, Paystack, merchandise, vendor, online-attendance or
+-- permission lock-down work. The ordered files in supabase/migrations/ are the
+-- source of truth (`supabase db push`). Kept only as a readable reference for
+-- the original core tables.
 -- ============================================================
 create extension if not exists pgcrypto;
 
