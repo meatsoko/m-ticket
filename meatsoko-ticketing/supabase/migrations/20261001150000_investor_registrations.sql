@@ -1,4 +1,5 @@
--- Investors' visit (Friday 16 October 2026, the day before NyamaFest Main).
+-- Investors' visit (Friday 16 October 2026, the day before NyamaFest Main, at
+-- the same venue: Thika Greens Golf Course).
 -- The "Investors" link in the store navigation opens a form: salutation, name,
 -- occupation, email, and the names of the people coming with them. The
 -- organiser tracks the list in the dashboard (Events & tickets > Investors).
@@ -8,7 +9,8 @@
 --
 -- Guests are stored as a list of names, not just a number, because the
 -- organiser wants to know who is coming; guest_count is derived from it so the
--- two can never disagree.
+-- two can never disagree. Every field is mandatory, including at least one
+-- guest (the organiser's decision, 2026-10-01).
 --
 -- One active registration per email (case-insensitive). The Edge Function never
 -- overwrites an existing one from the public form — anyone who knows an email
@@ -27,7 +29,7 @@ create table if not exists public.investor_registrations (
   name             text not null check (length(btrim(name)) between 2 and 120),
   occupation       text not null check (length(btrim(occupation)) between 2 and 120),
   email            text not null check (public.looks_like_email(email)),
-  guests           text[] not null default '{}' check (cardinality(guests) <= 10),
+  guests           text[] not null check (cardinality(guests) between 1 and 10),
   guest_count      integer generated always as (cardinality(guests)) stored,
   status           text not null default 'registered' check (status in ('registered', 'cancelled')),
   admin_note       text check (admin_note is null or length(admin_note) <= 500),

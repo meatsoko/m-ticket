@@ -1,6 +1,7 @@
 // Investors' visit registration (migration 20261001150000).
 // Body: { salutation, name, occupation, email, guests: string[] }
 //
+// Every field is required, including at least one guest name.
 // Public form, rate-limited per IP and per email. Registers the investor and
 // emails a confirmation. An email that already has an active registration is
 // never overwritten from here (that would let anyone rewrite someone else's
@@ -31,6 +32,7 @@ Deno.serve(async (req) => {
   if (name.length < 2 || name.length > 120) return json({ error: "invalid_name" }, 400);
   if (occupation.length < 2 || occupation.length > 120) return json({ error: "invalid_occupation" }, 400);
   if (email.length > 254 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ error: "invalid_email" }, 400);
+  if (!guests.length) return json({ error: "guests_required" }, 400);
   if (guests.length > MAX_GUESTS) return json({ error: "too_many_guests", max: MAX_GUESTS }, 400);
   if (guests.some((g) => g.length < 2 || g.length > 120)) return json({ error: "invalid_guest_name" }, 400);
 

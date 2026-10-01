@@ -1707,7 +1707,8 @@ a.login-submit { display: grid; place-items: center; text-decoration: none; }
 .investor-guests legend small { color: var(--store-muted); }
 .investor-guest-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: start; }
 .investor-remove { width: 48px; height: 48px; border: 1px solid var(--store-line); border-radius: var(--r-field); background: #fff; color: var(--store-muted); font-size: 22px; line-height: 1; cursor: pointer; }
-.investor-remove:hover { color: var(--store-red); border-color: var(--store-red); }
+.investor-remove:hover:not(:disabled) { color: var(--store-red); border-color: var(--store-red); }
+.investor-remove:disabled { opacity: .35; cursor: default; }
 .investor-add { justify-self: start; padding: 10px 0; border: 0; background: none; color: var(--store-red); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
 .investor-muted { margin: 0; color: var(--store-muted); font-size: 12px; }
 .investor-submit { justify-self: start; min-width: 200px; }

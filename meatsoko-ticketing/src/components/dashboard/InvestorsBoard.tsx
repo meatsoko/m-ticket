@@ -2,7 +2,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { INVESTOR_DAY } from "@/lib/investors";
+import { INVESTOR_DAY, INVESTOR_VENUE } from "@/lib/investors";
 
 export type InvestorRow = {
   id: string; reference_number: string; salutation: string; name: string; occupation: string; email: string;
@@ -59,7 +59,7 @@ export default function InvestorsBoard({ rows }: { rows: InvestorRow[] }) {
 
   return (
     <div className="dash-stack">
-      <div className="dash-title"><h1>Investors</h1><p>Registrations for the investors&apos; visit on {INVESTOR_DAY}, from the Investors page on the site.</p></div>
+      <div className="dash-title"><h1>Investors</h1><p>Registrations for the investors&apos; visit on {INVESTOR_DAY} at {INVESTOR_VENUE}, from the Investors page on the site.</p></div>
       <div className="dash-kpis">
         <div className="dash-kpi"><span className="dash-kpi-label">Investors</span><div className="dash-kpi-row"><strong>{active.length}</strong></div><small>registered</small></div>
         <div className="dash-kpi"><span className="dash-kpi-label">Guests</span><div className="dash-kpi-row"><strong>{guests}</strong></div><small>people they&apos;re bringing</small></div>
@@ -92,7 +92,7 @@ export default function InvestorsBoard({ rows }: { rows: InvestorRow[] }) {
                     <td><strong>{r.salutation} {r.name}</strong><small>{r.occupation}</small></td>
                     <td><a href={`mailto:${r.email}`}>{r.email}</a></td>
                     <td className="dash-about">
-                      <strong>{r.guest_count ? `${r.guest_count} ${r.guest_count === 1 ? "person" : "people"}` : "Just them"}</strong>
+                      <strong>{r.guest_count} {r.guest_count === 1 ? "person" : "people"}</strong>
                       {r.guests.map((g, i) => <small key={i}>{g}</small>)}
                     </td>
                     <td><span className={`dash-badge ${r.status === "registered" ? "v-paid" : "v-cancelled"}`}>{STATUS[r.status]}</span>{r.admin_note && <small>{r.admin_note}</small>}</td>

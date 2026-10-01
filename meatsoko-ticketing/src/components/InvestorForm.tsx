@@ -4,10 +4,11 @@ import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
 import { looksLikeEmail } from "@/lib/phone";
 import { SUPPORT } from "@/lib/support";
-import { INVESTOR_DAY, MAX_GUESTS, SALUTATIONS } from "@/lib/investors";
+import { INVESTOR_DAY, INVESTOR_VENUE, MAX_GUESTS, SALUTATIONS } from "@/lib/investors";
 
 // Investors' visit registration (migration 20261001150000) -> investor-register.
-// Guests are entered by name so the organiser knows who is coming.
+// Guests are entered by name so the organiser knows who is coming. Every field
+// is required, including at least one guest.
 
 type Done = { reference_number: string; emailed: boolean; existing: boolean };
 
@@ -16,7 +17,7 @@ export default function InvestorForm() {
   const [name, setName] = useState("");
   const [occupation, setOccupation] = useState("");
   const [email, setEmail] = useState("");
-  const [guests, setGuests] = useState<string[]>([]);
+  const [guests, setGuests] = useState<string[]>([""]);
   const [fieldErr, setFieldErr] = useState<Record<string, string>>({});
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -31,7 +32,7 @@ export default function InvestorForm() {
     if (name.trim().length < 2) e.name = "Enter your full name.";
     if (occupation.trim().length < 2) e.occupation = "Enter your occupation.";
     if (!looksLikeEmail(email)) e.email = "Enter a valid email — your confirmation goes there.";
-    guests.forEach((g, i) => { if (g.trim() && g.trim().length < 2) e[`guest${i}`] = "Enter this person's full name."; });
+    guests.forEach((g, i) => { if (g.trim().length < 2) e[`guest${i}`] = "Enter this person's full name."; });
     setFieldErr(e);
     return !Object.keys(e).length;
   }
@@ -54,6 +55,7 @@ export default function InvestorForm() {
       rate_limited: "Too many attempts. Wait a few minutes and try again.",
       invalid_email: "That email doesn't look right.",
       too_many_guests: `You can register up to ${MAX_GUESTS} people coming with you.`,
+      guests_required: "Add at least one person coming with you.",
       invalid_guest_name: "Check the names of the people coming with you.",
     } as Record<string, string>)[res.errorCode ?? ""]
       ?? (res.transportError ? "Could not reach the server. Check your connection." : "Could not register you just now. Please try again."));
@@ -67,12 +69,13 @@ export default function InvestorForm() {
         <p>This email is already registered for the investors&apos; visit. {done.emailed ? <>We&apos;ve emailed the confirmation to <strong>{email.trim()}</strong> again.</> : null} To change your details or guest list, call or WhatsApp <a href={SUPPORT.tel}>{SUPPORT.display}</a> and quote your reference.</p>
       ) : (
         <>
-          <p>Thank you, {salutation} {name.trim()}. We look forward to seeing you on {INVESTOR_DAY}.{done.emailed ? <> A confirmation is on its way to <strong>{email.trim()}</strong>.</> : null}</p>
+          <p>Thank you, {salutation} {name.trim()}. We look forward to seeing you on {INVESTOR_DAY} at {INVESTOR_VENUE}.{done.emailed ? <> A confirmation is on its way to <strong>{email.trim()}</strong>.</> : null}</p>
           <dl className="investor-summary">
             <div><dt>Occupation</dt><dd>{occupation.trim()}</dd></div>
-            <div><dt>Coming with you</dt><dd>{named.length ? named.join(", ") : "Just you"}</dd></div>
+            <div><dt>Coming with you</dt><dd>{named.join(", ")}</dd></div>
+            <div><dt>Venue</dt><dd>{INVESTOR_VENUE}</dd></div>
           </dl>
-          <p className="investor-muted">We&apos;ll confirm the time and place by email. Need a change? Call or WhatsApp <a href={SUPPORT.tel}>{SUPPORT.display}</a>.</p>
+          <p className="investor-muted">We&apos;ll confirm the time by email. Need a change? Call or WhatsApp <a href={SUPPORT.tel}>{SUPPORT.display}</a>.</p>
         </>
       )}
     </section>
@@ -102,14 +105,14 @@ export default function InvestorForm() {
         {fieldErr.email ? <small className="field-error">{fieldErr.email}</small> : <small className="investor-muted">We&apos;ll send your confirmation here.</small>}</label>
 
       <fieldset className="investor-guests">
-        <legend>People coming with you <small>({named.length})</small></legend>
-        {guests.length === 0 && <p className="investor-muted">Just you so far. Add anyone you&apos;re bringing.</p>}
+        <legend>People coming with you * <small>({named.length})</small></legend>
         {guests.map((g, i) => (
           <div key={i} className="investor-guest-row">
             <label className="store-field"><span className="sr-only">Person {i + 1}</span>
               <input value={g} onChange={(e) => setGuest(i, e.target.value)} placeholder={`Person ${i + 1} — full name`} maxLength={120} aria-invalid={!!fieldErr[`guest${i}`]} />
               {fieldErr[`guest${i}`] && <small className="field-error">{fieldErr[`guest${i}`]}</small>}</label>
-            <button type="button" className="investor-remove" aria-label={`Remove person ${i + 1}`} onClick={() => setGuests((gs) => gs.filter((_, j) => j !== i))}>×</button>
+            <button type="button" className="investor-remove" aria-label={`Remove person ${i + 1}`} disabled={guests.length === 1}
+              onClick={() => { setGuests((gs) => gs.filter((_, j) => j !== i)); setFieldErr({}); }}>×</button>
           </div>
         ))}
         {guests.length < MAX_GUESTS && (
