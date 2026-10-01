@@ -10,7 +10,7 @@ Deno.serve(async (req) => {
 
   const db = serviceClient();
   const { data } = await db.from("reservations")
-    .select(`reservation_number,guest_name,party_size,expected_arrival,status,access_token,order_id,
+    .select(`id,reservation_number,guest_name,party_size,expected_arrival,status,access_token,order_id,
              event_id,reservation_types(name,is_general_admission),
              orders(status,amount_kes),
              events(name,tagline,venue,starts_at,doors_open_at,status,contact_phone,payments_enabled,reservations_close_at)`)
@@ -58,8 +58,33 @@ Deno.serve(async (req) => {
     upgrade = { available: !reason && options.length > 0, reason, options };
   }
 
+  // Platter add-ons (migration 20261001120000): what's been paid for, and — for a
+  // valid in-person booking — the family platters it can still add. Display
+  // only; start_platter_addon re-checks everything under a lock.
+  const { data: addonRows } = await db.from("reservation_addons")
+    .select("orders(order_items(qty,unit_price_kes,preorder_items(name)))")
+    .eq("reservation_id", (data as any).id).eq("status", "applied");
+  const addons = ((addonRows ?? []) as any[]).flatMap((a) => (a.orders?.order_items ?? []).map((i: any) => ({
+    name: i.preorder_items?.name ?? "Platter", qty: i.qty, unit_price_kes: i.unit_price_kes,
+  })));
+  let platter_addons: any = null;
+  const addonOpen = data.status === "confirmed" && ev?.status === "live" && ev?.payments_enabled &&
+    !(ev?.reservations_close_at && Date.now() > new Date(ev.reservations_close_at).getTime());
+  if (addonOpen) {
+    const { data: pkgs } = await db.from("reservation_types").select("included_preorder_item_id")
+      .eq("event_id", (data as any).event_id).eq("is_active", true).not("included_preorder_item_id", "is", null);
+    const ids = Array.from(new Set((pkgs ?? []).map((t: any) => t.included_preorder_item_id)));
+    const { data: items } = ids.length
+      ? await db.from("preorder_items").select("id,name,description,price_kes,compare_at_price_kes,early_bird_ends_at,image_url,max_per_reservation,position")
+          .in("id", ids).eq("is_active", true).order("position")
+      : { data: [] as any[] };
+    platter_addons = { available: (items ?? []).length > 0, options: items ?? [] };
+  }
+
   return json({
     reservation_number: data.reservation_number,
+    addons,
+    platter_addons,
     type_name: rtype?.name ?? null,
     general_admission: !!rtype?.is_general_admission,
     upgrade,

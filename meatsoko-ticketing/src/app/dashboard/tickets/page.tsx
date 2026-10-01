@@ -13,7 +13,8 @@ export default async function TicketsPage() {
     supabase.from("reservations")
       .select(`id,event_id,order_id,reservation_number,access_token,guest_name,phone,email,party_size,status,created_at,checked_in_at,arrived_party_size,
                events(name,slug),reservation_types(name,is_general_admission),
-               orders(status,amount_kes,paid_at,paystack_reference,order_items(qty,unit_price_kes,preorder_items(name)))`)
+               orders(status,amount_kes,paid_at,paystack_reference,order_items(qty,unit_price_kes,preorder_items(name))),
+               reservation_addons(order_id,status,orders(order_items(qty,unit_price_kes,preorder_items(name))))`)
       .order("created_at", { ascending: false }).limit(2000),
     supabase.from("tickets")
       .select(`id,qr_token,status,redeemed_at,created_at,
@@ -35,6 +36,9 @@ export default async function TicketsPage() {
     ...((res ?? []) as any[]).map((r): TicketPass => {
       const o = r.orders;
       const items = (o?.order_items ?? []).map((i: any) => ({ name: i.preorder_items?.name ?? "Item", qty: i.qty, unitKes: Number(i.unit_price_kes) }));
+      // Paid platter add-ons (migration 20261001120000) are preorders too.
+      const addonItems = ((r.reservation_addons ?? []) as any[]).filter((a) => a.status === "applied")
+        .flatMap((a) => (a.orders?.order_items ?? []).map((i: any) => ({ name: i.preorder_items?.name ?? "Platter", qty: i.qty, unitKes: Number(i.unit_price_kes), addon: true })));
       const type = r.reservation_types?.name ?? "Reservation";
       return {
         id: r.id, source: "booking", eventId: r.event_id, eventName: r.events?.name ?? "—", eventSlug: r.events?.slug ?? "",
@@ -43,7 +47,8 @@ export default async function TicketsPage() {
         type, kind: r.reservation_types?.is_general_admission ? "ga" : items.length ? "table" : "rsvp",
         people: r.party_size, arrived: r.arrived_party_size,
         status: r.status, createdAt: r.created_at, checkedInAt: r.checked_in_at,
-        preorders: items, payment: o ? { status: o.status, amountKes: Number(o.amount_kes), paidAt: o.paid_at, reference: o.paystack_reference } : null,
+        preorders: [...items, ...addonItems], addons: addonItems.length,
+        payment: o ? { status: o.status, amountKes: Number(o.amount_kes), paidAt: o.paid_at, reference: o.paystack_reference } : null,
       };
     }),
     ...((tix ?? []) as any[]).map((t): TicketPass => {
@@ -75,14 +80,17 @@ export default async function TicketsPage() {
   const byOrder = new Map<string, TicketPass>();
   for (const r of (res ?? []) as any[]) if (r.orders && (r as any).order_id) byOrder.set((r as any).order_id, byId.get(r.id)!);
   const upByOrder = new Map(((ups ?? []) as any[]).map((u) => [u.order_id, u]));
+  const addonByOrder = new Map<string, string>();   // add-on order id -> reservation id
+  for (const r of (res ?? []) as any[]) for (const a of (r.reservation_addons ?? [])) addonByOrder.set(a.order_id, r.id);
   const payments: PaymentRow[] = ((pays ?? []) as any[]).map((o) => {
     const up = upByOrder.get(o.id);
-    const pass = byOrder.get(o.id) ?? (up ? byId.get(up.reservation_id) : undefined);
+    const addonRes = addonByOrder.get(o.id);
+    const pass = byOrder.get(o.id) ?? (up ? byId.get(up.reservation_id) : addonRes ? byId.get(addonRes) : undefined);
     return {
       id: o.id, eventId: o.event_id, eventName: o.events?.name ?? "—", status: o.status, amountKes: Number(o.amount_kes),
       createdAt: o.created_at, paidAt: o.paid_at, refundedAt: o.refunded_at, refundReason: o.refund_reason, reversalRef: o.reversal_ref,
       reference: o.paystack_reference, phone: o.buyer_phone, email: o.buyer_email,
-      what: up ? `Table upgrade · ${up.reservation_types?.name ?? "table"}` : pass ? pass.type : "Ticket order",
+      what: up ? `Table upgrade · ${up.reservation_types?.name ?? "table"}` : addonRes ? "Platter add-on" : pass ? pass.type : "Ticket order",
       isUpgrade: !!up && up.status === "applied", upgradeStatus: up?.status ?? null,
       pass: pass ? { number: pass.number, holder: pass.holder, status: pass.status, id: pass.id } : null,
     };

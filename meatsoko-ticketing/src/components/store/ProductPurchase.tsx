@@ -34,10 +34,14 @@ export default function ProductPurchase({ product }: { product: MerchandiseProdu
 
   const soldOut = (s: string) => stock[s]?.available === 0;
   const allSoldOut = product.sizes.every(soldOut);
+  // No preorders: a product without a price can't be bought (checkout refuses it too).
+  const unpriced = product.priceUsd == null;
+  const blocked = allSoldOut || unpriced;
   const left = size ? stock[size]?.available ?? null : null;
   const tooMany = left != null && qty > left;
 
   const ensureSize = () => {
+    if (unpriced) return false;
     if (size && !soldOut(size) && !tooMany) return true;
     setNudge(true);
     return false;
@@ -92,8 +96,8 @@ export default function ProductPurchase({ product }: { product: MerchandiseProdu
 
       <div className="product-actions">
         <QtyStepper value={qty} onChange={setQty} />
-        <button type="button" className="store-button product-add" onClick={addToBag} disabled={allSoldOut}>{allSoldOut ? "Sold out" : <>Add to bag <span aria-hidden="true">+</span></>}</button>
-        <button type="button" className="product-buy" onClick={buyNow} disabled={allSoldOut}>Buy now</button>
+        <button type="button" className="store-button product-add" onClick={addToBag} disabled={blocked}>{unpriced ? "Not available yet" : allSoldOut ? "Sold out" : <>Add to bag <span aria-hidden="true">+</span></>}</button>
+        <button type="button" className="product-buy" onClick={buyNow} disabled={blocked}>Buy now</button>
       </div>
       <button type="button" className="product-share" onClick={share}>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 11.8a8.5 8.5 0 0 1-12.6 7.4L3.5 20.5l1.3-4.3a8.5 8.5 0 1 1 15.7-4.4Z" /><path d="M9 8.8c.2 2.9 2.7 5.6 6 6.1l1.2-1.3-2-1-.9.8c-1-.4-1.9-1.3-2.4-2.4l.8-.9-1-2-1.7.7Z" /></svg>

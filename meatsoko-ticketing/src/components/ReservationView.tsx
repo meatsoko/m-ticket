@@ -5,6 +5,7 @@ import { invokeFn } from "@/lib/invoke";
 import QrImage from "@/components/QrImage";
 import Icon from "@/components/Icon";
 import TableUpgrade from "@/components/TableUpgrade";
+import PlatterAddons from "@/components/PlatterAddons";
 
 const KE = "Africa/Nairobi";
 const when = (iso: string) =>
@@ -106,6 +107,18 @@ export default function ReservationView({ token }: { token: string }) {
           </a>
         )}
       </div>
+      {r.addons?.length > 0 && (
+        <div className="card">
+          <span className="eyebrow">Platters · paid</span>
+          {r.addons.map((p: any, i: number) => (
+            <div className="row" key={i}><span className="small">{p.qty} × {p.name}</span><span className="small num">KSh {(p.qty * Number(p.unit_price_kes)).toLocaleString()}</span></div>
+          ))}
+          <p className="small">Collect your platters at the event — show this pass.</p>
+        </div>
+      )}
+      {r.platter_addons?.available && (
+        <div className="card"><PlatterAddons token={r.token} platters={r.platter_addons.options} /></div>
+      )}
       {r.upgrade?.available && (
         <div className="card">
           <TableUpgrade token={r.token} options={r.upgrade.options} onUpgraded={load} />

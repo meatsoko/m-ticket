@@ -18,16 +18,19 @@ export type TicketPass = {
   people: number; arrived: number | null;
   status: "confirmed" | "pending_payment" | "checked_in" | "cancelled" | "revoked";
   createdAt: string; checkedInAt: string | null;
-  preorders: { name: string; qty: number; unitKes: number }[];
+  preorders: { name: string; qty: number; unitKes: number; addon?: boolean }[];
+  addons?: number;   // paid platter add-on lines
   payment: { status: string; amountKes: number; paidAt: string | null; reference: string | null } | null;
   lastAccessAt?: string | null; accessCount?: number;
 };
 
 const STATUS: Record<TicketPass["status"], string> = { confirmed: "Valid", pending_payment: "Awaiting payment", checked_in: "Checked in", cancelled: "Cancelled", revoked: "Access revoked" };
-const KINDS: { id: "all" | TicketPass["kind"]; label: string }[] = [
+const KINDS: { id: "all" | TicketPass["kind"] | "addons"; label: string }[] = [
   { id: "all", label: "All" }, { id: "ga", label: "General Admission" }, { id: "table", label: "Tables & preorders" },
   { id: "rsvp", label: "RSVP" }, { id: "paid", label: "Paid tickets" }, { id: "online", label: "Online" },
+  { id: "addons", label: "Platter add-ons" },
 ];
+const inKind = (p: TicketPass, k: (typeof KINDS)[number]["id"]) => k === "all" || (k === "addons" ? (p.addons ?? 0) > 0 : p.kind === k);
 const kes = (n: number) => `KSh ${Math.round(n).toLocaleString("en-KE")}`;
 const when = (iso: string) => new Intl.DateTimeFormat("en-KE", { timeZone: "Africa/Nairobi", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
 const localPhone = (p: string) => p?.startsWith("254") ? `0${p.slice(3)}` : p;
@@ -44,7 +47,7 @@ export default function TicketsBoard({ passes }: { passes: TicketPass[] }) {
   const inEvent = passes;
   const shown = useMemo(() => {
     const term = q.trim().toLowerCase();
-    return inEvent.filter((p) => (kind === "all" || p.kind === kind) && (status === "all" || p.status === status) &&
+    return inEvent.filter((p) => inKind(p, kind) && (status === "all" || p.status === status) &&
       (!term || [p.number, p.holder, p.phone, localPhone(p.phone), p.email ?? "", p.type, preorderLine(p)].some((v) => v.toLowerCase().includes(term))));
   }, [inEvent, kind, status, q]);
 
@@ -83,7 +86,7 @@ export default function TicketsBoard({ passes }: { passes: TicketPass[] }) {
           <div className="dash-chips">
             {KINDS.map((k) => (
               <button key={k.id} type="button" className={kind === k.id ? "on" : undefined} onClick={() => setKind(k.id)}>
-                {k.label} <span className="dash-chip-count">{k.id === "all" ? inEvent.length : inEvent.filter((p) => p.kind === k.id).length}</span>
+                {k.label} <span className="dash-chip-count">{inEvent.filter((p) => inKind(p, k.id)).length}</span>
               </button>
             ))}
           </div>
@@ -216,7 +219,7 @@ function PassDrawer({ pass: p, onClose }: { pass: TicketPass; onClose: () => voi
           <h3 className="dash-sub">Preorder</h3>
           {p.preorders.length ? (
             <ul className="dash-items">
-              {p.preorders.map((i, n) => <li key={n}><span>{i.qty} × {i.name}</span><span>{kes(i.qty * i.unitKes)}</span></li>)}
+              {p.preorders.map((i, n) => <li key={n}><span>{i.qty} × {i.name}{i.addon ? <small> · add-on</small> : null}</span><span>{kes(i.qty * i.unitKes)}</span></li>)}
               <li className="dash-items-total"><span>Total</span><span>{kes(preTotal)}</span></li>
             </ul>
           ) : <p className="dash-muted">No preorder.</p>}

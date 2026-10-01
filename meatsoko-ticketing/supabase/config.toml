@@ -65,3 +65,7 @@ verify_jwt = false
 
 [functions.online-access]
 verify_jwt = false
+
+# Platter add-ons: the pass token in the body is the authorisation. Rate-limited.
+[functions.platter-addon]
+verify_jwt = false

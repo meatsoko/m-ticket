@@ -6,7 +6,10 @@ import { PENDING_UPGRADE_KEY } from "@/components/TableUpgrade";
 
 type State = "checking" | "upgraded" | "not_paid" | "conflict" | "error";
 
-export default function UpgradeComplete() {
+// Shared by the table-upgrade return (/upgrade/complete) and the platter add-on
+// return (/platters/complete); only the wording differs.
+export default function UpgradeComplete({ kind = "table" }: { kind?: "table" | "platters" }) {
+  const platters = kind === "platters";
   const supabase = createClient();
   const [state, setState] = useState<State>("checking");
   const [token, setToken] = useState<string | null>(null);
@@ -23,7 +26,7 @@ export default function UpgradeComplete() {
       if (data?.result === "confirmed" || data?.result === "already") {
         try { window.sessionStorage.removeItem(PENDING_UPGRADE_KEY); } catch { /* private mode */ }
         setState("upgraded");
-      } else if (data?.result === "upgrade_conflict") setState("conflict");
+      } else if (data?.result === "upgrade_conflict" || data?.result === "addon_conflict") setState("conflict");
       else if (data?.result === "not_paid") setState("not_paid");
       else setState("error");
     }).catch(() => setState("error"));
@@ -44,6 +47,16 @@ export default function UpgradeComplete() {
   );
 
   if (state === "checking") return card("Checking", "warn", "Confirming your payment…", "This takes a few seconds.");
+  if (platters) {
+    if (state === "upgraded") return card("Platters added", "ok", "Your platters are booked.",
+      "They're on your pass — collect them at the event. We've emailed your updated pass.");
+    if (state === "not_paid") return card("Not paid", "warn", "Payment not completed",
+      "Nothing was charged and your ticket is unchanged. You can add platters again from your pass.");
+    if (state === "conflict") return card("Needs attention", "danger", "Payment received — booking no longer active",
+      "This booking was cancelled, so the platters weren't added. Contact the organiser with your Paystack reference for a refund.");
+    return card("Unconfirmed", "warn", "We couldn't confirm this payment yet",
+      "If you paid, your platters are added automatically within a few minutes and your updated pass is emailed. Your ticket is still valid.");
+  }
   if (state === "upgraded") return card("Upgraded", "ok", "Your table is booked.",
     "Same booking number and QR code — it now admits your whole table. We've emailed your updated pass.");
   if (state === "not_paid") return card("Not paid", "warn", "Payment not completed",

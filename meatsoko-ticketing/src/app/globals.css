@@ -1712,3 +1712,7 @@ a.dash-kpi:hover { border-color: var(--store-ink); }
 .dash-online-line { display: flex; align-items: baseline; justify-content: center; gap: 8px; margin: 0; padding: 10px; border-radius: 12px; background: #e0f2f7; color: #0e7490; font-size: 13px; }
 .dash-online-line span { font-weight: 800; text-transform: uppercase; letter-spacing: .08em; font-size: 11px; }
 .dash-online-line small { color: #4f8a99; }
+
+/* Platter add-ons on the pass / confirmation */
+.platter-addon-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border: 1.5px solid var(--line); border-radius: 12px; }
+.platter-addon-row.on { border-color: var(--ember); background: var(--ember-soft); }

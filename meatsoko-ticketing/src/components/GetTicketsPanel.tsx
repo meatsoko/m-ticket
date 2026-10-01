@@ -7,6 +7,7 @@ import { normalizePhone, looksLikeEmail, PHONE_HINT, EMAIL_HINT } from "@/lib/ph
 import QrImage from "@/components/QrImage";
 import Icon from "@/components/Icon";
 import TableUpgrade, { PENDING_UPGRADE_KEY, upgradePriceKes, type UpgradeOption } from "@/components/TableUpgrade";
+import PlatterAddons from "@/components/PlatterAddons";
 import { familyPackageUsdPrices, formatUsd } from "@/lib/family-package-pricing";
 import type { Event } from "@/lib/types";
 import { COUNTRIES } from "@/lib/countries";
@@ -218,6 +219,12 @@ export default function GetTicketsPanel({
           </a>
           {!preview && <a className="btn-ghost btn-block" href={`/r/${done.access_token}`}>Open my pass</a>}
         </div>
+        {options.length > 0 && (
+          <div className="card">
+            <PlatterAddons token={done.access_token} preview={preview}
+              platters={Array.from(new Map(options.map((o) => [o.platter.id, o.platter])).values())} />
+          </div>
+        )}
         {options.length > 0 && (
           <div className="card">
             <TableUpgrade token={done.access_token} options={options} preview={preview}
