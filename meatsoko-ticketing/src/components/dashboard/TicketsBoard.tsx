@@ -11,22 +11,26 @@ import { invokeFn } from "@/lib/invoke";
 // cancelling via an RLS-checked status update (the gate then refuses the pass).
 
 export type TicketPass = {
-  id: string; source: "booking" | "ticket"; eventId: string; eventName: string; eventSlug: string;
+  id: string; source: "booking" | "ticket" | "online"; eventId: string; eventName: string; eventSlug: string;
   number: string; token: string; passPath: string;
-  holder: string; phone: string; email: string | null;
-  type: string; kind: "ga" | "table" | "rsvp" | "paid";
+  holder: string; phone: string; email: string | null; country?: string;
+  type: string; kind: "ga" | "table" | "rsvp" | "paid" | "online";
   people: number; arrived: number | null;
-  status: "confirmed" | "pending_payment" | "checked_in" | "cancelled";
+  status: "confirmed" | "pending_payment" | "checked_in" | "cancelled" | "revoked";
   createdAt: string; checkedInAt: string | null;
-  preorders: { name: string; qty: number; unitKes: number }[];
+  preorders: { name: string; qty: number; unitKes: number; addon?: boolean }[];
+  addons?: number;   // paid platter add-on lines
   payment: { status: string; amountKes: number; paidAt: string | null; reference: string | null } | null;
+  lastAccessAt?: string | null; accessCount?: number;
 };
 
-const STATUS: Record<TicketPass["status"], string> = { confirmed: "Valid", pending_payment: "Awaiting payment", checked_in: "Checked in", cancelled: "Cancelled" };
-const KINDS: { id: "all" | TicketPass["kind"]; label: string }[] = [
+const STATUS: Record<TicketPass["status"], string> = { confirmed: "Valid", pending_payment: "Awaiting payment", checked_in: "Checked in", cancelled: "Cancelled", revoked: "Access revoked" };
+const KINDS: { id: "all" | TicketPass["kind"] | "addons"; label: string }[] = [
   { id: "all", label: "All" }, { id: "ga", label: "General Admission" }, { id: "table", label: "Tables & preorders" },
-  { id: "rsvp", label: "RSVP" }, { id: "paid", label: "Paid tickets" },
+  { id: "rsvp", label: "RSVP" }, { id: "paid", label: "Paid tickets" }, { id: "online", label: "Online" },
+  { id: "addons", label: "Platter add-ons" },
 ];
+const inKind = (p: TicketPass, k: (typeof KINDS)[number]["id"]) => k === "all" || (k === "addons" ? (p.addons ?? 0) > 0 : p.kind === k);
 const kes = (n: number) => `KSh ${Math.round(n).toLocaleString("en-KE")}`;
 const when = (iso: string) => new Intl.DateTimeFormat("en-KE", { timeZone: "Africa/Nairobi", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
 const localPhone = (p: string) => p?.startsWith("254") ? `0${p.slice(3)}` : p;
@@ -43,11 +47,13 @@ export default function TicketsBoard({ passes }: { passes: TicketPass[] }) {
   const inEvent = passes;
   const shown = useMemo(() => {
     const term = q.trim().toLowerCase();
-    return inEvent.filter((p) => (kind === "all" || p.kind === kind) && (status === "all" || p.status === status) &&
+    return inEvent.filter((p) => inKind(p, kind) && (status === "all" || p.status === status) &&
       (!term || [p.number, p.holder, p.phone, localPhone(p.phone), p.email ?? "", p.type, preorderLine(p)].some((v) => v.toLowerCase().includes(term))));
   }, [inEvent, kind, status, q]);
 
-  const live = inEvent.filter((p) => p.status !== "cancelled");
+  // In-person only: online attendance never counts toward the venue.
+  const live = inEvent.filter((p) => p.kind !== "online" && p.status !== "cancelled");
+  const onlineActive = inEvent.filter((p) => p.kind === "online" && p.status === "confirmed").length;
   const withPre = live.filter((p) => p.preorders.length);
   const preKes = withPre.filter(isPaid).reduce((s, p) => s + (p.payment?.amountKes ?? 0), 0);
   const inside = inEvent.filter((p) => p.status === "checked_in").reduce((s, p) => s + (p.arrived ?? p.people), 0);
@@ -68,7 +74,8 @@ export default function TicketsBoard({ passes }: { passes: TicketPass[] }) {
   return (
     <div className="dash-stack">
       <div className="dash-kpis">
-        <div className="dash-kpi"><span className="dash-kpi-label">Valid passes</span><div className="dash-kpi-row"><strong>{live.length}</strong></div><small>{inEvent.length - live.length} cancelled</small></div>
+        <div className="dash-kpi"><span className="dash-kpi-label">In-person passes</span><div className="dash-kpi-row"><strong>{live.length}</strong></div><small>{inEvent.filter((p) => p.kind !== "online" && p.status === "cancelled").length} cancelled</small></div>
+        <div className="dash-kpi"><span className="dash-kpi-label">Online attendees</span><div className="dash-kpi-row"><strong>{onlineActive}</strong></div><small>not counted in capacity</small></div>
         <div className="dash-kpi"><span className="dash-kpi-label">Guests covered</span><div className="dash-kpi-row"><strong>{live.reduce((s, p) => s + p.people, 0)}</strong></div><small>people these passes admit</small></div>
         <div className="dash-kpi"><span className="dash-kpi-label">With preorders</span><div className="dash-kpi-row"><strong>{withPre.length}</strong></div><small>{kes(preKes)} paid</small></div>
         <div className="dash-kpi"><span className="dash-kpi-label">Checked in</span><div className="dash-kpi-row"><strong>{inside}</strong></div><small>people through the gate</small></div>
@@ -79,7 +86,7 @@ export default function TicketsBoard({ passes }: { passes: TicketPass[] }) {
           <div className="dash-chips">
             {KINDS.map((k) => (
               <button key={k.id} type="button" className={kind === k.id ? "on" : undefined} onClick={() => setKind(k.id)}>
-                {k.label} <span className="dash-chip-count">{k.id === "all" ? inEvent.length : inEvent.filter((p) => p.kind === k.id).length}</span>
+                {k.label} <span className="dash-chip-count">{inEvent.filter((p) => inKind(p, k.id)).length}</span>
               </button>
             ))}
           </div>
@@ -101,10 +108,10 @@ export default function TicketsBoard({ passes }: { passes: TicketPass[] }) {
                 {shown.map((p) => (
                   <tr key={`${p.source}-${p.id}`} className={openId === p.id ? "sel" : undefined} onClick={() => setOpenId(p.id)}>
                     <td><strong>{p.number}</strong><small>{when(p.createdAt)}</small></td>
-                    <td><strong>{p.holder}</strong><small>{localPhone(p.phone)}</small></td>
+                    <td><strong>{p.holder}</strong><small>{p.kind === "online" ? `${p.country ?? ""} · ${p.email ?? ""}` : localPhone(p.phone)}</small></td>
                     <td>{p.eventName}</td>
                     <td><span className={`dash-kind k-${p.kind}`}>{p.type}</span></td>
-                    <td>{p.status === "checked_in" && p.arrived != null ? `${p.arrived} / ${p.people}` : p.people}</td>
+                    <td>{p.kind === "online" ? <span className="dash-muted">Online</span> : p.status === "checked_in" && p.arrived != null ? `${p.arrived} / ${p.people}` : p.people}</td>
                     <td>{p.preorders.length ? preorderLine(p) : <span className="dash-muted">—</span>}</td>
                     <td>{isPaid(p) ? kes(p.payment!.amountKes) : p.payment ? <span className="dash-muted">{p.payment.status}</span> : <span className="dash-muted">Free</span>}</td>
                     <td><span className={`dash-badge st-${p.status}`}>{STATUS[p.status]}</span></td>
@@ -162,6 +169,21 @@ function PassDrawer({ pass: p, onClose }: { pass: TicketPass; onClose: () => voi
   }
 
   const canAct = p.source === "booking";
+  const isOnline = p.source === "online";
+
+  async function setAccess(active: boolean) {
+    setBusy("access"); setMsg(null);
+    const { data, error } = await supabase.from("online_registrations")
+      .update(active ? { status: "active", revoked_at: null, revoked_by: null } : { status: "revoked", revoked_at: new Date().toISOString() })
+      .eq("id", p.id).select("id");
+    setBusy(null); setConfirm(null);
+    if (error || !data?.length) {
+      setMsg({ ok: false, text: error?.message.includes("one_per_email") ? "This email already has another active online registration." : error?.message ?? "Not changed — only admins can change access." });
+      return;
+    }
+    setMsg({ ok: true, text: active ? "Access restored." : "Access revoked. The watch link now shows 'access removed'." });
+    router.refresh();
+  }
   return (
     <div className="dash-drawer-root" role="dialog" aria-modal="true" aria-label={`Pass ${p.number}`}>
       <button type="button" className="dash-drawer-scrim" aria-label="Close" onClick={onClose} />
@@ -173,7 +195,7 @@ function PassDrawer({ pass: p, onClose }: { pass: TicketPass; onClose: () => voi
         <div className="dash-drawer-badges">
           <span className={`dash-badge st-${p.status}`}>{STATUS[p.status]}</span>
           <span className={`dash-kind k-${p.kind}`}>{p.type}</span>
-          <span className="dash-badge">{p.people} {p.people === 1 ? "person" : "people"}</span>
+          {p.kind !== "online" && <span className="dash-badge">{p.people} {p.people === 1 ? "person" : "people"}</span>}
         </div>
 
         <section>
@@ -183,17 +205,27 @@ function PassDrawer({ pass: p, onClose }: { pass: TicketPass; onClose: () => voi
           {p.email && <p><a href={`mailto:${p.email}`}>{p.email}</a></p>}
         </section>
 
-        <section>
+        {isOnline && (
+          <section>
+            <h3 className="dash-sub">Online access</h3>
+            <dl className="dash-dl">
+              <div><dt>Country</dt><dd>{p.country}</dd></div>
+              <div><dt>Watch page opened</dt><dd>{p.accessCount ? `${p.accessCount}× · last ${when(p.lastAccessAt!)}` : "Not yet"}</dd></div>
+            </dl>
+          </section>
+        )}
+
+        {!isOnline && <section>
           <h3 className="dash-sub">Preorder</h3>
           {p.preorders.length ? (
             <ul className="dash-items">
-              {p.preorders.map((i, n) => <li key={n}><span>{i.qty} × {i.name}</span><span>{kes(i.qty * i.unitKes)}</span></li>)}
+              {p.preorders.map((i, n) => <li key={n}><span>{i.qty} × {i.name}{i.addon ? <small> · add-on</small> : null}</span><span>{kes(i.qty * i.unitKes)}</span></li>)}
               <li className="dash-items-total"><span>Total</span><span>{kes(preTotal)}</span></li>
             </ul>
           ) : <p className="dash-muted">No preorder.</p>}
-        </section>
+        </section>}
 
-        <section>
+        {!isOnline && <section>
           <h3 className="dash-sub">Payment</h3>
           {p.payment ? (
             <dl className="dash-dl">
@@ -203,7 +235,7 @@ function PassDrawer({ pass: p, onClose }: { pass: TicketPass; onClose: () => voi
               {p.payment.reference && <div><dt>Paystack ref</dt><dd className="dash-mono">{p.payment.reference}</dd></div>}
             </dl>
           ) : <p className="dash-muted">Free — no payment.</p>}
-        </section>
+        </section>}
 
         <section>
           <h3 className="dash-sub">Timeline</h3>
@@ -216,11 +248,21 @@ function PassDrawer({ pass: p, onClose }: { pass: TicketPass; onClose: () => voi
         {msg && <p className={msg.ok ? "dash-ok" : "dash-error"}>{msg.text}</p>}
 
         <div className="dash-drawer-actions">
-          <a className="dash-btn" href={p.passPath} target="_blank" rel="noopener noreferrer">Open pass ↗</a>
+          <a className="dash-btn" href={p.passPath} target="_blank" rel="noopener noreferrer">{isOnline ? "Open watch page ↗" : "Open pass ↗"}</a>
+          {isOnline && p.email && p.status === "confirmed" && (
+            <button type="button" className="dash-btn" disabled={busy === "resend"} onClick={resend}>{busy === "resend" ? "Sending…" : "Resend watch link"}</button>
+          )}
+          {isOnline && (p.status === "confirmed"
+            ? (confirm === "cancel"
+              ? <div className="dash-confirm"><p>Revoke {p.number}? Their watch link stops working immediately.</p>
+                  <button type="button" className="dash-btn danger" disabled={!!busy} onClick={() => setAccess(false)}>Revoke access</button>
+                  <button type="button" className="dash-btn ghost" onClick={() => setConfirm(null)}>Keep it</button></div>
+              : <button type="button" className="dash-btn ghost" onClick={() => setConfirm("cancel")}>Revoke access</button>)
+            : <button type="button" className="dash-btn" disabled={!!busy} onClick={() => setAccess(true)}>Restore access</button>)}
           {canAct && p.email && p.status !== "cancelled" && p.status !== "checked_in" && (
             <button type="button" className="dash-btn" disabled={busy === "resend"} onClick={resend}>{busy === "resend" ? "Sending…" : "Resend pass email"}</button>
           )}
-          {p.status === "confirmed" && (confirm === "admit"
+          {!isOnline && p.status === "confirmed" && (confirm === "admit"
             ? <><button type="button" className="dash-btn primary" disabled={!!busy} onClick={admit}>{busy === "admit" ? "…" : "Confirm admit"}</button><button type="button" className="dash-btn ghost" onClick={() => setConfirm(null)}>Back</button></>
             : <button type="button" className="dash-btn primary" onClick={() => setConfirm("admit")}>Admit</button>)}
           {canAct && (p.status === "confirmed" || p.status === "pending_payment") && (confirm === "cancel"

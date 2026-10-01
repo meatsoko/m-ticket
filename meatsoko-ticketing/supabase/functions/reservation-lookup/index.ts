@@ -12,6 +12,7 @@
 import { json, preflight } from "../_shared/cors.ts";
 import { clientIp, normalizePhone, rateLimit, serviceClient } from "../_shared/supabase.ts";
 import { buildAndSend } from "../_shared/reservation-email.ts";
+import { sendOnlineEmail } from "../_shared/online-email.ts";
 import { maskEmail } from "../_shared/resend.ts";
 
 const PER_PHONE = { limit: 8, windowSeconds: 600 };
@@ -81,6 +82,21 @@ Deno.serve(async (req) => {
     if (out.sent) { emailed++; sentTo.add(maskEmail(r.email)); }
     else console.error(JSON.stringify({ msg: "lookup resend failed", reason: (out as any).reason }));
   }
-  // No pass, token or reservation number in the reply — only what happened.
-  return json({ found: rows.length, emailed, sent_to: [...sentTo], no_email: noEmail });
+  // Online attendance (no phone, so email lookups only): re-send each active
+  // registration's watch link to its own address.
+  let online = 0;
+  if (wantsEmail && appUrl) {
+    let oq = db.from("online_registrations").select("id,email").eq("status", "active")
+      .ilike("email", e.replace(/([%_\\])/g, "\\$1"));
+    if (event_id) oq = oq.eq("event_id", event_id);
+    const { data: regs } = await oq;
+    for (const r of (regs ?? []).filter((x: any) => (x.email ?? "").trim().toLowerCase() === e)) {
+      const out = await sendOnlineEmail(db, r.id, appUrl).catch((err) => ({ sent: false, reason: String(err) }));
+      if (out.sent) { online++; emailed++; sentTo.add(maskEmail(r.email)); }
+      else console.error(JSON.stringify({ msg: "online lookup resend failed", reason: (out as any).reason }));
+    }
+  }
+
+  // No pass, token, code or reservation number in the reply — only what happened.
+  return json({ found: rows.length + online, emailed, sent_to: [...sentTo], no_email: noEmail, online });
 });

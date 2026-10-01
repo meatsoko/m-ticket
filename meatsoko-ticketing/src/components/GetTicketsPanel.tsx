@@ -7,8 +7,10 @@ import { normalizePhone, looksLikeEmail, PHONE_HINT, EMAIL_HINT } from "@/lib/ph
 import QrImage from "@/components/QrImage";
 import Icon from "@/components/Icon";
 import TableUpgrade, { PENDING_UPGRADE_KEY, upgradePriceKes, type UpgradeOption } from "@/components/TableUpgrade";
+import PlatterAddons from "@/components/PlatterAddons";
 import { familyPackageUsdPrices, formatUsd } from "@/lib/family-package-pricing";
 import type { Event } from "@/lib/types";
+import { COUNTRIES } from "@/lib/countries";
 
 // "Get tickets": one panel for a General Admission event (migration
 // 20260929180000). The guest picks General Admission (free, one person) or a
@@ -20,6 +22,10 @@ import type { Event } from "@/lib/types";
 
 const APP_URL = () => process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin;
 const GA = "ga";
+// Online attendance (migration 20261001100000): its own path — name, email and
+// country, no phone; never touches the GA/table booking flow below.
+const ONLINE = "online";
+type OnlineDone = { registration_number?: string; access_code?: string; existing: boolean; emailed: boolean };
 
 type Done = { reservation_number: string; access_token?: string; unchanged?: boolean; emailed: boolean; upgradeError?: string };
 
@@ -44,6 +50,16 @@ export default function GetTicketsPanel({
   const [dup, setDup] = useState<string | null>(null);
   const [done, setDone] = useState<Done | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [country, setCountry] = useState("");
+  const [onlineDone, setOnlineDone] = useState<OnlineDone | null>(null);
+  const isOnline = pick === ONLINE;
+  // Preselect the visitor's country from their browser locale (they can change it).
+  useEffect(() => {
+    try {
+      const region = new Intl.Locale(navigator.language).maximize().region;
+      if (region && COUNTRIES.some(([c]) => c === region)) setCountry((c) => c || region);
+    } catch { /* leave it for the visitor */ }
+  }, []);
   // Phones: the bottom reminder bar shows only while the panel is off-screen.
   const panelRef = useRef<HTMLDivElement>(null);
   const [panelVisible, setPanelVisible] = useState(true);
@@ -71,8 +87,10 @@ export default function GetTicketsPanel({
   function validate(): boolean {
     const e: typeof fieldErr = {};
     if (name.trim().length < 2) e.name = "Please enter your full name.";
-    if (!normalizePhone(phone)) e.phone = phone.trim() ? `That number doesn't look right. ${PHONE_HINT}.` : `We need your phone number. ${PHONE_HINT}.`;
-    if (!looksLikeEmail(email)) e.email = email.trim() ? "That email doesn't look right." : "We need your email — your ticket and QR are sent there.";
+    if (isOnline) {
+      if (!country) e.phone = "Please choose your country.";   // shown under the country field
+    } else if (!normalizePhone(phone)) e.phone = phone.trim() ? `That number doesn't look right. ${PHONE_HINT}.` : `We need your phone number. ${PHONE_HINT}.`;
+    if (!looksLikeEmail(email)) e.email = email.trim() ? "That email doesn't look right." : isOnline ? "We need your email — your private watch link is sent there." : "We need your email — your ticket and QR are sent there.";
     if (!agree) e.agree = "Please accept the ticket terms to continue.";
     setFieldErr(e);
     const first = e.name ? "name" : e.phone ? "phone" : e.email ? "email" : e.agree ? "agree" : null;
@@ -84,6 +102,7 @@ export default function GetTicketsPanel({
     setError("");
     if (!allowDuplicate) setDup(null);
     if (!validate()) return;
+    if (isOnline) return submitOnline();
     if (preview) {
       setDone({ reservation_number: "NFM-PREVIEW", access_token: "0".repeat(32), emailed: true });
       return;
@@ -135,6 +154,44 @@ export default function GetTicketsPanel({
     });
   }
 
+  async function submitOnline() {
+    if (preview) { setOnlineDone({ registration_number: "ONL-PREVIEW", access_code: "0".repeat(32), existing: false, emailed: true }); return; }
+    setBusy(true);
+    const res = await invokeFn(supabase, "online-register", { event_id: event.id, name: name.trim(), email: email.trim(), country });
+    setBusy(false);
+    const d: any = res.data;
+    if (d?.existing || d?.access_code) {
+      setOnlineDone({ registration_number: d.registration_number, access_code: d.access_code, existing: !!d.existing, emailed: !!d.emailed });
+      return;
+    }
+    setError(({
+      rate_limited: "Too many attempts. Wait a few minutes and try again.",
+      invalid_country: "Please choose your country.",
+      email_required: "We need a valid email — your private watch link is sent there.",
+      online_not_available: "Online attendance isn't open for this event.",
+      event_ended: "This event has ended.",
+    } as Record<string, string>)[res.errorCode ?? ""] ?? (res.transportError ? "Could not reach the registration service. Check your connection." : "Could not register you just now. Please try again."));
+  }
+
+  // ---------- Online attendance registered ----------
+  if (onlineDone) {
+    const watch = onlineDone.access_code ? `/watch/${onlineDone.access_code}` : null;
+    return (
+      <div className="card" style={{ alignItems: "center", textAlign: "center" }}>
+        <span className="pill ok">{onlineDone.existing ? "Already registered" : "Registered to watch online"}</span>
+        <h2>{onlineDone.existing ? `You're already on the online list, ${name.split(" ")[0]}.` : `You're in, ${name.split(" ")[0]}.`}</h2>
+        {onlineDone.registration_number && <strong style={{ fontSize: "1.2rem", letterSpacing: ".04em" }}>{onlineDone.registration_number}</strong>}
+        <p className="small">
+          {onlineDone.existing
+            ? <>For your security the watch link isn&apos;t shown here — {onlineDone.emailed ? <>we&apos;ve emailed it again to <strong>{email.trim()}</strong></> : "use My Tickets to have it emailed"}.</>
+            : <>Your private watch page counts down to the event and plays the live stream when it starts.{onlineDone.emailed ? <> We&apos;ve emailed the link to <strong>{email.trim()}</strong>.</> : ""}</>}
+        </p>
+        {watch && !preview && <a className="btn-primary btn-block" href={watch}>Open my watch page</a>}
+        <p className="small">Please keep the link to yourself — it&apos;s personal to you.</p>
+      </div>
+    );
+  }
+
   // ---------- Ticket issued ----------
   if (done?.access_token) {
     const url = `${APP_URL()}/r/${done.access_token}`;
@@ -164,6 +221,12 @@ export default function GetTicketsPanel({
         </div>
         {options.length > 0 && (
           <div className="card">
+            <PlatterAddons token={done.access_token} preview={preview}
+              platters={Array.from(new Map(options.map((o) => [o.platter.id, o.platter])).values())} />
+          </div>
+        )}
+        {options.length > 0 && (
+          <div className="card">
             <TableUpgrade token={done.access_token} options={options} preview={preview}
               onUpgraded={() => window.location.assign(`/r/${done.access_token}`)} />
           </div>
@@ -191,6 +254,7 @@ export default function GetTicketsPanel({
 
   // ---------- Panel ----------
   const total = table ? priceLabel(table) : "Free";
+  const pickLabel = isOnline ? "Online attendance" : table ? table.name : "General Admission";
   return (
     <div className="ticket-panel" id="get-tickets" ref={panelRef}>
       <div className="ticket-panel-head">
@@ -207,6 +271,15 @@ export default function GetTicketsPanel({
           </span>
           <span className="ticket-option-price"><strong>Free</strong></span>
         </button>
+        {event.online_enabled && (
+          <button type="button" role="radio" aria-checked={isOnline} className={`ticket-option ticket-option-online${isOnline ? " on" : ""}`} onClick={() => setPick(ONLINE)}>
+            <span className="ticket-option-main">
+              <strong>Online attendance</strong>
+              <small>Watch the live stream from anywhere</small>
+            </span>
+            <span className="ticket-option-price"><strong>Free</strong></span>
+          </button>
+        )}
         {options.map((o) => {
           const p = usd(o);
           const eb = earlyBird(o);
@@ -237,19 +310,33 @@ export default function GetTicketsPanel({
               value={name} onChange={(e) => { setName(e.target.value); setFieldErr({ ...fieldErr, name: undefined }); }} />
             {fieldErr.name && <span className="field-error">{fieldErr.name}</span>}
           </label>
-          <label className="field">
-            <span>Phone number</span>
-            <input data-field="phone" type="tel" inputMode="numeric" autoComplete="tel" placeholder="07XX XXX XXX" aria-invalid={!!fieldErr.phone}
-              value={phone} onChange={(e) => { setPhone(e.target.value); setFieldErr({ ...fieldErr, phone: undefined }); }} />
-            {fieldErr.phone && <span className="field-error">{fieldErr.phone}</span>}
-          </label>
+          {isOnline ? (
+            <label className="field">
+              <span>Country</span>
+              <select data-field="phone" autoComplete="country" value={country} aria-invalid={!!fieldErr.phone}
+                onChange={(e) => { setCountry(e.target.value); setFieldErr({ ...fieldErr, phone: undefined }); }}>
+                <option value="">Choose your country</option>
+                {COUNTRIES.map(([code, label]) => <option key={code} value={code}>{label}</option>)}
+              </select>
+              {fieldErr.phone && <span className="field-error">{fieldErr.phone}</span>}
+            </label>
+          ) : (
+            <label className="field">
+              <span>Phone number</span>
+              <input data-field="phone" type="tel" inputMode="numeric" autoComplete="tel" placeholder="07XX XXX XXX" aria-invalid={!!fieldErr.phone}
+                value={phone} onChange={(e) => { setPhone(e.target.value); setFieldErr({ ...fieldErr, phone: undefined }); }} />
+              {fieldErr.phone && <span className="field-error">{fieldErr.phone}</span>}
+            </label>
+          )}
           <label className="field">
             <span>Email</span>
             <input data-field="email" type="email" inputMode="email" autoComplete="email" placeholder="you@example.com" aria-invalid={!!fieldErr.email}
               value={email} onChange={(e) => { setEmail(e.target.value); setFieldErr({ ...fieldErr, email: undefined }); }} />
             {fieldErr.email ? <span className="field-error">{fieldErr.email}</span> : <span className="small">{EMAIL_HINT}.</span>}
           </label>
-          <p className="small ticket-delivery-note">Your ticket and QR code are emailed instantly{table ? " — your table is added as soon as the payment goes through" : ""}.</p>
+          <p className="small ticket-delivery-note">{isOnline
+            ? "No phone needed. We email your private watch link — it works from anywhere in the world."
+            : <>Your ticket and QR code are emailed instantly{table ? " — your table is added as soon as the payment goes through" : ""}.</>}</p>
           <label className="ticket-agree">
             <input data-field="agree" type="checkbox" checked={agree} onChange={(e) => { setAgree(e.target.checked); setFieldErr({ ...fieldErr, agree: undefined }); }} />
             <span>I accept the <a href="/ticket-terms" target="_blank" rel="noopener">ticket terms &amp; refund policy</a>.</span>
@@ -269,19 +356,20 @@ export default function GetTicketsPanel({
       )}
 
       <div className="ticket-total">
-        <span>Total{pick ? ` · 1 ${table ? "table" : "ticket"}` : ""}</span>
+        <span>Total{pick ? ` · 1 ${isOnline ? "online pass" : table ? "table" : "ticket"}` : ""}</span>
         <strong>{pick ? total : "—"}</strong>
       </div>
       <button type="button" className={table ? "btn-pay btn-block" : "btn-primary btn-block"} disabled={!pick || busy} onClick={() => submit()}>
-        {busy ? (table ? "Opening Paystack…" : "Getting your ticket…")
+        {busy ? (isOnline ? "Registering…" : table ? "Opening Paystack…" : "Getting your ticket…")
           : !pick ? "Select a ticket"
+          : isOnline ? "Register to watch online"
           : table ? `Continue to payment · ${total}` : "Get my free ticket"}
       </button>
       {table && <p className="small ticket-pay-note">Pay by M-Pesa or card on Paystack (charged in KSh). If you don&apos;t finish paying, you keep your free General Admission ticket.</p>}
 
       {pick && !panelVisible && (
         <a href="#get-tickets" className="ticket-mobile-bar" aria-hidden="true" tabIndex={-1}>
-          <span>{table ? table.name : "General Admission"}</span><strong>{total}</strong>
+          <span>{pickLabel}</span><strong>{total}</strong>
         </a>
       )}
     </div>

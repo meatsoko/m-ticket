@@ -26,6 +26,8 @@ export type ReservationEmail = {
   contactPhone: string | null;
   /** General Admission passes that can still add a table: the pass page's upgrade section. */
   upgradeUrl?: string | null;
+  /** Paid platter add-ons (migration 20261001120000), collected at the event. */
+  addons?: Line[];
 };
 
 const esc = (s: string) =>
@@ -94,6 +96,13 @@ export async function sendReservationEmail(
     If the QR above doesn't show, open the link instead:<br>
     <a href="${esc(r.passUrl)}" style="color:#D1481F">${esc(r.passUrl)}</a>
   </p>
+  ${r.addons?.length ? `
+  <div style="border:1px solid #dedbd4;border-radius:12px;padding:14px 18px;margin:18px 0">
+    <div style="font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#77736e">Platters · paid</div>
+    <table style="width:100%;border-collapse:collapse;font-size:14px;margin-top:6px">${r.addons.map((p) =>
+      `<tr><td style="padding:4px 0">${p.qty} × ${esc(p.name)}</td><td style="padding:4px 0;text-align:right">KSh ${(p.qty * Number(p.unit_price_kes)).toLocaleString()}</td></tr>`).join("")}</table>
+    <p style="font-size:13px;color:#77736e;margin:10px 0 0">Collect your platters at the event — show this pass.</p>
+  </div>` : ""}
   ${r.upgradeUrl ? `
   <div style="border:1px solid #E3D9D2;border-radius:12px;padding:14px 18px;margin:18px 0;text-align:center">
     <strong>Coming with family or friends?</strong>
@@ -114,6 +123,7 @@ export async function sendReservationEmail(
          `  Total KSh ${r.amountKes.toLocaleString()} — ${r.paid ? "PAID" : "not yet paid"}`]
       : []),
     "", `Open your pass: ${r.passUrl}`,
+    ...(r.addons?.length ? ["", "Platters (paid, collect at the event):", ...r.addons.map((p) => `  ${p.qty} x ${p.name}`)] : []),
     ...(r.upgradeUrl ? [`Upgrade to a table (3, 7 or 10 people): ${r.upgradeUrl}`] : []),
   ].filter(Boolean).join("\n");
 
@@ -154,6 +164,12 @@ export async function buildAndSend(
   const order: any = r.orders;
   const passUrl = `${appUrl.replace(/\/+$/, "")}/r/${r.access_token}`;
   const upgradable = !!(r as any).reservation_types?.is_general_admission && !r.order_id && r.status === "confirmed";
+  const { data: addonRows } = await db.from("reservation_addons")
+    .select("orders(order_items(qty,unit_price_kes,preorder_items(name)))")
+    .eq("reservation_id", reservationId).eq("status", "applied");
+  const addons: Line[] = ((addonRows ?? []) as any[]).flatMap((a) => (a.orders?.order_items ?? []).map((i: any) => ({
+    name: i.preorder_items?.name ?? "Platter", qty: i.qty, unit_price_kes: i.unit_price_kes,
+  })));
   return sendReservationEmail({
     to: r.email,
     guestName: r.guest_name,
@@ -166,6 +182,7 @@ export async function buildAndSend(
     eventStartsAt: ev?.starts_at ?? null,
     passUrl,
     upgradeUrl: upgradable ? `${passUrl}#upgrade` : null,
+    addons,
     preorder,
     amountKes: Number(order?.amount_kes ?? 0),
     paid: r.order_id ? order?.status === "paid" : true,

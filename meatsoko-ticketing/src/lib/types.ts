@@ -16,6 +16,12 @@ export type Event = {
   lineup?: string | null;
   /** Venue/table layout image; the event page shows a Table plan tab when set. */
   table_plan_url?: string | null;
+  /** Online attendance (free registration, private watch link). */
+  online_enabled?: boolean;
+  /** YouTube Live video/stream ID embedded on watch pages while live. */
+  stream_youtube_id?: string | null;
+  /** Reserved for paid online tickets; null/0 = free. */
+  online_price_kes?: number | null;
   /** False while M-Pesa provisioning is pending: preorders show but can't be bought. */
   payments_enabled?: boolean;
 };

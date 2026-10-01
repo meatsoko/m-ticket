@@ -51,6 +51,8 @@ export default function EventSettings({ event }: { event: any }) {
     banner_url: event.banner_url ?? "",
     lineup: event.lineup ?? "",
     table_plan_url: event.table_plan_url ?? "",
+    online_enabled: event.online_enabled === true,
+    stream_youtube_id: event.stream_youtube_id ?? "",
     starts_at: toLocalInput(event.starts_at),
     ends_at: toLocalInput(event.ends_at),
     doors_open_at: toLocalInput(event.doors_open_at),
@@ -79,6 +81,9 @@ export default function EventSettings({ event }: { event: any }) {
       banner_url: f.banner_url.trim() || null,
       lineup: f.lineup.trim() || null,
       table_plan_url: f.table_plan_url.trim() || null,
+      online_enabled: f.online_enabled,
+      // Accept a full YouTube URL or the bare ID; store the ID.
+      stream_youtube_id: youtubeId(f.stream_youtube_id) || null,
       starts_at: fromLocalInput(f.starts_at),
       ends_at: fromLocalInput(f.ends_at),
       doors_open_at: fromLocalInput(f.doors_open_at),
@@ -143,6 +148,26 @@ export default function EventSettings({ event }: { event: any }) {
                   still reserve free; platters are shown as &ldquo;Coming soon&rdquo; and no
                   payment request is sent.
                 </span>
+              </label>
+
+              <span className="eyebrow">Online attendance</span>
+              <label className="card quiet" style={{ padding: 12, cursor: "pointer", gap: 4 }}>
+                <div className="row">
+                  <strong style={{ fontSize: ".95rem" }}>Offer free online attendance</strong>
+                  <input type="checkbox" checked={f.online_enabled}
+                    onChange={(e) => set("online_enabled", e.target.checked)}
+                    style={{ width: 20, height: 20, margin: 0, flex: "0 0 auto" }} />
+                </div>
+                <span className="small">
+                  Anyone can register with name, email and country (no phone) and gets a private
+                  watch link. Online attendees never count against the venue capacity.
+                </span>
+              </label>
+              <label className="field">
+                <span>YouTube Live video ID or link</span>
+                <input placeholder="e.g. dQw4w9WgXcQ or https://youtube.com/live/…" value={f.stream_youtube_id}
+                  onChange={(e) => set("stream_youtube_id", e.target.value)} />
+                <span className="small">Use an unlisted YouTube Live stream. It plays only on attendees&apos; private watch pages, from the event&apos;s start time (a countdown runs until then).</span>
               </label>
 
               <span className="eyebrow">Reservation rules</span>
@@ -276,4 +301,12 @@ export default function EventSettings({ event }: { event: any }) {
       )}
     </div>
   );
+}
+
+/** Accept "dQw4w9WgXcQ", youtu.be/…, youtube.com/watch?v=…, /live/…, /embed/… — return the 11-char ID. */
+function youtubeId(input: string): string {
+  const t = input.trim();
+  if (/^[A-Za-z0-9_-]{11}$/.test(t)) return t;
+  const m = t.match(/(?:youtu\.be\/|[?&]v=|\/live\/|\/embed\/|\/shorts\/)([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : t;
 }

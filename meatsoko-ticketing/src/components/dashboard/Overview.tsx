@@ -119,9 +119,10 @@ export function AttendanceCard({ a }: { a: Attendance }) {
         <div><strong>{a.expected.toLocaleString("en-KE")}</strong><span>{a.capacity ? `of ${a.capacity} expected` : "expected guests"}</span></div>
       </div>
       <p className="dash-muted" style={{ textAlign: "center" }}>{a.checkedIn ? `${a.checkedIn} checked in` : "Gates not open yet"}</p>
+      <p className="dash-online-line"><span>Online</span><strong>{a.online} registered</strong><small>not counted in capacity</small></p>
       <h3 className="dash-sub">Tickets by type</h3>
       <ul className="dash-types">
-        {a.byType.length === 0 && <li className="dash-muted">No bookings yet.</li>}
+        {a.byType.length === 0 && <li className="dash-muted">{a.byTypeFailed ? "Couldn't load the breakdown — refresh the page." : "No bookings yet."}</li>}
         {a.byType.map((t) => (
           <li key={t.name}>
             <div><span>{t.name}</span><span>{t.bookings} · {t.people} people</span></div>

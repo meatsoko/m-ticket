@@ -15,6 +15,8 @@ export type DayPoint = { day: string; merch: number; tickets: number };
 export type BestSeller = { name: string; color: string; sold: number; revenueUsd: number };
 export type Attendance = {
   eventName: string; slug: string; capacity: number | null; expected: number; checkedIn: number;
+  online: number;    // online attendance registrations — never part of capacity
+  byTypeFailed: boolean; // the breakdown query failed: say so rather than "no bookings"
   byType: { name: string; bookings: number; people: number }[];
 } | null;
 
@@ -82,9 +84,10 @@ export async function loadOverview(db: SupabaseClient, days: Range): Promise<Ove
   let attendance: Attendance = null;
   const ev: any = event.data;
   if (ev) {
-    const [{ data: att }, { data: res }] = await Promise.all([
+    const [{ data: att }, { data: res, error: resErr }, { count: online }] = await Promise.all([
       db.rpc("expected_attendance", { p_event_id: ev.id }),
       db.from("reservations").select("party_size,status,reservation_types(name)").eq("event_id", ev.id).neq("status", "cancelled"),
+      db.from("online_registrations").select("id", { count: "exact", head: true }).eq("event_id", ev.id).eq("status", "active"),
     ]);
     const byType = new Map<string, { name: string; bookings: number; people: number }>();
     for (const r of (res ?? []) as any[]) {
@@ -96,7 +99,7 @@ export async function loadOverview(db: SupabaseClient, days: Range): Promise<Ove
     const a: any = att ?? {};
     attendance = {
       eventName: ev.name, slug: ev.slug, capacity: ev.capacity,
-      expected: Number(a.expected_attendance ?? 0), checkedIn: Number(a.arrived_guests ?? 0),
+      expected: Number(a.expected_attendance ?? 0), checkedIn: Number(a.arrived_guests ?? 0), online: online ?? 0, byTypeFailed: !!resErr,
       byType: Array.from(byType.values()).sort((x, y) => y.people - x.people),
     };
   }
