@@ -1760,3 +1760,9 @@ a.dash-kpi:hover { border-color: var(--store-ink); }
 .login-logo { display: block; width: 220px; max-width: 100%; height: auto; }
 @media (min-width: 900px) { .wide-event-shell .app-bar .brand-logo { height: 34px; } }
 @media (max-width: 760px) { .store-brand .brand-logo { height: 30px; } }
+
+/* Staff login: forgot password */
+.login-link { padding: 0; border: 0; background: none; color: var(--store-red); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; justify-self: center; }
+.login-link:hover, .login-link:focus-visible { text-decoration: underline; }
+.login-forgot { justify-self: end; margin-top: -6px; }
+a.login-submit { display: grid; place-items: center; text-decoration: none; }
