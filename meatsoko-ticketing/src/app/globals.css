@@ -1742,10 +1742,16 @@ a.login-submit { display: grid; place-items: center; text-decoration: none; }
 .ev-card-foot { gap: 10px; flex-wrap: wrap; align-items: center; }
 .lineup-top { display: grid; gap: 26px; margin-top: 26px; }
 .lineup-top > .lineup-section { margin-top: 0; }
-.lineup-soon { display: grid; gap: 12px; }
+.lineup-soon { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start; }
+.lineup-poster { margin: 0; width: min(100%, 360px); display: grid; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 30px 50px rgba(15,30,60,.18), 0 8px 14px rgba(23,23,23,.1); }
+.lineup-poster img { display: block; width: 100%; height: auto; }
+.lineup-poster figcaption { display: grid; gap: 6px; padding: 14px 16px 16px; }
+.lineup-poster figcaption .pill { justify-self: start; }
+.lineup-poster figcaption strong { font-size: 1.02rem; line-height: 1.25; }
 @media (min-width: 900px) {
   .lineup-ticket { width: 380px; }
   .lineup-ticket-box { height: 640px; }
+  .lineup-poster { width: 360px; }
   /* Up next and Coming soon side by side; past events below, full width. */
   .lineup-top { grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 40px; }
 }

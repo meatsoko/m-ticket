@@ -81,6 +81,29 @@ export default async function EventsPage() {
       </div>
     );
   };
+  // Coming soon with a poster: the poster itself, the same size as the Up next
+  // ticket, with the essentials underneath. Not a link — there is nothing to book yet.
+  const poster = (e: any) => {
+    const noRegistrationYet = !e.reservations_open_at || new Date(e.reservations_open_at) >= new Date(e.starts_at);
+    return (
+      <figure key={e.id} className="lineup-poster" aria-label={`${e.name} — coming soon`}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={e.banner_url} alt={`${e.name} poster`} loading="lazy" />
+        <figcaption>
+          <span className="pill warn">Coming soon</span>
+          <strong>{e.name}</strong>
+          <span className="small">
+            {fmt(e.starts_at, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+            {e.venue ? ` · ${e.venue}` : ""}
+          </span>
+          <span className="small">
+            {noRegistrationYet ? "Registration details coming soon."
+              : `Reservations open ${fmt(e.reservations_open_at, { day: "numeric", month: "long" })}.`}
+          </span>
+        </figcaption>
+      </figure>
+    );
+  };
   const open = list.filter((e: any) => phaseOf(e) === "now");
   const soon = list.filter((e: any) => phaseOf(e) === "soon");
   const past = list.filter((e: any) => phaseOf(e) === "past").reverse();
@@ -116,7 +139,7 @@ export default async function EventsPage() {
         {soon.length > 0 && (
           <section className="lineup-section" aria-label="Coming soon">
             <h2 className="lineup-label">Coming soon</h2>
-            <div className="lineup-soon">{soon.map(card)}</div>
+            <div className="lineup-soon">{soon.map((e: any) => e.banner_url ? poster(e) : card(e))}</div>
           </section>
         )}
         </div>
