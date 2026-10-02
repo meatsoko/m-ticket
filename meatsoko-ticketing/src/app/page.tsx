@@ -2,10 +2,10 @@ import Link from "next/link";
 import Image from "next/image";
 import { StoreShell } from "@/components/StoreChrome";
 import MerchandiseCard from "@/components/MerchandiseCard";
-import HeroCarousel, { type HeroEvent } from "@/components/store/HeroCarousel";
+import HeroCarousel from "@/components/store/HeroCarousel";
 import { merchandiseCategories } from "@/lib/merchandise";
 import { createClient } from "@/lib/supabase/server";
-import { nairobiTimeRange } from "@/lib/event-time";
+import { toTicketEvent, type TicketEvent } from "@/lib/ticket-event";
 
 const featuredProducts = [
   merchandiseCategories[0].products[0],
@@ -21,30 +21,19 @@ export default async function Home() {
     .select("id, slug, name, venue, starts_at, ends_at, banner_url")
     .eq("status", "live")
     .gte("ends_at", now)
+    // Announced but not open yet ("Coming soon" on /events) is not bookable: skip it.
+    .or(`reservations_open_at.is.null,reservations_open_at.lte.${now}`)
     .order("starts_at", { ascending: true })
     .limit(1)
     .maybeSingle();
   const currentEventHref = currentEvent?.slug ? `/e/${currentEvent.slug}` : "/events";
 
-  // The same event as a ticket card in the hero slideshow. Dates in Nairobi time.
-  let heroEvent: HeroEvent | null = null;
+  // The same event as a ticket card in the hero slideshow.
+  let heroEvent: TicketEvent | null = null;
   if (currentEvent) {
     const { count: gaTypes } = await supabase.from("reservation_types").select("id", { count: "exact", head: true })
       .eq("event_id", currentEvent.id).eq("is_general_admission", true).eq("is_active", true);
-    const tz = { timeZone: "Africa/Nairobi" } as const;
-    const d = new Date(currentEvent.starts_at);
-    const day = Number(new Intl.DateTimeFormat("en-KE", { ...tz, day: "numeric" }).format(d));
-    const suffix = [11, 12, 13].includes(day % 100) ? "TH" : ({ 1: "ST", 2: "ND", 3: "RD" } as Record<number, string>)[day % 10] ?? "TH";
-    const month = new Intl.DateTimeFormat("en-US", { ...tz, month: "short" }).format(d).toUpperCase();
-    heroEvent = {
-      slug: currentEvent.slug, name: currentEvent.name, venue: currentEvent.venue || "Nairobi",
-      image: currentEvent.banner_url,
-      dateBig: `${month} ${day}${suffix}`,
-      year: new Intl.DateTimeFormat("en-KE", { ...tz, year: "numeric" }).format(d),
-      dateShort: `${day} ${month} ${new Intl.DateTimeFormat("en-KE", { ...tz, year: "numeric" }).format(d)}`,
-      time: nairobiTimeRange(currentEvent.starts_at, currentEvent.ends_at),
-      note: gaTypes ? "Free entry · tables available" : "Tickets on sale now",
-    };
+    heroEvent = toTicketEvent(currentEvent, !!gaTypes);
   }
 
   return (

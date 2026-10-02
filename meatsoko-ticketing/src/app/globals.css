@@ -1725,3 +1725,27 @@ a.login-submit { display: grid; place-items: center; text-decoration: none; }
   .investor-submit { justify-self: stretch; }
   .investor-summary div { grid-template-columns: 1fr; gap: 2px; }
 }
+
+/* ---------- /events: the line-up as a timeline ----------
+   Up next (the open event, as the homepage hero's ticket card), then Coming
+   soon, then Past events. The ticket sizes itself from its box (container
+   query units), so the box sets its height. */
+.lineup-section + .lineup-section, .event-lineup-heading + .lineup-section { margin-top: 26px; }
+.lineup-label { margin: 0 0 12px; color: var(--muted); font-size: 12px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+.lineup-open { display: flex; flex-wrap: wrap; gap: 18px; }
+.lineup-ticket { display: block; width: min(100%, 360px); text-decoration: none; border-radius: 8px; }
+.lineup-ticket:focus-visible { outline: 3px solid var(--ember); outline-offset: 4px; }
+.lineup-ticket-box { container-type: size; display: grid; place-items: center; height: 600px; max-height: 150vw; }
+.lineup-ticket .event-ticket { animation: none; transition: transform .3s ease, box-shadow .3s ease; }
+.lineup-ticket:hover .event-ticket { transform: translateY(-4px); box-shadow: 0 36px 60px rgba(19,61,38,.42), 0 10px 16px rgba(23,23,23,.16); }
+.ev-thumb { flex: 0 0 auto; width: 54px; height: 76px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); }
+.ev-card-foot { gap: 10px; flex-wrap: wrap; align-items: center; }
+.lineup-top { display: grid; gap: 26px; margin-top: 26px; }
+.lineup-top > .lineup-section { margin-top: 0; }
+.lineup-soon { display: grid; gap: 12px; }
+@media (min-width: 900px) {
+  .lineup-ticket { width: 380px; }
+  .lineup-ticket-box { height: 640px; }
+  /* Up next and Coming soon side by side; past events below, full width. */
+  .lineup-top { grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 40px; }
+}

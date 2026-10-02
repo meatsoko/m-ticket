@@ -27,9 +27,12 @@ export function localWhen(iso: string, tz: string) {
   return `${fmt(iso, tz, { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true })} (${city} time)`;
 }
 
-/** "6:00 am – 6:00 am next day", "2:00 pm – 8:00 pm" or "5:00 pm" (no end), in Nairobi. */
+/** "6:00 am – 6:00 am next day", "2:00 pm – 8:00 pm" or "5:00 pm" (no end), in Nairobi.
+ *  An event stored as the whole day (00:00 to 23:59) has no time set yet. */
 export function nairobiTimeRange(startsAt: string, endsAt?: string | null) {
   const start = nairobiTime(startsAt);
+  const hm = (iso: string) => fmt(iso, NAIROBI, { hour: "2-digit", minute: "2-digit", hour12: false });
+  if (endsAt && hm(startsAt) === "00:00" && hm(endsAt) === "23:59") return "Time to be announced";
   if (!endsAt || endsAt === startsAt) return start;
   const day = (iso: string) => fmt(iso, NAIROBI, { year: "numeric", month: "2-digit", day: "2-digit" });
   return `${start} – ${nairobiTime(endsAt)}${day(endsAt) !== day(startsAt) ? " next day" : ""}`;

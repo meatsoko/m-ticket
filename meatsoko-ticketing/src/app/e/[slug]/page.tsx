@@ -29,6 +29,10 @@ export default async function EventPage({ params }: { params: { slug: string } }
   // a reservation event renders the RSVP form. Same page, same shell.
   const reservationMode = ev.reservation_mode ?? "off";
   const isReservation = reservationMode !== "off";
+  // Announced but not open yet ("Coming soon" on /events): nothing to book and
+  // no vendor sign-up until reservations_open_at. create_reservation and
+  // vendor-apply refuse it server-side too.
+  const notOpenYet = !!ev.reservations_open_at && new Date(ev.reservations_open_at).getTime() > Date.now();
 
   const { data: types } = isReservation ? { data: [] } : await supabase.from("ticket_types").select("*")
     .eq("event_id", ev.id).eq("is_active", true).order("position");
@@ -103,7 +107,7 @@ export default async function EventPage({ params }: { params: { slug: string } }
               {timeLabel}
             </span>
           </div>
-          <VendorSignup eventId={ev.id} eventName={ev.name} />
+          {!notOpenYet && <VendorSignup eventId={ev.id} eventName={ev.name} />}
         </div>
       </section>
 
@@ -160,7 +164,13 @@ export default async function EventPage({ params }: { params: { slug: string } }
           </section>
 
           <section className="event-booking" aria-label={isReservation ? "Reserve your place" : "Buy tickets"}>
-            {isReservation && gaType ? (
+            {notOpenYet ? (
+              <div className="card stack tight">
+                <span className="pill warn" style={{ justifySelf: "start" }}>Coming soon</span>
+                <strong>Registration details coming soon.</strong>
+                <span className="small">Check back here — this is where registration will open.</span>
+              </div>
+            ) : isReservation && gaType ? (
               <GetTicketsPanel event={ev as Event} gaTypeId={gaType.id} options={upgradeOptions} />
             ) : isReservation ? (
               <ReservationForm

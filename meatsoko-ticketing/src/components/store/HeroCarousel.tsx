@@ -3,6 +3,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import EventTicket from "@/components/EventTicket";
+import type { TicketEvent as HeroEvent } from "@/lib/ticket-event";
 
 // Floating product cut-outs for the homepage hero. Each image is a transparent
 // PNG cut from the product photo (only pieces whose colour separates cleanly
@@ -16,19 +18,11 @@ const SLIDES: { slug: string; image: string; w: number; h: number; kicker: strin
   { slug: "red-beanie", image: "red-beanie-nyamafest-cutout.png", w: 454, h: 541, kicker: "THE NYAMAFEST DROP", label: "THE BEANIE", name: "NyamaFest Beanie in red", glow: "198,42,51", scale: .64 },
 ];
 
+
 const INTERVAL_MS = 3000;
 const EVENT_MS = 10_000;           // the event ticket holds long enough to read and tap
 const PRODUCTS_BEFORE_EVENT = 2;
 
-/** The next live event, shown as a ticket card in the slideshow. Formatted on the server. */
-export type HeroEvent = {
-  slug: string; name: string; venue: string; image: string | null;
-  dateBig: string;   // "OCT 17TH"
-  year: string;      // "2026"
-  dateShort: string; // "17 OCT 2026"
-  time: string;      // "6:00 am – 6:00 am next day"
-  note: string;      // under GET TICKETS, e.g. "Free entry · tables available"
-};
 
 type Step = { kind: "product"; i: number } | { kind: "event" };
 
@@ -124,37 +118,5 @@ export default function HeroCarousel({ event = null }: { event?: HeroEvent | nul
         )}
       </div>
     </div>
-  );
-}
-
-// The event as a ticket (after a sports-ticket layout): photo window with the name
-// repeated down the edge, big stacked title, date, and a perforated stub.
-function EventTicket({ event }: { event: HeroEvent }) {
-  const words = event.name.replace(/\bmain\b/i, "").trim().toUpperCase();
-  const [first, ...rest] = words.split(/\s+/);
-  const title = rest.length ? [first, rest.join(" ")] : words.length > 6 ? [words.slice(0, Math.ceil(words.length / 2)), words.slice(Math.ceil(words.length / 2))] : [words];
-  return (
-    <span className="event-ticket">
-      <span className="event-ticket-photo">
-        {event.image
-          // eslint-disable-next-line @next/next/no-img-element
-          ? <img src={event.image} alt="" />
-          : <span className="event-ticket-photo-fallback" />}
-        <span className="event-ticket-repeat" aria-hidden="true">{Array.from({ length: 14 }, () => words.replace(/\s+/g, "")).join(" ")}</span>
-        <span className="event-ticket-gem" aria-hidden="true" />
-      </span>
-      <span className="event-ticket-body">
-        <span className="event-ticket-title">{title.map((t) => <span key={t}>{t}</span>)}</span>
-        <span className="event-ticket-sub">MEATSOKO PRESENTS · GOOD FOOD · GREAT VIBES</span>
-        <span className="event-ticket-when">
-          <span>{event.venue}<br />{event.time}</span>
-          <span className="event-ticket-date"><b>{event.dateBig}</b><small>{event.year}</small></span>
-        </span>
-      </span>
-      <span className="event-ticket-stub">
-        <span><small>{event.dateShort}</small><i className="event-ticket-barcode" aria-hidden="true" /></span>
-        <span className="event-ticket-cta"><b>GET TICKETS →</b><small>{event.note}</small></span>
-      </span>
-    </span>
   );
 }

@@ -40,8 +40,10 @@ Deno.serve(async (req) => {
   const byIp = await rateLimit(db, `vendor:ip:${clientIp(req)}`, PER_IP.limit, PER_IP.windowSeconds);
   if (!byIp.allowed) return json({ error: "rate_limited", retry_after: byIp.retryAfter }, 429);
 
-  const { data: ev } = await db.from("events").select("id,status,slug").eq("id", eventId).maybeSingle();
+  const { data: ev } = await db.from("events").select("id,status,slug,reservations_open_at").eq("id", eventId).maybeSingle();
   if (!ev || ev.status !== "live") return json({ error: "event_not_live" }, 409);
+  // Announced but not open yet ("Coming soon"): no vendor sign-up before it opens.
+  if (ev.reservations_open_at && new Date(ev.reservations_open_at).getTime() > Date.now()) return json({ error: "event_not_live" }, 409);
 
   const { data: existing } = await db.from("vendor_applications")
     .select("id,status,reference_number,paystack_reference,prior_references").eq("event_id", eventId).eq("phone", phone)
