@@ -26,7 +26,7 @@ export type HeroEvent = {
   dateBig: string;   // "OCT 17TH"
   year: string;      // "2026"
   dateShort: string; // "17 OCT 2026"
-  time: string;      // "5:00 PM till dawn"
+  time: string;      // "6:00 am – 6:00 am next day"
   note: string;      // under GET TICKETS, e.g. "Free entry · tables available"
 };
 

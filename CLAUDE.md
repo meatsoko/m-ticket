@@ -6,7 +6,7 @@ booking rules, what is live). This file holds the repository layout and the rule
 apply to every change. `HANDOFF.md` covers setting up a new machine.
 
 > The site is **live and taking real bookings and payments**: NyamaFest Main
-> (`nyamafest-main`), 17 October 2026, Thika Greens Golf Course, 5 PM till dawn,
+> (`nyamafest-main`), 17 October 2026, Thika Greens Golf Course, 6 AM to 6 AM the next day,
 > capacity 500. `main` is production and every push deploys.
 
 ---

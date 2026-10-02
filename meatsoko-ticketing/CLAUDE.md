@@ -47,7 +47,7 @@ The user wants the storefront to use a warm cream, black, and red visual system.
 - `src/components/EarlyBirdCountdown.tsx` shows the early-bird timer in the event hero, replacing the generic Festival label. The countdown is no longer in the package picker.
 - For NyamaFest family platters, `src/lib/family-package-pricing.ts` maps the user-specified USD presentation prices: Basic `$15 / $20`, Moderate `$35 / $40`, Big Family `$50 / $55`. It is a fixed display mapping, not runtime foreign-exchange conversion. Savings are shown as the USD difference (for example, “Save $5”).
 - Actual reservations and payment amounts remain KSh from the stored `preorder_items` prices. Order/payment records remain normalized in KSh.
-- `20260928100000_nyamafest_usd_display_prices.sql` contains the chosen KSh package values. `20260928130000_nyamafest_event_hours.sql` sets the `nyamafest-main` event to 5:00 PM through 6:00 AM the next day in `Africa/Nairobi`; the event page presents this as “5:00 PM till dawn.”
+- `20260928100000_nyamafest_usd_display_prices.sql` contains the chosen KSh package values. `20261002090000_nyamafest_starts_6am.sql` sets the `nyamafest-main` event to 6:00 AM Saturday 17 October through 6:00 AM the next day in `Africa/Nairobi` (superseding the 5 PM start of `20260928130000`); pages show it with `nairobiTimeRange()` as “6:00 am – 6:00 am next day”.
 - Check whether migrations have been applied in the target Supabase project before attempting to apply or replay them. Do not modify live Supabase data or apply migrations without the user's authorization.
 
 ## Useful files

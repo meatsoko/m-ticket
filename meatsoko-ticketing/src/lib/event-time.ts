@@ -8,7 +8,7 @@ const fmt = (iso: string, timeZone: string, opts: Intl.DateTimeFormatOptions) =>
 
 /** "Saturday 17 October 2026" in Nairobi. */
 export const nairobiDate = (iso: string) => fmt(iso, NAIROBI, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-/** "5:00 pm" in Nairobi. */
+/** "6:00 am" in Nairobi. */
 export const nairobiTime = (iso: string) => fmt(iso, NAIROBI, { hour: "numeric", minute: "2-digit", hour12: true });
 
 /** The visitor's zone, or null when it is Nairobi-equivalent (same offset now) or unknown. Browser only. */
@@ -25,4 +25,12 @@ export function visitorZone(iso: string): string | null {
 export function localWhen(iso: string, tz: string) {
   const city = tz.split("/").pop()!.replace(/_/g, " ");
   return `${fmt(iso, tz, { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true })} (${city} time)`;
+}
+
+/** "6:00 am – 6:00 am next day", "2:00 pm – 8:00 pm" or "5:00 pm" (no end), in Nairobi. */
+export function nairobiTimeRange(startsAt: string, endsAt?: string | null) {
+  const start = nairobiTime(startsAt);
+  if (!endsAt || endsAt === startsAt) return start;
+  const day = (iso: string) => fmt(iso, NAIROBI, { year: "numeric", month: "2-digit", day: "2-digit" });
+  return `${start} – ${nairobiTime(endsAt)}${day(endsAt) !== day(startsAt) ? " next day" : ""}`;
 }

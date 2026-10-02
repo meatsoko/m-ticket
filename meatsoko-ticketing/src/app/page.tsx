@@ -5,6 +5,7 @@ import MerchandiseCard from "@/components/MerchandiseCard";
 import HeroCarousel, { type HeroEvent } from "@/components/store/HeroCarousel";
 import { merchandiseCategories } from "@/lib/merchandise";
 import { createClient } from "@/lib/supabase/server";
+import { nairobiTimeRange } from "@/lib/event-time";
 
 const featuredProducts = [
   merchandiseCategories[0].products[0],
@@ -35,15 +36,13 @@ export default async function Home() {
     const day = Number(new Intl.DateTimeFormat("en-KE", { ...tz, day: "numeric" }).format(d));
     const suffix = [11, 12, 13].includes(day % 100) ? "TH" : ({ 1: "ST", 2: "ND", 3: "RD" } as Record<number, string>)[day % 10] ?? "TH";
     const month = new Intl.DateTimeFormat("en-US", { ...tz, month: "short" }).format(d).toUpperCase();
-    const clock = (iso: string) => new Intl.DateTimeFormat("en-US", { ...tz, hour: "numeric", minute: "2-digit", hour12: true }).format(new Date(iso));
     heroEvent = {
       slug: currentEvent.slug, name: currentEvent.name, venue: currentEvent.venue || "Nairobi",
       image: currentEvent.banner_url,
       dateBig: `${month} ${day}${suffix}`,
       year: new Intl.DateTimeFormat("en-KE", { ...tz, year: "numeric" }).format(d),
       dateShort: `${day} ${month} ${new Intl.DateTimeFormat("en-KE", { ...tz, year: "numeric" }).format(d)}`,
-      time: currentEvent.slug === "nyamafest-main" ? `${clock(currentEvent.starts_at)} till dawn`
-        : currentEvent.ends_at && currentEvent.ends_at !== currentEvent.starts_at ? `${clock(currentEvent.starts_at)} – ${clock(currentEvent.ends_at)}` : clock(currentEvent.starts_at),
+      time: nairobiTimeRange(currentEvent.starts_at, currentEvent.ends_at),
       note: gaTypes ? "Free entry · tables available" : "Tickets on sale now",
     };
   }

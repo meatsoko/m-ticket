@@ -11,6 +11,7 @@ import { SUPPORT } from "@/lib/support";
 import VendorSignup from "@/components/VendorSignup";
 import type { UpgradeOption } from "@/components/TableUpgrade";
 import EarlyBirdCountdown from "@/components/EarlyBirdCountdown";
+import { nairobiTimeRange } from "@/lib/event-time";
 import type { Event, TicketType, PreorderItem, ReservationType } from "@/lib/types";
 
 /** Nairobi, always — the buyer and the venue are both there. */
@@ -80,9 +81,7 @@ export default async function EventPage({ params }: { params: { slug: string } }
     ? ev.description.split("|").map((z: string) => z.trim()).filter(Boolean)
     : [];
   const blurb = zones.length ? "" : (ev.description ?? "");
-  const timeLabel = `${fmt(ev.starts_at, { hour: "numeric", minute: "2-digit", hour12: true })}${
-    ev.slug === "nyamafest-main" ? " till dawn"
-      : ev.ends_at && ev.ends_at !== ev.starts_at ? ` – ${fmt(ev.ends_at, { hour: "numeric", minute: "2-digit", hour12: true })}` : ""}`;
+  const timeLabel = nairobiTimeRange(ev.starts_at, ev.ends_at);
   const pageUrl = `${(process.env.NEXT_PUBLIC_APP_URL ?? "https://event.meatsokogroup.com").replace(/\/$/, "")}/e/${ev.slug}`;
 
   return (
@@ -101,12 +100,7 @@ export default async function EventPage({ params }: { params: { slug: string } }
             </span>
             <span className="pill glass">
               <Icon name="clock" size={13} />
-              {fmt(ev.starts_at, { hour: "numeric", minute: "2-digit", hour12: true })}
-              {ev.slug === "nyamafest-main"
-                ? " till dawn"
-                : ev.ends_at && ev.ends_at !== ev.starts_at
-                ? ` – ${fmt(ev.ends_at, { hour: "numeric", minute: "2-digit", hour12: true })}`
-                : ""}
+              {timeLabel}
             </span>
           </div>
           <VendorSignup eventId={ev.id} eventName={ev.name} />
