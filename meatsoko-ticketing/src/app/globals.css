@@ -1735,7 +1735,7 @@ a.login-submit { display: grid; place-items: center; text-decoration: none; }
 .lineup-open { display: flex; flex-wrap: wrap; gap: 18px; }
 .lineup-ticket { display: block; width: min(100%, 360px); text-decoration: none; border-radius: 8px; }
 .lineup-ticket:focus-visible { outline: 3px solid var(--ember); outline-offset: 4px; }
-.lineup-ticket-box { container-type: size; display: grid; place-items: center; height: 600px; max-height: 150vw; }
+.lineup-ticket-box { container-type: size; display: grid; place-items: start center; height: 600px; max-height: 150vw; }
 .lineup-ticket .event-ticket { animation: none; transition: transform .3s ease, box-shadow .3s ease; }
 .lineup-ticket:hover .event-ticket { transform: translateY(-4px); box-shadow: 0 36px 60px rgba(19,61,38,.42), 0 10px 16px rgba(23,23,23,.16); }
 .ev-thumb { flex: 0 0 auto; width: 54px; height: 76px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); }
@@ -1751,7 +1751,11 @@ a.login-submit { display: grid; place-items: center; text-decoration: none; }
 @media (min-width: 900px) {
   .lineup-ticket { width: 380px; }
   .lineup-ticket-box { height: 640px; }
-  .lineup-poster { width: 360px; }
-  /* Up next and Coming soon side by side; past events below, full width. */
-  .lineup-top { grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 40px; }
+  /* Same width as the ticket beside it (600px tall × .53). */
+  .lineup-poster { width: 318px; }
+  /* Up next and Coming soon side by side, spaced evenly across the width (two
+     equal columns, each card centred under its label); past events below. */
+  .lineup-top { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 40px; }
+  .lineup-top > .lineup-section { display: grid; justify-items: center; }
+  .lineup-top .lineup-label { justify-self: stretch; text-align: center; }
 }
