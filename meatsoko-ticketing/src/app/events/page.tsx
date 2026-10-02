@@ -81,29 +81,15 @@ export default async function EventsPage() {
       </div>
     );
   };
-  // Coming soon with a poster: the poster itself, the same size as the Up next
-  // ticket, with the essentials underneath. Not a link — there is nothing to book yet.
-  const poster = (e: any) => {
-    const noRegistrationYet = !e.reservations_open_at || new Date(e.reservations_open_at) >= new Date(e.starts_at);
-    return (
-      <figure key={e.id} className="lineup-poster" aria-label={`${e.name} — coming soon`}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={e.banner_url} alt={`${e.name} poster`} loading="lazy" />
-        <figcaption>
-          <span className="pill warn">Coming soon</span>
-          <strong>{e.name}</strong>
-          <span className="small">
-            {fmt(e.starts_at, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
-            {e.venue ? ` · ${e.venue}` : ""}
-          </span>
-          <span className="small">
-            {noRegistrationYet ? "Registration details coming soon."
-              : `Reservations open ${fmt(e.reservations_open_at, { day: "numeric", month: "long" })}.`}
-          </span>
-        </figcaption>
-      </figure>
-    );
-  };
+  // Coming soon with a poster: just the poster, the same size as the Up next
+  // ticket. Not a link — there is nothing to book yet.
+  const poster = (e: any) => (
+    <figure key={e.id} className="lineup-poster">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={e.banner_url} loading="lazy"
+        alt={`${e.name} — ${fmt(e.starts_at, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}${e.venue ? `, ${e.venue}` : ""}. Coming soon.`} />
+    </figure>
+  );
   const open = list.filter((e: any) => phaseOf(e) === "now");
   const soon = list.filter((e: any) => phaseOf(e) === "soon");
   const past = list.filter((e: any) => phaseOf(e) === "past").reverse();
