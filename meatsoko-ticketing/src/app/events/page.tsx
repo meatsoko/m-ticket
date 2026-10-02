@@ -81,12 +81,13 @@ export default async function EventsPage() {
       </div>
     );
   };
-  // Coming soon with a poster: just the poster, the same size as the Up next
-  // ticket. Not a link — there is nothing to book yet.
+  // Coming soon with a poster: just the poster, as tall as the Up next ticket.
+  // Not a link — there is nothing to book yet. width/height are the poster's
+  // proportions (portrait, ~2:3) so the space is reserved before it loads.
   const poster = (e: any) => (
     <figure key={e.id} className="lineup-poster">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={e.banner_url} loading="lazy"
+      <img src={e.banner_url} loading="lazy" width={714} height={1076}
         alt={`${e.name} — ${fmt(e.starts_at, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}${e.venue ? `, ${e.venue}` : ""}. Coming soon.`} />
     </figure>
   );

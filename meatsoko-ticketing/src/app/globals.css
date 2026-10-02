@@ -1748,8 +1748,10 @@ a.login-submit { display: grid; place-items: center; text-decoration: none; }
 @media (min-width: 900px) {
   .lineup-ticket { width: 380px; }
   .lineup-ticket-box { height: 640px; }
-  /* Same width as the ticket beside it (600px tall × .53). */
-  .lineup-poster { width: 318px; }
+  /* Same height as the ticket beside it (600px); the poster keeps its own
+     proportions, so it is a little wider rather than cropped. */
+  .lineup-poster { width: auto; }
+  .lineup-poster img { width: auto; height: 600px; }
   /* Up next and Coming soon side by side, spaced evenly across the width (two
      equal columns, each card centred under its label); past events below. */
   .lineup-top { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 40px; }
