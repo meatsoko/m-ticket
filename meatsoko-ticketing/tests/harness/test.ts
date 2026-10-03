@@ -27,7 +27,18 @@ globalThis.fetch = async (input: any, init?: any) => {
   const url = new URL(req.url);
   if (url.host === "supabase.test") {
     const target = `http://mt-harness-rest:3000${url.pathname.replace(/^\/rest\/v1/, "")}${url.search}`;
-    return realFetch(new Request(target, { method: req.method, headers: req.headers, body: req.body, duplex: "half" } as any));
+    // Docker's network occasionally drops a reused keep-alive connection before
+    // the request is sent ("connection closed before message completed"); retry
+    // that one error so a transport glitch isn't reported as a test result.
+    const body = req.body ? await req.arrayBuffer() : undefined;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await realFetch(target, { method: req.method, headers: req.headers, body });
+      } catch (e) {
+        if (attempt < 3 && /connection closed|connection reset|SendRequest/i.test(String(e))) { await new Promise((r) => setTimeout(r, 150)); continue; }
+        throw e;
+      }
+    }
   }
   if (url.host === "api.paystack.co" && url.pathname === "/transaction/initialize") {
     const b = await req.json();
@@ -48,7 +59,7 @@ globalThis.fetch = async (input: any, init?: any) => {
 const handlers: Record<string, (r: Request) => Promise<Response>> = {};
 let loading = "";
 (Deno as any).serve = (h: any) => { handlers[loading] = h; return { finished: Promise.resolve() }; };
-for (const [name, path] of [["checkout", "merch-checkout"], ["order", "merch-order"], ["webhook", "paystack-webhook"], ["fx", "merch-fx-refresh"], ["reconcile", "paystack-reconcile"], ["reserve", "reserve"], ["reslookup", "reservation-lookup"], ["lookup", "lookup"], ["verify", "paystack-verify"], ["upgrade", "upgrade-reservation"], ["bytoken", "reservation-by-token"], ["vendor", "vendor-apply"], ["oreg", "online-register"], ["oacc", "online-access"], ["addon", "platter-addon"], ["inv", "investor-register"]]) {
+for (const [name, path] of [["checkout", "merch-checkout"], ["order", "merch-order"], ["webhook", "paystack-webhook"], ["fx", "merch-fx-refresh"], ["reconcile", "paystack-reconcile"], ["reserve", "reserve"], ["reslookup", "reservation-lookup"], ["lookup", "lookup"], ["verify", "paystack-verify"], ["upgrade", "upgrade-reservation"], ["bytoken", "reservation-by-token"], ["vendor", "vendor-apply"], ["oreg", "online-register"], ["oacc", "online-access"], ["addon", "platter-addon"], ["inv", "investor-register"], ["receipt", "event-order-receipt"]]) {
   loading = name; await import(`/fns/${path}/index.ts`);
 }
 const call = async (name: string, body: unknown, headers: Record<string, string> = {}) => {
@@ -865,6 +876,179 @@ console.log("\n--- investors ---");
   check("investor: after cancelling, the same email can register again (new number)", r.status === 200 && r.body?.reference_number !== target.reference_number && (await irow("otieno@example.test")).length === 2, r.body);
   const restore = await adminC.from("investor_registrations").update({ status: "registered" }).eq("id", target.id).eq("status", "cancelled").select("id");
   check("investor: restoring a cancelled one while another is active is blocked (23505)", restore.error?.code === "23505", restore);
+}
+
+// 17. Event Orders (on-site orders, payments, receipts, staff accountability)
+console.log("\n--- event orders ---");
+{
+  const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2.45.4");
+  const mkUser = async (role: "admin" | "staff" | null, email: string) => {
+    const uid = crypto.randomUUID();
+    await fetch("http://supabase.test/rest/v1/rpc/test_make_user", { method: "POST", headers: svc, body: JSON.stringify({ p_id: uid }) });
+    if (role) await fetch("http://supabase.test/rest/v1/admin_users", { method: "POST", headers: svc, body: JSON.stringify({ user_id: uid, role }) });
+    const k = await jwt({ role: "authenticated", sub: uid, exp: 4102444800 });
+    return { uid, email, c: createClient("http://supabase.test", k, { auth: { persistSession: false }, global: { headers: { Authorization: `Bearer ${k}` } } }) };
+  };
+  const admin = await mkUser("admin", "boss@example.test"), john = await mkUser("staff", "john@example.test"),
+        mary = await mkUser("staff", "mary@example.test"), outsider = await mkUser(null, "nobody@example.test");
+  const ev = (await post("events", { name: "Orders Fest", slug: "eo-fest", starts_at: new Date(Date.now() + 2 * 864e5).toISOString(), ends_at: new Date(Date.now() + 3 * 864e5).toISOString(), status: "live", reservation_mode: "off", reservation_prefix: "EOF" }))[0];
+  const other = (await post("events", { name: "Other Fest", slug: "eo-other", starts_at: new Date(Date.now() + 2 * 864e5).toISOString(), ends_at: new Date(Date.now() + 3 * 864e5).toISOString(), status: "live", reservation_mode: "off" }))[0];
+  // menu: admin can add, staff can't
+  const mi = await admin.c.from("event_menu_items").insert([
+    { event_id: ev.id, name: "Single Plata", price_kes: 800, is_active: true, position: 1 },
+    { event_id: ev.id, name: "Soda", price_kes: 100, is_active: true, position: 2 },
+    { event_id: ev.id, name: "Old Item", price_kes: 50, is_active: false, position: 3 },
+  ]).select("id,name,price_kes");
+  check("orders: admin adds menu items", !mi.error && (mi.data ?? []).length === 3, mi.error);
+  const [plata, soda, retired] = mi.data as any[];
+  const otherItem = (await post("event_menu_items", { event_id: other.id, name: "Elsewhere", price_kes: 10 }))[0];
+  const si = await john.c.from("event_menu_items").insert({ event_id: ev.id, name: "Sneaky", price_kes: 1 }).select("id");
+  check("orders: staff can't add menu items", !!si.error || (si.data ?? []).length === 0, si);
+  const su = await john.c.from("event_menu_items").update({ price_kes: 1 }).eq("id", plata.id).select("id");
+  check("orders: staff can't change menu prices", (su.data ?? []).length === 0 && Number((await get(`event_menu_items?select=price_kes&id=eq.${plata.id}`))[0].price_kes) === 800, su);
+
+  const cust = { p_event_id: ev.id, p_customer_name: "Achieng Odhiambo", p_customer_phone: "0712 345 678", p_customer_email: null };
+  // who can create
+  const anonCreate = await rpc("create_event_order", { ...cust, p_items: [{ menu_item_id: plata.id, qty: 1 }] });
+  check("orders: anon can't create an order", anonCreate.status === 401 || anonCreate.body?.code === "42501", anonCreate);
+  const outCreate = await outsider.c.rpc("create_event_order", { ...cust, p_items: [{ menu_item_id: plata.id, qty: 1 }] });
+  check("orders: signed-in non-staff can't create an order", outCreate.error?.code === "42501", outCreate.error);
+
+  // John: 2 plata + 3 soda (split across lines, merged), caller-sent prices ignored, no payment
+  let r = await john.c.rpc("create_event_order", { ...cust, p_items: [{ menu_item_id: plata.id, qty: 1, unit_price_kes: 1 }, { menu_item_id: soda.id, qty: 3 }, { menu_item_id: plata.id, qty: 1 }] });
+  const o1 = r.data as any;
+  check("orders: staff creates an order; number EOF-0001; prices from the menu; unpaid", !r.error && o1?.order_number === "EOF-0001" && Number(o1?.total_kes) === 1900 && o1?.payment_status === "unpaid" && Number(o1?.balance_kes) === 1900 && /^[a-f0-9]{32}$/.test(o1?.receipt_token), r.error ?? o1);
+  let row = (await get(`event_orders?select=*&id=eq.${o1.id}`))[0];
+  const items1 = await get(`event_order_items?select=name,qty,unit_price_kes,line_total_kes&order_id=eq.${o1.id}&order=name`);
+  check("orders: created_by is the signed-in staff member; phone normalised; lines merged", row.created_by === john.uid && row.customer_phone === "254712345678" && items1.length === 2 && items1.find((i: any) => i.name === "Single Plata")?.qty === 2, { row, items1 });
+
+  // validation
+  const bad = async (over: Record<string, unknown>) => (await john.c.rpc("create_event_order", { ...cust, p_items: [{ menu_item_id: plata.id, qty: 1 }], ...over })).data?.error;
+  check("orders: retired item refused", await bad({ p_items: [{ menu_item_id: retired.id, qty: 1 }] }) === "unknown_item");
+  check("orders: another event's item refused", await bad({ p_items: [{ menu_item_id: otherItem.id, qty: 1 }] }) === "unknown_item");
+  check("orders: qty over 99 refused", await bad({ p_items: [{ menu_item_id: plata.id, qty: 100 }] }) === "bad_qty");
+  check("orders: empty order refused", await bad({ p_items: [] }) === "no_items");
+  check("orders: bad phone refused", await bad({ p_customer_phone: "12345" }) === "invalid_phone");
+  check("orders: bad email refused", await bad({ p_customer_email: "nope" }) === "invalid_email");
+  check("orders: closed event refused", await bad({ p_event_id: (await post("events", { name: "Shut", slug: "eo-shut", starts_at: new Date().toISOString(), ends_at: new Date().toISOString(), status: "closed" }))[0].id }) === "event_not_live");
+
+  // part payment at creation (Mary's order)
+  r = await mary.c.rpc("create_event_order", { ...cust, p_customer_name: "Brian Kip", p_customer_phone: "0722000111", p_items: [{ menu_item_id: plata.id, qty: 1 }], p_payment: { amount: 300, method: "cash" } });
+  const o2 = r.data as any;
+  check("orders: created with a part payment -> partially_paid, balance 500, number EOF-0002", !r.error && o2?.order_number === "EOF-0002" && o2?.payment_status === "partially_paid" && Number(o2?.balance_kes) === 500, r.error ?? o2);
+  const before = (await get(`event_orders?select=id&event_id=eq.${ev.id}`)).length;
+  r = await john.c.rpc("create_event_order", { ...cust, p_items: [{ menu_item_id: soda.id, qty: 1 }], p_payment: { amount: 500, method: "cash" } });
+  check("orders: first payment over the total -> nothing created at all", !!r.error && /exceeds_balance/.test(r.error.message) && (await get(`event_orders?select=id&event_id=eq.${ev.id}`)).length === before, r.error);
+
+  // Mary collects on John's order
+  let p = await mary.c.rpc("record_event_order_payment", { p_order_id: o1.id, p_amount: 1000, p_method: "mpesa", p_reference: null });
+  check("payments: M-Pesa needs its code", p.data?.error === "mpesa_code_required", p.data);
+  p = await mary.c.rpc("record_event_order_payment", { p_order_id: o1.id, p_amount: 1000, p_method: "mpesa", p_reference: "qwe12rty34" });
+  check("payments: Mary records KSh 1,000 on John's order -> partially_paid, balance 900", p.data?.payment_status === "partially_paid" && Number(p.data?.balance_kes) === 900, p.data ?? p.error);
+  const pays1 = await get(`event_order_payments?select=id,recorded_by,reference,kind&order_id=eq.${o1.id}`);
+  check("payments: collector is Mary, order stays John's; code stored upper-case", pays1[0]?.recorded_by === mary.uid && (await get(`event_orders?select=created_by&id=eq.${o1.id}`))[0].created_by === john.uid && pays1[0]?.reference === "QWE12RTY34", pays1);
+  p = await john.c.rpc("record_event_order_payment", { p_order_id: o2.id, p_amount: 100, p_method: "mpesa", p_reference: "QWE12RTY34" });
+  check("payments: the same M-Pesa code can't be used twice", p.data?.error === "duplicate_reference", p.data);
+  p = await john.c.rpc("record_event_order_payment", { p_order_id: o1.id, p_amount: 901, p_method: "cash" });
+  check("payments: more than the balance refused", p.data?.error === "exceeds_balance" && Number(p.data?.balance) === 900, p.data);
+  p = await john.c.rpc("record_event_order_payment", { p_order_id: o1.id, p_amount: 0, p_method: "cash" });
+  check("payments: zero refused", p.data?.error === "bad_amount", p.data);
+  const anonPay = await rpc("record_event_order_payment", { p_order_id: o1.id, p_amount: 1, p_method: "cash" });
+  check("payments: anon can't record a payment", anonPay.status === 401 || anonPay.body?.code === "42501", anonPay);
+
+  // fulfilment
+  let f = await john.c.rpc("fulfil_event_order", { p_order_id: o1.id });
+  check("fulfil: staff can't fulfil an order with a balance", f.data?.error === "not_fully_paid" && Number(f.data?.balance_kes) === 900, f.data);
+  p = await john.c.rpc("record_event_order_payment", { p_order_id: o1.id, p_amount: 900, p_method: "card", p_reference: "PDQ-7781" });
+  check("payments: John clears it by card -> paid, balance 0", p.data?.payment_status === "paid" && Number(p.data?.balance_kes) === 0, p.data);
+  f = await john.c.rpc("fulfil_event_order", { p_order_id: o1.id });
+  check("fulfil: paid order fulfilled by staff", f.data?.order_status === "fulfilled" && (await get(`event_orders?select=fulfilled_by,order_status&id=eq.${o1.id}`))[0].fulfilled_by === john.uid, f.data);
+  f = await john.c.rpc("fulfil_event_order", { p_order_id: o1.id });
+  check("fulfil: can't fulfil twice", f.data?.error === "order_not_open", f.data);
+  p = await mary.c.rpc("record_event_order_payment", { p_order_id: o1.id, p_amount: 1, p_method: "cash" });
+  check("payments: no payments on a fulfilled order", p.data?.error === "order_not_open", p.data);
+  f = await admin.c.rpc("fulfil_event_order", { p_order_id: o2.id });
+  const aud = await get(`admin_audit?select=action&subject_id=eq.${o2.id}&action=eq.event_order_fulfil_with_balance`);
+  check("fulfil: admin may release an order with a balance, and it's audited", f.data?.order_status === "fulfilled" && Number(f.data?.balance_kes) === 500 && aud.length === 1, { f: f.data, aud });
+
+  // history is append-only
+  const delRes = await fetch(`http://supabase.test/rest/v1/event_order_payments?id=eq.${pays1[0].id}`, { method: "DELETE", headers: svc });
+  const updRes = await patch(`event_order_payments?id=eq.${pays1[0].id}`, { amount_kes: 1 });
+  check("history: payments can't be deleted or edited, even with the service role", delRes.status >= 400 && updRes.status >= 400 && (await get(`event_order_payments?select=amount_kes&id=eq.${pays1[0].id}`))[0].amount_kes == 1000, { del: delRes.status, upd: updRes.status });
+  const itemEdit = await patch(`event_order_items?order_id=eq.${o1.id}`, { unit_price_kes: 1 });
+  check("history: order items can't be edited", itemEdit.status >= 400, itemEdit.status);
+  const staffIns = await john.c.from("event_order_payments").insert({ order_id: o1.id, amount_kes: 5, method: "cash", recorded_by: john.uid }).select("id");
+  const staffUpd = await john.c.from("event_orders").update({ total_kes: 1 }).eq("id", o1.id).select("id");
+  check("history: staff can't write payments or orders directly", !!staffIns.error && (staffUpd.data ?? []).length === 0 && !!staffUpd.error, { staffIns: staffIns.error, staffUpd });
+
+  // price snapshot
+  await admin.c.from("event_menu_items").update({ price_kes: 900 }).eq("id", plata.id);
+  const snap = await get(`event_order_items?select=unit_price_kes&order_id=eq.${o1.id}&name=eq.Single%20Plata`);
+  r = await john.c.rpc("create_event_order", { ...cust, p_items: [{ menu_item_id: plata.id, qty: 1 }] });
+  const o3 = r.data as any;
+  check("snapshot: old order keeps KSh 800 after the menu moves to KSh 900; new order uses 900", Number(snap[0].unit_price_kes) === 800 && Number(o3?.total_kes) === 900, { snap, o3 });
+
+  // admin: refunds, corrections, cancel
+  const staffRev = await john.c.rpc("reverse_event_order_payment", { p_payment_id: pays1[0].id, p_kind: "refund", p_amount: 100, p_reason: "x" });
+  const staffCan = await john.c.rpc("cancel_event_order", { p_order_id: o3.id, p_reason: "x" });
+  check("admin only: staff can't refund, correct or cancel", staffRev.error?.code === "42501" && staffCan.error?.code === "42501", { staffRev: staffRev.error, staffCan: staffCan.error });
+  p = await john.c.rpc("record_event_order_payment", { p_order_id: o3.id, p_amount: 400, p_method: "cash" });
+  const o3pay = (await get(`event_order_payments?select=id&order_id=eq.${o3.id}`))[0];
+  let c = await admin.c.rpc("cancel_event_order", { p_order_id: o3.id, p_reason: "Customer left" });
+  check("cancel: refused while money is held", c.data?.error === "refund_first" && Number(c.data?.held_kes) === 400, c.data);
+  let rv = await admin.c.rpc("reverse_event_order_payment", { p_payment_id: o3pay.id, p_kind: "correction", p_amount: 500, p_reason: "typo" });
+  check("correction: can't exceed the payment", rv.data?.error === "exceeds_payment" && Number(rv.data?.remaining_kes) === 400, rv.data);
+  rv = await admin.c.rpc("reverse_event_order_payment", { p_payment_id: o3pay.id, p_kind: "correction", p_amount: 400, p_reason: "Recorded on the wrong order" });
+  check("correction: payment struck off -> unpaid again, balance back to 900", rv.data?.payment_status === "unpaid" && Number(rv.data?.balance_kes) === 900, rv.data);
+  c = await admin.c.rpc("cancel_event_order", { p_order_id: o3.id, p_reason: "Customer left" });
+  const o3row = (await get(`event_orders?select=order_status,event_order_balance,cancel_reason&id=eq.${o3.id}`))[0];
+  check("cancel: admin cancels once nothing is held; balance 0, reason kept", c.data?.order_status === "cancelled" && o3row.order_status === "cancelled" && Number(o3row.event_order_balance) === 0 && o3row.cancel_reason === "Customer left", { c: c.data, o3row });
+  const cardPay = (await get(`event_order_payments?select=id&order_id=eq.${o1.id}&method=eq.card`))[0];
+  rv = await admin.c.rpc("reverse_event_order_payment", { p_payment_id: cardPay.id, p_kind: "refund", p_amount: 200, p_reason: "One soda short" });
+  check("refund: part refund -> partially_refunded, original payment row untouched", rv.data?.payment_status === "partially_refunded" && (await get(`event_order_payments?select=amount_kes&id=eq.${cardPay.id}`))[0].amount_kes == 900, rv.data);
+  const mpesaPay = pays1[0];
+  await admin.c.rpc("reverse_event_order_payment", { p_payment_id: cardPay.id, p_kind: "refund", p_amount: 700, p_reason: "Returned" });
+  rv = await admin.c.rpc("reverse_event_order_payment", { p_payment_id: mpesaPay.id, p_kind: "refund", p_amount: 1000, p_reason: "Returned" });
+  check("refund: everything handed back -> payment refunded, order refunded", rv.data?.payment_status === "refunded" && rv.data?.order_status === "refunded", rv.data);
+  const hist = await get(`event_order_payments?select=kind,amount_kes,reverses_payment_id&order_id=eq.${o1.id}&order=recorded_at`);
+  check("history: every payment and reversal kept as its own row", hist.length === 5 && hist.filter((h: any) => h.kind === "refund").length === 3, hist);
+
+  // reading
+  const anonRead = await (await fetch(`http://supabase.test/rest/v1/event_orders?select=id`, { headers: { apikey: anonKey, authorization: `Bearer ${anonKey}` } })).json().catch(() => null);
+  check("read: anon sees no orders", !Array.isArray(anonRead) || anonRead.length === 0, anonRead);
+  const outRead = await outsider.c.from("event_orders").select("id");
+  check("read: signed-in non-staff sees no orders", (outRead.data ?? []).length === 0, outRead);
+  const mRead = await mary.c.from("event_orders").select("order_number,total_kes,event_order_balance,event_order_items(name,qty),event_order_payments(amount_kes,kind,recorded_by)").eq("event_id", ev.id).order("seq");
+  check("read: staff see every order at the event, with balance, items and payments", !mRead.error && (mRead.data ?? []).length === 3 && Number((mRead.data as any[])[1].event_order_balance) === 500, mRead.error ?? mRead.data);
+  const dir = await mary.c.rpc("staff_directory");
+  const anonDir = await rpc("staff_directory", {});
+  check("staff directory: staff can list colleagues; anon can't", !dir.error && (dir.data ?? []).some((d: any) => d.user_id === john.uid) && (anonDir.status === 401 || anonDir.body?.code === "42501"), { dir: dir.error, anonDir });
+
+  // receipt
+  let rc = await call("receipt", { token: o2.receipt_token }, ip());
+  check("receipt: by token -> order, items, payments; phone masked; no staff ids", rc.status === 200 && rc.body?.order_number === "EOF-0002" && rc.body?.customer_phone === "0722***111" && rc.body?.items?.length === 1 && rc.body?.payments?.length === 1 && Number(rc.body?.balance_kes) === 500 && !JSON.stringify(rc.body).includes(mary.uid), rc.body);
+  rc = await call("receipt", { token: "EOF-0002" }, ip());
+  check("receipt: the order number is not accepted", rc.status === 404, rc);
+  rc = await call("receipt", { token: "0".repeat(32) }, ip());
+  check("receipt: unknown token -> 404", rc.status === 404, rc);
+  const anonRc = await rpc("get_event_order_receipt", { p_token: o2.receipt_token });
+  const staffRc = await john.c.rpc("get_event_order_receipt", { p_token: o2.receipt_token });
+  check("receipt: only the Edge Function (service role) can call the lookup", (anonRc.status === 401 || anonRc.body?.code === "42501") && staffRc.error?.code === "42501", { anonRc, staffRc: staffRc.error });
+
+  // staff report (what the dashboard computes)
+  const orders = await get(`event_orders?select=id,created_by,total_kes,paid_kes,corrected_kes,refunded_kes,order_status,event_order_balance&event_id=eq.${ev.id}`);
+  const payments = await get(`event_order_payments?select=order_id,kind,amount_kes,recorded_by&order_id=in.(${orders.map((o: any) => o.id).join(",")})`);
+  const by = (uid: string) => ({
+    orders: orders.filter((o: any) => o.created_by === uid).length,
+    value: orders.filter((o: any) => o.created_by === uid && o.order_status !== "cancelled").reduce((s: number, o: any) => s + Number(o.total_kes), 0),
+    collected: payments.filter((x: any) => x.recorded_by === uid && x.kind === "payment").reduce((s: number, x: any) => s + Number(x.amount_kes), 0),
+    outstanding: orders.filter((o: any) => o.created_by === uid).reduce((s: number, o: any) => s + Number(o.event_order_balance), 0),
+  });
+  const jr = by(john.uid), mr = by(mary.uid);
+  check("report: John 2 orders (one cancelled), value 1,900, collected 1,300 (card 900 + 400 cash), outstanding 0", jr.orders === 2 && jr.value === 1900 && jr.collected === 1300 && jr.outstanding === 0, jr);
+  check("report: Mary 1 order, value 800, collected 1,300 (300 own + 1,000 on John's), outstanding 500", mr.orders === 1 && mr.value === 800 && mr.collected === 1300 && mr.outstanding === 500, mr);
+  const audits = await get(`admin_audit?select=action&action=like.event_order*`);
+  check("audit: create, payment, fulfil, cancel, refund and correction all logged", ["event_order_create", "event_order_payment", "event_order_fulfil", "event_order_cancel", "event_order_refund", "event_order_correction"].every((a) => audits.some((x: any) => x.action === a)), audits.map((a: any) => a.action));
 }
 
 console.log(failures ? `\n${failures} FAILED` : "\nall passed");

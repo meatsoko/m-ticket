@@ -26,7 +26,8 @@ export type Capability =
   | "make_reservation"
   | "view_reservations"
   | "check_in_guests"
-  | "export_reservations";
+  | "export_reservations"
+  | "take_orders";
 
 /**
  * Capabilities granted directly to each role. Roles widen as they go:
@@ -36,7 +37,7 @@ export type Capability =
  */
 const GRANTS: Record<Role, Capability[]> = {
   public: ["buy_tickets", "lookup_tickets", "view_ticket", "make_reservation"],
-  staff: ["scan", "gate_sales", "check_in_guests"],
+  staff: ["scan", "gate_sales", "check_in_guests", "take_orders"],
   admin: [
     "manage_events", "view_dashboard", "refund", "export_csv", "view_audit",
     "view_reservations", "export_reservations",
@@ -71,7 +72,7 @@ export type NavItem = {
   prefix?: boolean;
 };
 
-export type IconName = "ticket" | "search" | "scan" | "sell" | "grid" | "chart";
+export type IconName = "ticket" | "search" | "scan" | "sell" | "grid" | "chart" | "orders";
 
 /**
  * The single nav definition for every role. The shell renders whichever items
@@ -84,6 +85,8 @@ export const NAV: NavItem[] = [
   { href: "/lookup", label: "My Tickets", icon: "search", capability: "lookup_tickets" },
   { href: "/scan", label: "Scan", icon: "scan", capability: "scan" },
   { href: "/gate", label: "Gate", icon: "sell", capability: "gate_sales" },
+  // Event Orders: on-site orders and payments taken on a staff phone.
+  { href: "/orders", label: "Orders", icon: "orders", capability: "take_orders", prefix: true },
   // No Admin tab, deliberately: the admin screens are reached only by typing
   // /admin. They are still guarded by requireAdmin() — hiding the tab is not
   // the protection (see the note at the top of this file).
@@ -105,6 +108,6 @@ export function isActive(pathname: string, item: NavItem): boolean {
 
 export const ROLE_LABEL: Record<Role, string> = {
   public: "",
-  staff: "Gate staff",
+  staff: "Staff",
   admin: "Admin",
 };

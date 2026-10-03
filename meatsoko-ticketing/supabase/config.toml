@@ -75,3 +75,8 @@ verify_jwt = false
 # registration.
 [functions.investor-register]
 verify_jwt = false
+
+# Event Orders: public receipt, read by its unguessable receipt token (in the
+# body). Rate-limited per IP; the phone is masked and staff are not named.
+[functions.event-order-receipt]
+verify_jwt = false

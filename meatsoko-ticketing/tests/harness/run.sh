@@ -49,7 +49,9 @@ docker run --rm --network "$NET" -v "$APP/supabase/functions:/fns:ro" -v "$HERE:
 
 ok=$(grep -cE '^ok' "$LOG" || true); fail=$(grep -cE '^FAIL' "$LOG" || true)
 grep -E '^FAIL' "$LOG" || true
+finished=0; grep -qE 'all passed|[0-9]+ FAILED' "$LOG" && finished=1
+[ "$finished" = 1 ] || { echo "The run stopped early (crash) — last lines:"; tail -8 "$LOG" | cut -c1-200; }
 echo "ok: $ok   FAIL: $fail"
 [ "${KEEP_LOG:-}" = 1 ] && cp "$LOG" "$HERE/last-run.log"
 rm -f "$LOG"
-[ "$fail" = 0 ] && [ "$ok" -gt 0 ]
+[ "$finished" = 1 ] && [ "$fail" = 0 ] && [ "$ok" -gt 0 ]

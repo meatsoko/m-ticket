@@ -11,6 +11,7 @@ const PATHS: Record<IconName | "pin" | "clock" | "back" | "logout" | "share", Re
   sell:   <><path d="M3 10.5 12 4l9 6.5V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" /><path d="M9 21v-6h6v6" /></>,
   grid:   <><rect x="4" y="4" width="7" height="7" rx="1.6" /><rect x="13" y="4" width="7" height="7" rx="1.6" /><rect x="4" y="13" width="7" height="7" rx="1.6" /><rect x="13" y="13" width="7" height="7" rx="1.6" /></>,
   chart:  <><path d="M4 20h16" /><path d="M7 20v-7M12 20V7M17 20v-4" /></>,
+  orders: <><path d="M6 3h12v18l-3-2-3 2-3-2-3 2Z" /><path d="M9 8h6M9 12h6M9 16h3" /></>,
   pin:    <><path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11Z" /><circle cx="12" cy="10" r="2.6" /></>,
   clock:  <><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 1.8" /></>,
   back:   <><path d="M15 5l-7 7 7 7" /></>,

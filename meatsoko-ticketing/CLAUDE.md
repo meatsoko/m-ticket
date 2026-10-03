@@ -19,6 +19,7 @@ A merchandise-first store plus an events module, for the MeatSoko Ecosystem bran
 | Post-payment | `/upgrade/complete`, `/platters/complete`, `/vendor/complete` | Verify with Paystack on return |
 | Online | `/watch/[code]` | Private YouTube watch page per registration |
 | Investors | `/investors` | Landing page + registration form (dialog) |
+| Event Orders | `/orders`, `/orders/new`, `/orders/[id]` (staff phones), `/receipt/[token]` (customer) | On-site orders, part payments, hand-over — see "Event Orders" |
 | Staff | `/login`, `/reset-password`, `/dashboard/*`, `/scan`, `/gate` | No sign-up page, by design |
 | Legacy | `/admin`, `/admin/events/[id]` | Redirect to the dashboard |
 
@@ -61,10 +62,35 @@ Edge Functions) · Paystack · Resend · Vercel (+ Vercel Analytics).
   required**. `investor-register` never overwrites an existing registration for an email
   (re-sends the confirmation instead). Dashboard: Events & tickets → Investors.
 
+## Event Orders (branch `feat/event-orders`, 2026-10-03 — not merged or deployed yet)
+
+Staff take on-site orders on their phones; management tracks money and staff in
+Dashboard → Events & tickets → Event orders. Migration `20261003100000_event_orders.sql`
+(read its header first), Edge Function `event-order-receipt`.
+
+- **Separate from `orders`** on purpose (that table is one ticket/reservation payment).
+  `event_menu_items` (per-event on-site menu, admin-edited) · `event_orders` (cached
+  totals + `order_status` open/fulfilled/cancelled/refunded and `payment_status`
+  unpaid/partially_paid/paid/partially_refunded/refunded; number `<reservation_prefix>-0001`
+  per event) · `event_order_items` (name + price snapshots) · `event_order_payments`
+  (**append-only**: payment / refund / correction rows; triggers refuse UPDATE/DELETE).
+- Writes only via SECURITY DEFINER functions that take the actor from `auth.uid()`:
+  staff — `create_event_order`, `record_event_order_payment`, `fulfil_event_order` (only
+  when fully paid; admin may override, audited); admin — `cancel_event_order`,
+  `reverse_event_order_payment` (refund or correction). `staff_directory()` for names;
+  `get_event_order_receipt(token)` service-role only. Everything logs to `admin_audit`.
+- Payments are **recorded** by staff (cash, M-Pesa with its code — unique, card, other);
+  no new payment provider. Paystack links, inventory, offline and kitchen flows are later.
+- Accountability: `created_by` on the order, `recorded_by` on each payment (Mary can
+  collect on John's order). Staff report = orders, value, payments, collected (less
+  corrections), outstanding on their orders.
+- To go live: `supabase db push --linked`, `supabase functions deploy event-order-receipt`,
+  merge to `main`, then an admin adds the menu in the dashboard.
+
 ## Dashboard (`/dashboard`, store theme)
 
 Overview · Orders · Inventory · Events & tickets (Create event, Tickets — activity, passes,
-payments & refunds via `refund_event_order` — Vendors, Investors) · Gate scanner (phones
+payments & refunds via `refund_event_order` — Event orders, Vendors, Investors) · Gate scanner (phones
 only). Admin accounts (2026-10-03): `meatsoko247@gmail.com` (the user's), a demo admin
 (`dem…@meatsokogroup.com`, **to delete**) and an `apn…@gmail.com` admin the user hasn't
 identified. Staff password reset: "Forgot password?" on `/login` → `/reset-password`;
@@ -114,7 +140,7 @@ user's say-so. Use `supabase db query --linked "<sql>"` for read-only checks.
 - Edge Functions: `deno check <fn>/index.ts` (or `docker run --rm -v
   $PWD/supabase/functions:/f -w /f denoland/deno:2.6.3 deno check <fn>/index.ts`).
 - **Integration harness: `./tests/harness/run.sh`** (Docker) — fresh Postgres from
-  `schema.sql` + migrations, real Edge Functions; expect `ok: 238 FAIL: 0`. Add checks
+  `schema.sql` + migrations, real Edge Functions; expect `ok: 290 FAIL: 0`. Add checks
   for every new function or permission. See `tests/harness/README.md`.
 - Browser checks: Chrome automation tabs run in the background — timers, animation frames
   and `<video>` loading pause there, so don't treat a stalled animation or video as a bug;
@@ -141,6 +167,7 @@ user's say-so. Use `supabase db query --linked "<sql>"` for read-only checks.
 | Event page & booking | `src/app/e/[slug]/page.tsx`, `src/components/GetTicketsPanel.tsx`, `TableUpgrade.tsx`, `PlatterAddons.tsx`, `VendorSignup.tsx`, `ReservationForm.tsx`, `EventCheckout.tsx` |
 | Line-up | `src/app/events/page.tsx`, `src/components/EventTicket.tsx`, `src/lib/ticket-event.ts`, `src/lib/event-time.ts` (`nairobiTimeRange`) |
 | Investors | `src/components/InvestorsLanding.tsx`, `InvestorForm.tsx`, `src/components/dashboard/InvestorsBoard.tsx` |
+| Event Orders | `src/components/orders/*`, `src/lib/event-orders.ts`, `src/components/dashboard/EventOrdersBoard.tsx`, `supabase/migrations/20261003100000_event_orders.sql` |
 | Dashboard | `src/app/dashboard/`, `src/components/dashboard/` |
 | Styles | `src/app/globals.css` (one file; sections are commented) |
 | Server | `supabase/functions/*`, `supabase/functions/_shared/*`, `supabase/migrations/*` |

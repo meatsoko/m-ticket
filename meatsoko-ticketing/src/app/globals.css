@@ -1887,3 +1887,90 @@ a.login-submit { display: grid; place-items: center; text-decoration: none; }
   .inv-word-copy { text-align: center; }
   .inv-word-copy p { margin-left: auto; margin-right: auto; }
 }
+
+/* ---------- Event Orders: staff phone app (/orders) and receipt (/receipt) ----------
+   Ticketing theme (brown, with dark mode): only its tokens are used here. */
+.eo-ellipsis { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.eo-event-card { gap: var(--s2); }
+.eo-event-card strong { font-size: 1.1rem; }
+.eo-new { min-height: 58px; font-size: 1.1rem; margin-top: var(--s2); }
+.eo-chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 0 calc(var(--s4) * -1); padding: 0 var(--s4); }
+.eo-chips::-webkit-scrollbar { display: none; }
+.eo-chips button { flex: 0 0 auto; min-height: 38px; padding: 0 14px; border-radius: 999px; background: var(--surface-2); color: var(--ink); font-size: .85rem; font-weight: 700; }
+.eo-chips button.on { background: var(--ink); color: var(--bg); }
+.eo-list { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--s2); }
+.eo-row { display: grid; gap: 4px; padding: 14px var(--s4); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); color: var(--ink); text-decoration: none; }
+.eo-row:active { background: var(--surface-2); }
+.eo-row-top, .eo-row-mid { display: flex; justify-content: space-between; align-items: center; gap: var(--s3); }
+.eo-row-top strong { font-size: 1.05rem; letter-spacing: .02em; }
+.eo-due { flex: 0 0 auto; color: var(--danger); font-size: .85rem; font-weight: 800; }
+
+.eo-flow { padding-bottom: 96px; }
+.eo-steps { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.eo-steps li { padding-top: 8px; border-top: 3px solid var(--surface-3); color: var(--muted); font-size: .72rem; font-weight: 700; text-align: center; }
+.eo-steps li.done { border-color: var(--ember); color: var(--ink-2); }
+.eo-steps li.on { border-color: var(--ember); color: var(--ember); }
+.eo-menu { display: grid; gap: var(--s2); }
+.eo-item { display: grid; grid-template-columns: 1fr auto; align-items: stretch; background: var(--surface); border: 1.5px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
+.eo-item.on { border-color: var(--ember); background: var(--ember-soft); }
+.eo-item-main { display: grid; justify-items: start; justify-content: stretch; align-content: center; gap: 2px; min-height: 72px; padding: 12px var(--s4); border-radius: 0; background: transparent; color: var(--ink); text-align: left; font-weight: 400; }
+.eo-item-main strong { font-size: 1.02rem; }
+.eo-item-main .num { color: var(--ember); font-weight: 800; }
+.eo-item-qty { display: flex; align-items: center; gap: 4px; padding: 0 10px; }
+.eo-item-qty button { width: 46px; height: 46px; min-height: 46px; padding: 0; border-radius: 50%; background: var(--surface-2); color: var(--ink); font-size: 1.4rem; }
+.eo-item-qty .num { min-width: 28px; text-align: center; font-size: 1.15rem; font-weight: 800; }
+.eo-line { font-size: .95rem; }
+.eo-totals { display: grid; gap: 6px; padding-top: var(--s3); border-top: 1px dashed var(--line); }
+.eo-totals-row { padding-top: var(--s3); border-top: 1px dashed var(--line); }
+.eo-balance strong { font-size: 1.15rem; }
+.eo-balance.due { color: var(--danger); }
+.eo-big { font-size: 1.5rem; }
+.eo-mini { min-height: 38px; padding: 0 14px; font-size: .85rem; }
+.eo-label { font-size: .8rem; font-weight: 600; color: var(--ink-2); }
+.eo-seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.eo-seg.four { grid-template-columns: repeat(4, 1fr); }
+.eo-seg button { min-height: 52px; padding: 0 6px; background: var(--surface-2); color: var(--ink); font-size: .9rem; }
+.eo-seg button.on { background: var(--ember); color: var(--on-ember); }
+.eo-bar { position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; display: flex; gap: var(--s2); padding: 12px var(--s4) calc(12px + env(safe-area-inset-bottom)); background: var(--bg); border-top: 1px solid var(--line); }
+.eo-bar > button { min-height: 56px; }
+.eo-bar-main { flex: 1; font-size: 1.02rem; }
+.eo-done-head { display: flex; align-items: center; gap: 10px; color: var(--ok); font-weight: 800; font-size: 1.1rem; }
+.eo-done-head span { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--ok-soft); }
+.eo-number { align-items: flex-start; gap: 6px; }
+.eo-number strong { font-size: 2.3rem; line-height: 1; letter-spacing: .02em; }
+.eo-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); }
+.eo-actions > :only-child, .eo-actions > p { grid-column: 1 / -1; }
+.eo-actions .btn, .eo-actions button { min-height: 54px; }
+.eo-pay { align-items: flex-start; }
+.eo-msg.ok { margin: 0; padding: 12px var(--s4); border-radius: var(--r-sm); background: var(--ok-soft); color: var(--ok); font-weight: 700; }
+.eo-receipt { max-width: 520px; margin: 0 auto; }
+.eo-receipt-head { align-items: center; text-align: center; gap: 6px; }
+.eo-receipt-logo { width: 120px; height: auto; margin-bottom: 6px; }
+.eo-receipt-no { font-size: 2.2rem; line-height: 1; letter-spacing: .03em; }
+/* Wider screens: the ticketing app is a centred phone-width column (--app-w); keep the bar on it. */
+@media (min-width: 480px) {
+  .eo-bar { left: 50%; right: auto; width: min(var(--app-w), 100%); transform: translateX(-50%); }
+}
+
+/* ---------- Event Orders: dashboard (/dashboard/event-orders, store theme) ---------- */
+.eo-dash-row { cursor: pointer; }
+.eo-dash-row:hover td { background: #faf8f4; }
+.eo-dash-row td small { display: block; color: var(--store-muted); }
+.eo-dash-link { padding: 0; border: 0; background: none; color: var(--store-ink); font: inherit; font-weight: 800; letter-spacing: .02em; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.eo-dash-due { color: var(--store-red); font-weight: 800; }
+.eo-dash-detail td { background: #faf8f4; }
+.eo-dash-panel { display: grid; gap: 12px; padding: 6px 2px 10px; }
+.eo-dash-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 28px; }
+.eo-dash-line { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--store-line); font-size: 13px; }
+.eo-dash-pay-right { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.eo-dash-act { justify-content: flex-start; padding: 10px 12px; background: #fff; border: 1px solid var(--store-line); border-radius: 12px; }
+.eo-dash-act > span { font-size: 13px; font-weight: 700; }
+.dash .eo-dash-act input { width: 160px; padding: 7px 10px; border: 1px solid var(--store-line); border-radius: 8px; font-size: 13px; }
+.dash .eo-dash-act input[type="number"] { width: 110px; }
+.dash-table input { width: 100%; min-width: 0; margin: 2px 0; padding: 7px 10px; border: 1px solid var(--store-line); border-radius: 8px; background: #fff; font-size: 13px; }
+.eo-dash-retired td { opacity: .55; }
+.dash-badge.eo-ps-paid, .dash-badge.eo-os-fulfilled { background: #e3f0e7; color: #2f7a4a; }
+.dash-badge.eo-ps-partially_paid, .dash-badge.eo-ps-partially_refunded, .dash-badge.eo-os-open { background: #f8ebd2; color: #8e5b00; }
+.dash-badge.eo-ps-unpaid { background: #f9e0dc; color: #b23222; }
+.dash-badge.eo-ps-refunded, .dash-badge.eo-os-cancelled, .dash-badge.eo-os-refunded { background: #eeeae4; color: var(--store-muted); }
+@media (max-width: 860px) { .eo-dash-cols { grid-template-columns: 1fr; gap: 12px; } }

@@ -4,10 +4,10 @@
 Postgres from this repo, puts PostgREST in front of it, and drives the **real Edge Function
 files** under Deno: bookings, General Admission + table upgrades, platter add-ons, Paystack
 confirmation and reconciliation, refunds, merchandise checkout and FX, vendors, online
-attendance, investors, lookups, and the RLS/permission lock-downs. Only Paystack, the FX
+attendance, investors, Event Orders, lookups, and the RLS/permission lock-downs. Only Paystack, the FX
 feed and Resend are faked. **It never touches the live Supabase project.**
 
-Expect `ok: 238   FAIL: 0` (2026-10-03). `KEEP_LOG=1` keeps the full output in
+Expect `ok: 290   FAIL: 0` (2026-10-03, with Event Orders). `KEEP_LOG=1` keeps the full output in
 `last-run.log` (gitignored).
 
 | File | What |
