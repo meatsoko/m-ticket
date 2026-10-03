@@ -188,7 +188,14 @@ export default function InvestorsLanding() {
 function WendyVideo({ onRegister }: { onRegister: (e: React.MouseEvent<HTMLElement>) => void }) {
   const ref = useRef<HTMLVideoElement>(null);
   const [state, setState] = useState<"idle" | "playing" | "ended">("idle");
-  const play = () => { const v = ref.current; if (!v) return; v.currentTime = state === "ended" ? 0 : v.currentTime; setState("playing"); void v.play().catch(() => setState("idle")); };
+  const play = () => {
+    const v = ref.current; if (!v) return;
+    if (state === "ended") v.currentTime = 0;
+    // Started by a tap, so the browser allows sound: make sure it isn't muted.
+    v.muted = false; v.volume = 1;
+    setState("playing");
+    void v.play().catch(() => setState("idle"));
+  };
   return (
     <div className={`inv-video is-${state}`}>
       <video ref={ref} src="/videos/investors-wendy.mp4" poster="/images/investors/wendy-poster.jpg"
