@@ -105,7 +105,7 @@ supabase login && supabase link --project-ref tyirenanflcmwfywurvk
 npm run lint
 npx tsc --noEmit -p .
 supabase migration list --linked   # local and remote should match (34)
-./tests/harness/run.sh             # expect: ok: 290   FAIL: 0
+./tests/harness/run.sh             # expect: ok: 319   FAIL: 0
 npm run dev                        # http://localhost:3000
 ```
 

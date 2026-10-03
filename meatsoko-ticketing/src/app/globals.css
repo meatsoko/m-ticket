@@ -1974,3 +1974,51 @@ a.login-submit { display: grid; place-items: center; text-decoration: none; }
 .dash-badge.eo-ps-unpaid { background: #f9e0dc; color: #b23222; }
 .dash-badge.eo-ps-refunded, .dash-badge.eo-os-cancelled, .dash-badge.eo-os-refunded { background: #eeeae4; color: var(--store-muted); }
 @media (max-width: 860px) { .eo-dash-cols { grid-template-columns: 1fr; gap: 12px; } }
+
+/* ---------- Event Orders: customers (pass -> order -> track) and staff tracking ---------- */
+.eo-steps.three { grid-template-columns: repeat(3, 1fr); }
+.eo-pass-card { gap: 2px; }
+.eo-pass-card strong { font-size: 1.05rem; }
+.eo-my-order { padding: 8px 0; border-bottom: 1px solid var(--line); color: var(--ink); text-decoration: none; }
+.eo-my-order:last-child { border-bottom: 0; }
+.eo-staff-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: var(--s2); }
+.eo-staff-pick button { display: grid; justify-items: center; justify-content: stretch; align-content: center; gap: 4px; min-height: 120px; padding: 14px 8px; border: 1.5px solid var(--line); border-radius: var(--r-md); background: var(--surface); color: var(--ink); font-weight: 400; }
+.eo-staff-pick button.on { border-color: var(--ember); background: var(--ember-soft); }
+.eo-staff-pick button strong { font-size: 1.05rem; }
+.eo-avatar { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; background: var(--ember); color: var(--on-ember); font-size: 1.3rem; font-weight: 800; }
+.eo-track { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.eo-track li { padding-top: 8px; border-top: 4px solid var(--surface-3); color: var(--muted); font-size: .72rem; font-weight: 700; text-align: center; }
+.eo-track li.done { border-color: var(--ok); color: var(--ink-2); }
+.eo-track li.on { border-color: var(--ember); color: var(--ember); }
+.eo-track-msg { margin: 0; line-height: 1.5; }
+.eo-pass-order { gap: 6px; border-color: var(--ember); background: var(--ember-soft); }
+.eo-pass-order.in { box-shadow: 0 0 0 3px var(--ember-soft); }
+.eo-pass-order-title { font-size: 1.2rem; }
+.eo-avail { gap: var(--s2); }
+.eo-avail.is-available { border-color: var(--ok); }
+.eo-link { min-height: 0; padding: 0; border: 0; background: none; color: var(--ember); font-size: .8rem; font-weight: 700; }
+.eo-seg button.on.available { background: var(--ok); color: #fff; }
+.eo-seg button.on.busy { background: var(--warn); color: #fff; }
+.eo-seg button.on.offline { background: var(--ink-2); color: var(--bg); }
+.eo-scope { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.eo-scope button { min-height: 42px; background: var(--surface-2); color: var(--ink); font-size: .9rem; }
+.eo-scope button.on { background: var(--ink); color: var(--bg); }
+.eo-chips button.alert:not(.on) { background: var(--danger-soft); color: var(--danger); }
+.eo-incoming > .eo-row { border-color: var(--danger); border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.eo-respond { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: var(--s2); padding: 10px var(--s4); background: var(--danger-soft); border: 1px solid var(--danger); border-top: 0; border-radius: 0 0 var(--r-md) var(--r-md); }
+.eo-respond button { min-height: 46px; padding: 0 18px; }
+.eo-respond .field-error { grid-column: 1 / -1; }
+.eo-incoming-card { border-color: var(--danger); background: var(--danger-soft); }
+
+/* dashboard */
+.eo-roster { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.eo-roster-item { display: grid; justify-items: start; gap: 4px; padding: 12px 14px; border: 1px solid var(--store-line); border-radius: 12px; background: #fff; }
+.eo-roster-item small { color: var(--store-muted); }
+.eo-roster-item.is-available { border-color: #9fd0b0; }
+.dash-badge.eo-st-available { background: #e3f0e7; color: #2f7a4a; }
+.dash-badge.eo-st-busy { background: #f8ebd2; color: #8e5b00; }
+.dash-badge.eo-st-offline { background: #eeeae4; color: var(--store-muted); }
+.dash-badge.eo-sg-incoming, .dash-badge.eo-sg-needs_staff { background: #f9e0dc; color: #b23222; }
+.dash-badge.eo-sg-pending { background: #f8ebd2; color: #8e5b00; }
+.dash-badge.eo-sg-paid { background: #e3f0e7; color: #2f7a4a; }
+.dash-badge.eo-sg-closed, .dash-badge.eo-sg-cancelled, .dash-badge.eo-sg-refunded { background: #eeeae4; color: var(--store-muted); }

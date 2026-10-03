@@ -6,6 +6,7 @@ import QrImage from "@/components/QrImage";
 import Icon from "@/components/Icon";
 import TableUpgrade from "@/components/TableUpgrade";
 import PlatterAddons from "@/components/PlatterAddons";
+import PassOrderCard from "@/components/orders/PassOrderCard";
 
 const KE = "Africa/Nairobi";
 const when = (iso: string) =>
@@ -107,6 +108,7 @@ export default function ReservationView({ token }: { token: string }) {
           </a>
         )}
       </div>
+      {(valid || checkedIn) && <PassOrderCard token={r.token} checkedIn={checkedIn} />}
       {r.addons?.length > 0 && (
         <div className="card">
           <span className="eyebrow">Platters · paid</span>

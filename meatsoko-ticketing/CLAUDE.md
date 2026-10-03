@@ -19,7 +19,7 @@ A merchandise-first store plus an events module, for the MeatSoko Ecosystem bran
 | Post-payment | `/upgrade/complete`, `/platters/complete`, `/vendor/complete` | Verify with Paystack on return |
 | Online | `/watch/[code]` | Private YouTube watch page per registration |
 | Investors | `/investors` | Landing page + registration form (dialog) |
-| Event Orders | `/orders`, `/orders/new`, `/orders/[id]` (staff phones), `/receipt/[token]` (customer) | On-site orders, part payments, hand-over — see "Event Orders" |
+| Event Orders | `/orders`, `/orders/new`, `/orders/[id]` (staff phones); `/r/[token]/order` (customer orders from their pass), `/receipt/[token]` (customer tracking + receipt) | See "Event Orders" |
 | Staff | `/login`, `/reset-password`, `/dashboard/*`, `/scan`, `/gate` | No sign-up page, by design |
 | Legacy | `/admin`, `/admin/events/[id]` | Redirect to the dashboard |
 
@@ -84,8 +84,23 @@ Dashboard → Events & tickets → Event orders. Migration `20261003100000_event
 - Accountability: `created_by` on the order, `recorded_by` on each payment (Mary can
   collect on John's order). Staff report = orders, value, payments, collected (less
   corrections), outstanding on their orders.
-- To go live: `supabase db push --linked`, `supabase functions deploy event-order-receipt`,
-  merge to `main`, then an admin adds the menu in the dashboard.
+- **Customer ordering (same branch):** from their pass (`/r/<access_token>/order`; "Place an
+  order" card on the pass and the booking confirmation). The pass is the identity — name and
+  phone come from the booking, max 3 open orders per pass. Customers pick a staff member who is
+  **Available** (`event_staff`: each staff member sets a first name and Available / Busy /
+  Offline on `/orders`); the order is `requested` from them and must be accepted within 5
+  minutes (released lazily — no scheduler) or it goes back to the customer to pick someone
+  else or cancel. Staff can hold several orders; `/orders` tracks them by stage
+  (`event_order_stage()`: incoming → pending → paid → closed, plus needs_staff / cancelled).
+  No payments or hand-over before acceptance. Customer actions only via the `customer-order`
+  Edge Function (service role, rate-limited); staff-taken orders are assigned to and
+  accepted by the taker.
+- `public/sw.js` v3: cache-first only for `/_next/static`, icons and the manifest. v2 cached
+  every same-origin GET — including `?_rsc=` page data — so `router.refresh()` served stale
+  screens on any phone that had opened the scanner.
+- To go live: `supabase db push --linked`, `supabase functions deploy event-order-receipt
+  customer-order`, merge to `main`, then an admin adds the menu in the dashboard and staff set
+  themselves Available on `/orders`.
 
 ## Dashboard (`/dashboard`, store theme)
 
@@ -140,7 +155,7 @@ user's say-so. Use `supabase db query --linked "<sql>"` for read-only checks.
 - Edge Functions: `deno check <fn>/index.ts` (or `docker run --rm -v
   $PWD/supabase/functions:/f -w /f denoland/deno:2.6.3 deno check <fn>/index.ts`).
 - **Integration harness: `./tests/harness/run.sh`** (Docker) — fresh Postgres from
-  `schema.sql` + migrations, real Edge Functions; expect `ok: 290 FAIL: 0`. Add checks
+  `schema.sql` + migrations, real Edge Functions; expect `ok: 319 FAIL: 0`. Add checks
   for every new function or permission. See `tests/harness/README.md`.
 - Browser checks: Chrome automation tabs run in the background — timers, animation frames
   and `<video>` loading pause there, so don't treat a stalled animation or video as a bug;

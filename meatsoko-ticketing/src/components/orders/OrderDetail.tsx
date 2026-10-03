@@ -14,10 +14,12 @@ export default function OrderDetail({ order, eventName, me, isAdmin, names }: {
   const router = useRouter();
   const balance = Number(order.event_order_balance);
   const open = order.order_status === "open";
+  const accepted = order.assignment_status === "accepted";
+  const incomingForMe = order.event_order_stage === "incoming" && order.assigned_to === me;
   const [amount, setAmount] = useState(String(balance || ""));
   const [method, setMethod] = useState<PayMethod>("cash");
   const [reference, setReference] = useState("");
-  const [busy, setBusy] = useState<"" | "pay" | "fulfil">("");
+  const [busy, setBusy] = useState<"" | "pay" | "fulfil" | "respond">("");
   const [msg, setMsg] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
 
   useEffect(() => { setAmount(String(balance || "")); }, [balance]);
@@ -53,13 +55,38 @@ export default function OrderDetail({ order, eventName, me, isAdmin, names }: {
     router.refresh();
   }
 
+  async function respond(accept: boolean) {
+    setMsg(null);
+    setBusy("respond");
+    const { data, error } = await createClient().rpc("respond_event_order", { p_order_id: order.id, p_accept: accept });
+    setBusy("");
+    const r = data as any;
+    if (error || r?.error) { setMsg({ tone: "err", text: orderError(r?.error, r) }); router.refresh(); return; }
+    setMsg({ tone: "ok", text: accept ? "Accepted — it's yours. Take the payment when you serve it." : "Declined — the customer will pick someone else." });
+    router.refresh();
+  }
+
   const share = typeof window === "undefined" ? "" : receiptShareText(order, eventName, balance, window.location.origin);
   return (
     <div className="stack eo-flow">
       {msg && <p className={msg.tone === "ok" ? "eo-msg ok" : "field-error"} role={msg.tone === "err" ? "alert" : "status"}>{msg.text}</p>}
       <OrderSummary order={order} eventName={eventName} names={names} me={me} />
 
-      {open && balance > 0 && (
+      {incomingForMe && (
+        <div className="card eo-incoming-card">
+          <strong>{order.customer_name} sent this order to you</strong>
+          <span className="small">Accept it to take it on, or decline so they can pick someone else.</span>
+          <div className="eo-actions">
+            <button type="button" className="btn-ghost" disabled={busy !== ""} onClick={() => respond(false)}>Decline</button>
+            <button type="button" className="btn-pay" disabled={busy !== ""} onClick={() => respond(true)}>{busy === "respond" ? "…" : "Accept"}</button>
+          </div>
+        </div>
+      )}
+      {open && !accepted && !incomingForMe && (
+        <p className="small" style={{ margin: 0 }}>{order.event_order_stage === "incoming" ? "Waiting for the staff member it was sent to." : "Waiting for the customer to pick someone to serve them."}</p>
+      )}
+
+      {open && accepted && balance > 0 && (
         <div className="card" id="pay">
           <span className="eyebrow">Add payment</span>
           <label className="field"><span>Amount (KSh) — balance {kes(balance)}</span>
@@ -76,12 +103,12 @@ export default function OrderDetail({ order, eventName, me, isAdmin, names }: {
       )}
 
       <div className="eo-actions">
-        {open && (balance === 0 || isAdmin) && (
+        {open && accepted && (balance === 0 || isAdmin) && (
           <button type="button" className="btn-primary" disabled={busy !== ""} onClick={fulfil}>
             {busy === "fulfil" ? "Saving…" : balance > 0 ? `Hand over with ${kes(balance)} due (admin)` : "Mark handed over"}
           </button>
         )}
-        {open && balance > 0 && !isAdmin && <p className="small" style={{ margin: 0 }}>Hand-over unlocks once the order is fully paid.</p>}
+        {open && accepted && balance > 0 && !isAdmin && <p className="small" style={{ margin: 0 }}>Hand-over unlocks once the order is fully paid.</p>}
         <a className="btn btn-pay" href={`https://wa.me/${order.customer_phone}?text=${encodeURIComponent(share)}`} target="_blank" rel="noopener noreferrer">Share receipt</a>
         <a className="btn btn-ghost" href={`/receipt/${order.receipt_token}`} target="_blank" rel="noopener noreferrer">Open receipt</a>
       </div>

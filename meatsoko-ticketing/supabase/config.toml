@@ -80,3 +80,8 @@ verify_jwt = false
 # body). Rate-limited per IP; the phone is masked and staff are not named.
 [functions.event-order-receipt]
 verify_jwt = false
+
+# Event Orders for customers: ordering from a pass. The pass access_token (or an
+# order's receipt token) in the body is the authorisation. Rate-limited.
+[functions.customer-order]
+verify_jwt = false

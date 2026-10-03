@@ -59,7 +59,7 @@ globalThis.fetch = async (input: any, init?: any) => {
 const handlers: Record<string, (r: Request) => Promise<Response>> = {};
 let loading = "";
 (Deno as any).serve = (h: any) => { handlers[loading] = h; return { finished: Promise.resolve() }; };
-for (const [name, path] of [["checkout", "merch-checkout"], ["order", "merch-order"], ["webhook", "paystack-webhook"], ["fx", "merch-fx-refresh"], ["reconcile", "paystack-reconcile"], ["reserve", "reserve"], ["reslookup", "reservation-lookup"], ["lookup", "lookup"], ["verify", "paystack-verify"], ["upgrade", "upgrade-reservation"], ["bytoken", "reservation-by-token"], ["vendor", "vendor-apply"], ["oreg", "online-register"], ["oacc", "online-access"], ["addon", "platter-addon"], ["inv", "investor-register"], ["receipt", "event-order-receipt"]]) {
+for (const [name, path] of [["checkout", "merch-checkout"], ["order", "merch-order"], ["webhook", "paystack-webhook"], ["fx", "merch-fx-refresh"], ["reconcile", "paystack-reconcile"], ["reserve", "reserve"], ["reslookup", "reservation-lookup"], ["lookup", "lookup"], ["verify", "paystack-verify"], ["upgrade", "upgrade-reservation"], ["bytoken", "reservation-by-token"], ["vendor", "vendor-apply"], ["oreg", "online-register"], ["oacc", "online-access"], ["addon", "platter-addon"], ["inv", "investor-register"], ["receipt", "event-order-receipt"], ["cust", "customer-order"]]) {
   loading = name; await import(`/fns/${path}/index.ts`);
 }
 const call = async (name: string, body: unknown, headers: Record<string, string> = {}) => {
@@ -1049,6 +1049,117 @@ console.log("\n--- event orders ---");
   check("report: Mary 1 order, value 800, collected 1,300 (300 own + 1,000 on John's), outstanding 500", mr.orders === 1 && mr.value === 800 && mr.collected === 1300 && mr.outstanding === 500, mr);
   const audits = await get(`admin_audit?select=action&action=like.event_order*`);
   check("audit: create, payment, fulfil, cancel, refund and correction all logged", ["event_order_create", "event_order_payment", "event_order_fulfil", "event_order_cancel", "event_order_refund", "event_order_correction"].every((a) => audits.some((x: any) => x.action === a)), audits.map((a: any) => a.action));
+}
+
+// 18. Event Orders from customers (pass -> pick available staff -> accept -> pay -> close)
+console.log("\n--- customer event orders ---");
+{
+  const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2.45.4");
+  const mkUser = async (role: "admin" | "staff", email: string) => {
+    const uid = crypto.randomUUID();
+    await fetch("http://supabase.test/rest/v1/rpc/test_make_user", { method: "POST", headers: svc, body: JSON.stringify({ p_id: uid }) });
+    await fetch("http://supabase.test/rest/v1/admin_users", { method: "POST", headers: svc, body: JSON.stringify({ user_id: uid, role }) });
+    const k = await jwt({ role: "authenticated", sub: uid, exp: 4102444800 });
+    return { uid, c: createClient("http://supabase.test", k, { auth: { persistSession: false }, global: { headers: { Authorization: `Bearer ${k}` } } }) };
+  };
+  const john = await mkUser("staff", "cjohn@example.test"), mary = await mkUser("staff", "cmary@example.test"), admin = await mkUser("admin", "cboss@example.test");
+  const ev = (await post("events", { name: "Customer Fest", slug: "cust-fest", starts_at: new Date(Date.now() + 864e5).toISOString(), ends_at: new Date(Date.now() + 2 * 864e5).toISOString(), status: "live", reservation_mode: "free", reservation_prefix: "CF" }))[0];
+  const [plata, soda] = await post("event_menu_items", [{ event_id: ev.id, name: "Single Plata", price_kes: 800, is_active: true, position: 1 }, { event_id: ev.id, name: "Soda", price_kes: 100, is_active: true, position: 2 }]);
+  const hex = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
+  const mkPass = async (n: number, status = "confirmed") => (await post("reservations", { event_id: ev.id, reservation_number: `CF-PASS${n}`, access_token: hex(), guest_name: `Guest ${n}`, phone: `25471100000${n}`, email: `guest${n}@example.test`, accompanying_guests: 0, status }))[0];  // party_size is generated
+  const pass = await mkPass(1), pass2 = await mkPass(2), dead = await mkPass(3, "cancelled");
+  check("cust: passes created for the test", !!pass?.access_token && !!dead?.access_token, { pass, dead });
+
+  // staff availability
+  const anonSet = await rpc("set_event_staff_status", { p_event_id: ev.id, p_display_name: "X", p_status: "available" });
+  check("staff status: anon can't set one", anonSet.status === 401 || anonSet.body?.code === "42501", anonSet);
+  let st = await john.c.rpc("set_event_staff_status", { p_event_id: ev.id, p_display_name: "", p_status: "available" });
+  check("staff status: a display name is required", st.data?.error === "name_required", st.data);
+  st = await john.c.rpc("set_event_staff_status", { p_event_id: ev.id, p_display_name: "John", p_status: "available" });
+  await mary.c.rpc("set_event_staff_status", { p_event_id: ev.id, p_display_name: "Mary", p_status: "busy" });
+  check("staff status: John goes Available, Mary Busy", st.data?.status === "available", st.data);
+
+  let ctx = await call("cust", { action: "context", token: pass.access_token }, ip());
+  const johnSlot = ctx.body?.staff?.find((x: any) => x.name === "John")?.id;
+  check("context: pass sees the menu and ONLY available staff (first names, no user ids)", ctx.status === 200 && ctx.body?.can_order === true && ctx.body?.menu?.length === 2 && ctx.body?.staff?.length === 1 && !!johnSlot && johnSlot !== john.uid && !JSON.stringify(ctx.body).includes(john.uid), ctx.body);
+  check("context: unknown pass -> 404", (await call("cust", { action: "context", token: "0".repeat(32) }, ip())).status === 404);
+  ctx = await call("cust", { action: "context", token: dead.access_token }, ip());
+  check("context: a cancelled pass can't order", ctx.body?.can_order === false && ctx.body?.reason === "pass_not_valid", ctx.body);
+  const marySlot = (await get(`event_staff?select=id&event_id=eq.${ev.id}&user_id=eq.${mary.uid}`))[0].id;
+
+  // create
+  const items = [{ menu_item_id: plata.id, qty: 2, unit_price_kes: 1 }, { menu_item_id: soda.id, qty: 1 }];
+  let c = await call("cust", { action: "create", token: pass.access_token, items, staff_id: marySlot }, ip());
+  check("create: a Busy staff member can't be picked", c.status === 409 && c.body?.error === "staff_unavailable", c.body);
+  c = await call("cust", { action: "create", token: dead.access_token, items, staff_id: johnSlot }, ip());
+  check("create: a cancelled pass can't order", c.body?.error === "pass_not_valid", c.body);
+  c = await call("cust", { action: "create", token: pass.access_token, items, staff_id: johnSlot, note: "No chilli" }, ip());
+  const o1 = c.body;
+  let row = (await get(`event_orders?select=*,event_order_stage&receipt_token=eq.${o1?.receipt_token}`))[0];
+  check("create: order sent to John; menu prices; name+phone from the booking; linked to the pass; incoming", c.status === 200 && o1?.order_number === "CF-0001" && Number(o1?.total_kes) === 1700 && row?.source === "customer" && row?.created_by === null && row?.assigned_to === john.uid && row?.assignment_status === "requested" && row?.reservation_id === pass.id && row?.customer_name === "Guest 1" && row?.customer_phone === "254711000001" && row?.event_order_stage === "incoming" && row?.note === "No chilli", { c: c.body, row });
+
+  // not accepted yet: no payments, no hand-over; only John can respond
+  let p = await john.c.rpc("record_event_order_payment", { p_order_id: row.id, p_amount: 100, p_method: "cash" });
+  check("before acceptance: no payment can be recorded", p.data?.error === "not_accepted", p.data);
+  let r = await mary.c.rpc("respond_event_order", { p_order_id: row.id, p_accept: true });
+  check("respond: only the requested staff member can accept", r.data?.error === "not_yours", r.data);
+  let rc = await call("receipt", { token: o1.receipt_token }, ip());
+  check("tracking: customer sees John, 'incoming', and may cancel", rc.body?.staff_name === "John" && rc.body?.stage === "incoming" && rc.body?.can_cancel === true, rc.body);
+  r = await john.c.rpc("respond_event_order", { p_order_id: row.id, p_accept: true });
+  rc = await call("receipt", { token: o1.receipt_token }, ip());
+  check("accept: John accepts -> pending, no longer cancellable by the customer", r.data?.assignment_status === "accepted" && rc.body?.stage === "pending" && rc.body?.can_cancel === false, { r: r.data, rc: rc.body });
+  check("cancel: customer can't cancel an accepted order", (await call("cust", { action: "cancel", receipt_token: o1.receipt_token }, ip())).body?.error === "not_cancellable");
+  p = await john.c.rpc("record_event_order_payment", { p_order_id: row.id, p_amount: 1700, p_method: "mpesa", p_reference: "CUS12OK345" });
+  rc = await call("receipt", { token: o1.receipt_token }, ip());
+  check("pay: payment recorded -> stage 'paid', balance 0 on the customer's page", p.data?.payment_status === "paid" && rc.body?.stage === "paid" && Number(rc.body?.balance_kes) === 0 && rc.body?.payments?.length === 1, rc.body);
+  const f = await john.c.rpc("fulfil_event_order", { p_order_id: row.id });
+  rc = await call("receipt", { token: o1.receipt_token }, ip());
+  check("close: handed over -> 'closed'", f.data?.order_status === "fulfilled" && rc.body?.stage === "closed", { f: f.data, stage: rc.body?.stage });
+
+  // decline -> pick someone else -> cancel
+  await mary.c.rpc("set_event_staff_status", { p_event_id: ev.id, p_display_name: "Mary", p_status: "available" });
+  c = await call("cust", { action: "create", token: pass.access_token, items: [{ menu_item_id: soda.id, qty: 2 }], staff_id: johnSlot }, ip());
+  const o2 = c.body; const o2row = (await get(`event_orders?select=id&receipt_token=eq.${o2.receipt_token}`))[0];
+  r = await john.c.rpc("respond_event_order", { p_order_id: o2row.id, p_accept: false, p_reason: "Out of soda" });
+  rc = await call("receipt", { token: o2.receipt_token }, ip());
+  check("decline: back to the customer to pick someone else (available staff listed)", r.data?.assignment_status === "declined" && rc.body?.stage === "needs_staff" && rc.body?.available_staff?.some((x: any) => x.name === "Mary") && rc.body?.staff_name === null, rc.body);
+  let ra = await call("cust", { action: "reassign", receipt_token: o2.receipt_token, staff_id: marySlot }, ip());
+  rc = await call("receipt", { token: o2.receipt_token }, ip());
+  check("reassign: sent to Mary -> incoming again", ra.body?.assignment_status === "requested" && rc.body?.staff_name === "Mary" && rc.body?.stage === "incoming", { ra: ra.body, rc: rc.body });
+  ra = await call("cust", { action: "reassign", receipt_token: o2.receipt_token, staff_id: johnSlot }, ip());
+  check("reassign: not while a request is pending", ra.body?.error === "not_reassignable", ra.body);
+  const cc = await call("cust", { action: "cancel", receipt_token: o2.receipt_token }, ip());
+  rc = await call("receipt", { token: o2.receipt_token }, ip());
+  check("cancel: customer cancels before acceptance -> cancelled", cc.body?.order_status === "cancelled" && rc.body?.stage === "cancelled", rc.body);
+
+  // 5-minute release
+  c = await call("cust", { action: "create", token: pass2.access_token, items: [{ menu_item_id: plata.id, qty: 1 }], staff_id: marySlot }, ip());
+  const o3 = c.body; const o3row = (await get(`event_orders?select=id&receipt_token=eq.${o3.receipt_token}`))[0];
+  await patch(`event_orders?id=eq.${o3row.id}`, { requested_at: new Date(Date.now() - 6 * 60 * 1000).toISOString() });
+  rc = await call("receipt", { token: o3.receipt_token }, ip());
+  r = await mary.c.rpc("respond_event_order", { p_order_id: o3row.id, p_accept: true });
+  const exp = await get(`admin_audit?select=action&subject_id=eq.${o3row.id}&action=eq.event_order_request_expired`);
+  check("release: not accepted in 5 minutes -> released to the customer; late accept refused; audited", rc.body?.stage === "needs_staff" && rc.body?.assignment_status === "expired" && r.data?.error === "request_expired" && exp.length === 1, { rc: rc.body?.stage, r: r.data, exp });
+  const rel = await john.c.rpc("release_stale_event_order_requests", { p_event_id: ev.id });
+  check("release: staff screens can trigger the release too", !rel.error && typeof rel.data === "number", rel);
+
+  // limits and permissions
+  for (let i = 0; i < 2; i++) await call("cust", { action: "create", token: pass2.access_token, items: [{ menu_item_id: soda.id, qty: 1 }], staff_id: marySlot }, ip());
+  c = await call("cust", { action: "create", token: pass2.access_token, items: [{ menu_item_id: soda.id, qty: 1 }], staff_id: marySlot }, ip());
+  check("limit: at most 3 open orders per pass", c.body?.error === "too_many_open", c.body);
+  check("create: bad item ids refused before the database", (await call("cust", { action: "create", token: pass2.access_token, items: [{ menu_item_id: "nope", qty: 1 }], staff_id: marySlot }, ip())).body?.error === "bad_items");
+  const direct = await rpc("customer_create_event_order", { p_token: pass.access_token, p_items: [], p_staff_id: johnSlot });
+  const directStaff = await john.c.rpc("customer_order_context", { p_token: pass.access_token });
+  check("permissions: customer functions only via the Edge Function (anon and staff refused)", (direct.status === 401 || direct.body?.code === "42501") && directStaff.error?.code === "42501", { direct, directStaff: directStaff.error });
+  const anonStaff = await (await fetch(`http://supabase.test/rest/v1/event_staff?select=id`, { headers: { apikey: anonKey, authorization: `Bearer ${anonKey}` } })).json().catch(() => null);
+  check("permissions: anon can't read the staff roster", !Array.isArray(anonStaff) || anonStaff.length === 0, anonStaff);
+
+  // staff-taken orders are assigned to and accepted by the taker
+  const so = await john.c.rpc("create_event_order", { p_event_id: ev.id, p_customer_name: "Walk In", p_customer_phone: "0712000111", p_customer_email: null, p_items: [{ menu_item_id: soda.id, qty: 1 }] });
+  const sorow = (await get(`event_orders?select=source,created_by,assigned_to,assignment_status,event_order_stage&id=eq.${(so.data as any)?.id}`))[0];
+  check("staff order: source staff, assigned to and accepted by the taker, stage pending", sorow?.source === "staff" && sorow?.created_by === john.uid && sorow?.assigned_to === john.uid && sorow?.assignment_status === "accepted" && sorow?.event_order_stage === "pending", sorow);
+  const aud = await get(`admin_audit?select=action&action=in.(event_order_customer_create,event_order_accept,event_order_decline,event_order_customer_reassign,event_order_customer_cancel,event_staff_status)`);
+  check("audit: customer create, accept, decline, reassign, cancel and staff status changes logged", ["event_order_customer_create", "event_order_accept", "event_order_decline", "event_order_customer_reassign", "event_order_customer_cancel", "event_staff_status"].every((a) => aud.some((x: any) => x.action === a)), aud.map((a: any) => a.action));
 }
 
 console.log(failures ? `\n${failures} FAILED` : "\nall passed");

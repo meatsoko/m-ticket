@@ -8,6 +8,7 @@ import QrImage from "@/components/QrImage";
 import Icon from "@/components/Icon";
 import TableUpgrade, { PENDING_UPGRADE_KEY, upgradePriceKes, type UpgradeOption } from "@/components/TableUpgrade";
 import PlatterAddons from "@/components/PlatterAddons";
+import PassOrderCard from "@/components/orders/PassOrderCard";
 import { familyPackageUsdPrices, formatUsd } from "@/lib/family-package-pricing";
 import type { Event } from "@/lib/types";
 import { COUNTRIES } from "@/lib/countries";
@@ -212,6 +213,7 @@ export default function GetTicketsPanel({
           </a>
           <a className="btn-ghost btn-block" href={`/r/${done.access_token}`}>Open my pass</a>
         </div>
+        {done.access_token && <PassOrderCard token={done.access_token} />}
         {options.length > 0 && (
           <div className="card">
             <PlatterAddons token={done.access_token}

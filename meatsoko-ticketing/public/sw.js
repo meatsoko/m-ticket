@@ -1,6 +1,6 @@
 // Scanner shell offline support (FR-S4 companion): cache app shell, network-first pages.
 // Bump CACHE whenever the shell changes so staff devices pick it up on next load.
-const CACHE = "ms-tickets-v2";
+const CACHE = "ms-tickets-v3";
 const SHELL = [
   "/scan", "/gate", "/manifest.json",
   "/icons/icon-192.png", "/icons/icon-512.png", "/icons/icon-maskable-512.png",
@@ -32,7 +32,7 @@ self.addEventListener("fetch", (e) => {
     e.respondWith(
       fetch(e.request).catch(() => caches.match(e.request).then((r) => r || caches.match("/scan")))
     );
-  } else {
+  } else if (isStatic(url)) {
     e.respondWith(
       caches.match(e.request).then((r) => r || fetch(e.request).then((res) => {
         const copy = res.clone();
@@ -41,4 +41,14 @@ self.addEventListener("fetch", (e) => {
       }))
     );
   }
+  // Everything else (page data for client navigation and router.refresh() — the
+  // "?_rsc=" requests — API routes, etc.) goes to the network untouched. Caching
+  // those cache-first served stale screens forever, e.g. the staff Orders list
+  // never showing new customer orders. (v3)
 });
+
+// Content that never changes at a given URL: build assets (hashed names) and the
+// app icons. Not /images/: those can be replaced under the same name.
+function isStatic(url) {
+  return url.pathname.startsWith("/_next/static/") || url.pathname.startsWith("/icons/") || url.pathname === "/manifest.json";
+}

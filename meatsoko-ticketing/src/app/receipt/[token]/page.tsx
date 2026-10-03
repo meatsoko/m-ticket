@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "Receipt · MeatSoko", robots: { inde
 
 export default function ReceiptPage({ params }: { params: { token: string } }) {
   return (
-    <AppShell title="Receipt" hideTabs>
+    <AppShell title="Your order" hideTabs>
       <div className="pad"><ReceiptView token={params.token} /></div>
     </AppShell>
   );

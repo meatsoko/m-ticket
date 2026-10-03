@@ -20,6 +20,22 @@
 --   * Every existing staff account can take orders; only admins cancel, refund
 --     or correct payments and edit the menu.
 --
+-- Customer ordering (organiser, 2026-10-03, same day):
+--   * Customers order from their PASS (/r/<access_token>/order): the pass is the
+--     identity and the authorisation (no pass, no order), so the order carries the
+--     booking's name and phone and links to it (reservation_id). Before or after
+--     entry. At most 3 open customer orders per pass.
+--   * The customer picks a staff member who is AVAILABLE for that event
+--     (event_staff: each staff member sets a display name and Available / Busy /
+--     Offline on their phone; customers see only the first name, never emails).
+--   * The order is then 'requested' from that person, who accepts or declines.
+--     Not accepted within 5 minutes -> 'expired' (released); a declined or expired
+--     order goes back to the customer to pick someone else, or cancel.
+--   * Staff can handle several orders at once; their tracking page groups them by
+--     stage: incoming (requested) -> pending (accepted, balance due) -> paid
+--     (ready to hand over) -> closed (handed over), plus needs_staff / cancelled.
+--   * Payment is still only RECORDED by staff; nothing is charged online.
+--
 -- Model:
 --   event_orders         one row per order; totals and statuses are CACHED here
 --                        and recomputed (under a row lock) by the functions below
@@ -35,12 +51,15 @@
 --        back for a cancelled/returned order; they don't make the customer owe
 --        more), and 0 once the order is cancelled or refunded.
 --
--- Staff accountability: created_by on the order, recorded_by on EACH payment, so
--- a payment Mary collects on John's order is Mary's collection on John's order.
+-- Staff accountability: created_by (staff-taken orders) and assigned_to (who
+-- handles it — the taker, or the person the customer picked) on the order, and
+-- recorded_by on EACH payment, so a payment Mary collects on John's order is
+-- Mary's collection on John's order.
 -- Identity always comes from auth.uid() inside the functions, never from input.
 --
 -- Access: staff read everything (to find and follow up any order at the event);
--- nobody writes these tables directly. The public receipt is read by its random
+-- nobody writes these tables directly. Customers act only through Edge Functions
+-- (service role) holding their pass token or receipt token. The public receipt is read by its random
 -- receipt_token through get_event_order_receipt(), service_role only (the
 -- event-order-receipt Edge Function).
 
@@ -72,6 +91,23 @@ create policy event_menu_items_admin_update on public.event_menu_items
   for update to authenticated using (public.is_admin()) with check (public.is_admin());
 -- No delete: retire an item with is_active = false (old orders keep their snapshot anyway).
 
+-- ---------------------------------------------------------------- staff availability
+-- One row per staff member per event, written only by set_event_staff_status().
+create table if not exists public.event_staff (
+  id           uuid primary key default gen_random_uuid(),   -- what customers pick (not the user id)
+  event_id     uuid not null references public.events(id) on delete cascade,
+  user_id      uuid not null references auth.users(id),
+  display_name text not null check (length(btrim(display_name)) between 1 and 30),
+  status       text not null default 'offline' check (status in ('available', 'busy', 'offline')),
+  updated_at   timestamptz not null default now(),
+  unique (event_id, user_id)
+);
+alter table public.event_staff enable row level security;
+revoke all on table public.event_staff from anon, authenticated;
+grant select on table public.event_staff to authenticated;
+drop policy if exists event_staff_staff_read on public.event_staff;
+create policy event_staff_staff_read on public.event_staff for select to authenticated using (public.is_staff());
+
 -- ---------------------------------------------------------------- orders
 create table if not exists public.event_orders (
   id               uuid primary key default gen_random_uuid(),
@@ -90,7 +126,13 @@ create table if not exists public.event_orders (
                    check (order_status in ('open', 'fulfilled', 'cancelled', 'refunded')),
   payment_status   text not null default 'unpaid'
                    check (payment_status in ('unpaid', 'partially_paid', 'paid', 'partially_refunded', 'refunded')),
-  created_by       uuid not null references auth.users(id),
+  source           text not null default 'staff' check (source in ('staff', 'customer')),
+  reservation_id   uuid references public.reservations(id),   -- the customer's pass
+  created_by       uuid references auth.users(id),            -- staff who took it (staff orders)
+  assigned_to      uuid references auth.users(id),            -- staff handling it
+  assignment_status text check (assignment_status in ('requested', 'accepted', 'declined', 'expired', 'cancelled')),
+  requested_at     timestamptz,
+  accepted_at      timestamptz,
   receipt_token    text not null unique default encode(extensions.gen_random_bytes(16), 'hex'),
   fulfilled_by     uuid references auth.users(id),
   fulfilled_at     timestamptz,
@@ -100,11 +142,15 @@ create table if not exists public.event_orders (
   created_at       timestamptz not null default now(),
   updated_at       timestamptz not null default now(),
   unique (event_id, seq),
-  unique (event_id, order_number)
+  unique (event_id, order_number),
+  check ((source = 'staff') = (created_by is not null)),
+  check (source = 'staff' or reservation_id is not null)
 );
 create index if not exists event_orders_event_idx on public.event_orders (event_id, created_at desc);
 create index if not exists event_orders_phone_idx on public.event_orders (customer_phone);
 create index if not exists event_orders_created_by_idx on public.event_orders (created_by);
+create index if not exists event_orders_assigned_to_idx on public.event_orders (assigned_to);
+create index if not exists event_orders_reservation_idx on public.event_orders (reservation_id);
 
 create table if not exists public.event_order_items (
   id              uuid primary key default gen_random_uuid(),
@@ -216,6 +262,88 @@ $$;
 revoke execute on function public.event_order_balance(public.event_orders) from public;
 grant execute on function public.event_order_balance(public.event_orders) to authenticated, service_role;
 
+-- Where an order is in its life, for staff tracking and the customer's page.
+create or replace function public.event_order_stage(o public.event_orders)
+returns text language sql immutable set search_path = public as $$
+  select case
+    when o.order_status = 'fulfilled' then 'closed'
+    when o.order_status in ('cancelled', 'refunded') then o.order_status
+    when o.assignment_status = 'requested' then 'incoming'
+    when o.assignment_status in ('declined', 'expired') then 'needs_staff'
+    when public.event_order_balance(o) > 0 then 'pending'
+    else 'paid' end
+$$;
+revoke execute on function public.event_order_stage(public.event_orders) from public;
+grant execute on function public.event_order_stage(public.event_orders) to authenticated, service_role;
+
+-- Requests not accepted within 5 minutes are released (lazily: every function
+-- and screen that cares calls this first; there is no scheduler).
+create or replace function public.event_orders_release_stale(p_event_id uuid)
+returns integer language plpgsql security definer set search_path = public as $$
+declare n integer;
+begin
+  with x as (
+    update public.event_orders
+       set assignment_status = 'expired', assigned_to = null, updated_at = now()
+     where event_id = p_event_id and assignment_status = 'requested' and order_status = 'open'
+       and requested_at < now() - interval '5 minutes'
+    returning id, order_number)
+  insert into public.admin_audit (actor, action, subject_id, detail)
+  select null, 'event_order_request_expired', id, jsonb_build_object('order_number', order_number) from x;
+  get diagnostics n = row_count;
+  return n;
+end; $$;
+revoke execute on function public.event_orders_release_stale(uuid) from public, anon, authenticated;
+
+-- Prices and names come from the menu, never from the caller. Duplicate lines are merged.
+-- Returns {"lines": [...], "total": n} or {"error": code}.
+create or replace function public.event_orders_price_lines(p_event_id uuid, p_items jsonb)
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare v_lines jsonb; v_line record; v_total numeric := 0;
+begin
+  if p_items is null or jsonb_typeof(p_items) <> 'array' or jsonb_array_length(p_items) = 0 then
+    return jsonb_build_object('error', 'no_items');
+  end if;
+  select jsonb_agg(jsonb_build_object('id', m.id, 'name', m.name, 'price', m.price_kes, 'qty', x.qty, 'ok', m.is_active and m.event_id = p_event_id))
+    into v_lines
+    from (select (e->>'menu_item_id')::uuid as id, sum((e->>'qty')::int) as qty
+            from jsonb_array_elements(p_items) e group by 1) x
+    left join public.event_menu_items m on m.id = x.id;
+  if jsonb_array_length(v_lines) > 30 then return jsonb_build_object('error', 'too_many_lines'); end if;
+  for v_line in select * from jsonb_to_recordset(v_lines) as t(id uuid, name text, price numeric, qty int, ok boolean) loop
+    if v_line.ok is not true then return jsonb_build_object('error', 'unknown_item'); end if;
+    if v_line.qty is null or v_line.qty not between 1 and 99 then return jsonb_build_object('error', 'bad_qty', 'item', v_line.name); end if;
+    v_total := v_total + v_line.price * v_line.qty;
+  end loop;
+  return jsonb_build_object('lines', v_lines, 'total', v_total);
+exception when invalid_text_representation or numeric_value_out_of_range then
+  return jsonb_build_object('error', 'bad_items');
+end; $$;
+revoke execute on function public.event_orders_price_lines(uuid, jsonb) from public, anon, authenticated;
+
+-- Insert an order + its item snapshots under the per-event number lock. Internal.
+create or replace function public.event_orders_insert(
+  p_event public.events, p_priced jsonb, p_name text, p_phone text, p_email text, p_note text,
+  p_source text, p_created_by uuid, p_reservation_id uuid, p_assigned_to uuid, p_assignment text)
+returns public.event_orders language plpgsql security definer set search_path = public as $$
+declare v_seq integer; v_order public.event_orders%rowtype;
+begin
+  perform pg_advisory_xact_lock(hashtext('event_orders:' || p_event.id::text));
+  select coalesce(max(seq), 0) + 1 into v_seq from public.event_orders where event_id = p_event.id;
+  insert into public.event_orders (event_id, seq, order_number, customer_name, customer_phone, customer_email, note, total_kes,
+                                   source, created_by, reservation_id, assigned_to, assignment_status, requested_at, accepted_at)
+  values (p_event.id, v_seq, coalesce(nullif(p_event.reservation_prefix, ''), 'ORD') || '-' || lpad(v_seq::text, 4, '0'),
+          p_name, p_phone, p_email, nullif(btrim(coalesce(p_note, '')), ''), (p_priced->>'total')::numeric,
+          p_source, p_created_by, p_reservation_id, p_assigned_to, p_assignment,
+          case when p_assignment = 'requested' then now() end, case when p_assignment = 'accepted' then now() end)
+  returning * into v_order;
+  insert into public.event_order_items (order_id, menu_item_id, name, unit_price_kes, qty)
+  select v_order.id, t.id, t.name, t.price, t.qty
+    from jsonb_to_recordset(p_priced->'lines') as t(id uuid, name text, price numeric, qty int);
+  return v_order;
+end; $$;
+revoke execute on function public.event_orders_insert(public.events, jsonb, text, text, text, text, text, uuid, uuid, uuid, text) from public, anon, authenticated;
+
 -- Shared by create (first payment) and record_event_order_payment.
 create or replace function public.event_orders_add_payment(
   p_order public.event_orders, p_amount numeric, p_method text, p_reference text, p_note text, p_actor uuid)
@@ -224,6 +352,7 @@ language plpgsql security definer set search_path = public as $$
 declare v_ref text := nullif(upper(btrim(coalesce(p_reference, ''))), ''); v_id uuid;
 begin
   if p_order.order_status <> 'open' then return jsonb_build_object('error', 'order_not_open'); end if;
+  if p_order.assignment_status is distinct from 'accepted' then return jsonb_build_object('error', 'not_accepted'); end if;
   if p_amount is null or p_amount <= 0 or p_amount <> round(p_amount, 2) then return jsonb_build_object('error', 'bad_amount'); end if;
   if p_amount > public.event_order_balance(p_order) then
     return jsonb_build_object('error', 'exceeds_balance', 'balance', public.event_order_balance(p_order));
@@ -262,8 +391,7 @@ declare
   v_phone text := public.event_orders_norm_phone(p_customer_phone);
   v_name text := btrim(regexp_replace(coalesce(p_customer_name, ''), '\s+', ' ', 'g'));
   v_email text := nullif(btrim(coalesce(p_customer_email, '')), '');
-  v_lines jsonb; v_line record; v_total numeric := 0; v_seq integer; v_order public.event_orders%rowtype;
-  v_pay jsonb; v_prefix text;
+  v_priced jsonb; v_order public.event_orders%rowtype; v_pay jsonb;
 begin
   if v_actor is null or not public.is_staff() then raise exception 'staff only' using errcode = '42501'; end if;
   select * into v_event from public.events where id = p_event_id;
@@ -271,37 +399,15 @@ begin
   if length(v_name) not between 2 and 120 then return jsonb_build_object('error', 'invalid_name'); end if;
   if v_phone is null then return jsonb_build_object('error', 'invalid_phone'); end if;
   if v_email is not null and not public.looks_like_email(v_email) then return jsonb_build_object('error', 'invalid_email'); end if;
-  if p_items is null or jsonb_typeof(p_items) <> 'array' or jsonb_array_length(p_items) = 0 then
-    return jsonb_build_object('error', 'no_items');
-  end if;
+  v_priced := public.event_orders_price_lines(p_event_id, p_items);
+  if v_priced ? 'error' then return v_priced; end if;
 
-  -- Merge duplicate lines; prices and names come from the menu, never from the caller.
-  select jsonb_agg(jsonb_build_object('id', m.id, 'name', m.name, 'price', m.price_kes, 'qty', x.qty, 'ok', m.is_active and m.event_id = p_event_id))
-    into v_lines
-    from (select (e->>'menu_item_id')::uuid as id, sum((e->>'qty')::int) as qty
-            from jsonb_array_elements(p_items) e group by 1) x
-    left join public.event_menu_items m on m.id = x.id;
-  for v_line in select * from jsonb_to_recordset(v_lines) as t(id uuid, name text, price numeric, qty int, ok boolean) loop
-    if v_line.ok is not true then return jsonb_build_object('error', 'unknown_item'); end if;
-    if v_line.qty is null or v_line.qty not between 1 and 99 then return jsonb_build_object('error', 'bad_qty', 'item', v_line.name); end if;
-    v_total := v_total + v_line.price * v_line.qty;
-  end loop;
-  if jsonb_array_length(v_lines) > 30 then return jsonb_build_object('error', 'too_many_lines'); end if;
-
-  -- Sequential order number per event, allocated under a per-event lock.
-  perform pg_advisory_xact_lock(hashtext('event_orders:' || p_event_id::text));
-  select coalesce(max(seq), 0) + 1 into v_seq from public.event_orders where event_id = p_event_id;
-  v_prefix := coalesce(nullif(v_event.reservation_prefix, ''), 'ORD');
-  insert into public.event_orders (event_id, seq, order_number, customer_name, customer_phone, customer_email, note, total_kes, created_by)
-  values (p_event_id, v_seq, v_prefix || '-' || lpad(v_seq::text, 4, '0'), v_name, v_phone, v_email,
-          nullif(btrim(coalesce(p_note, '')), ''), v_total, v_actor)
-  returning * into v_order;
-  insert into public.event_order_items (order_id, menu_item_id, name, unit_price_kes, qty)
-  select v_order.id, t.id, t.name, t.price, t.qty
-    from jsonb_to_recordset(v_lines) as t(id uuid, name text, price numeric, qty int);
+  -- A staff-taken order is the taker's to handle: assigned and accepted at once.
+  v_order := public.event_orders_insert(v_event, v_priced, v_name, v_phone, v_email, p_note,
+                                        'staff', v_actor, null, v_actor, 'accepted');
   insert into public.admin_audit (actor, action, subject_id, detail)
   values (v_actor, 'event_order_create', v_order.id,
-          jsonb_build_object('order_number', v_order.order_number, 'event_id', p_event_id, 'total_kes', v_total));
+          jsonb_build_object('order_number', v_order.order_number, 'event_id', p_event_id, 'total_kes', v_order.total_kes));
 
   if p_payment is not null and jsonb_typeof(p_payment) = 'object' and coalesce((p_payment->>'amount')::numeric, 0) > 0 then
     v_pay := public.event_orders_add_payment(v_order, (p_payment->>'amount')::numeric, p_payment->>'method',
@@ -341,6 +447,7 @@ begin
   select * into v_order from public.event_orders where id = p_order_id for update;
   if not found then return jsonb_build_object('error', 'not_found'); end if;
   if v_order.order_status <> 'open' then return jsonb_build_object('error', 'order_not_open', 'order_status', v_order.order_status); end if;
+  if v_order.assignment_status is distinct from 'accepted' then return jsonb_build_object('error', 'not_accepted'); end if;
   v_balance := public.event_order_balance(v_order);
   -- Staff hand over only paid orders; an admin may release one with a balance (audited).
   if v_balance > 0 and not public.is_admin() then return jsonb_build_object('error', 'not_fully_paid', 'balance_kes', v_balance); end if;
@@ -419,24 +526,197 @@ begin
   return query select a.user_id, u.email::text, a.role::text from public.admin_users a join auth.users u on u.id = a.user_id;
 end; $$;
 
+-- ---------------------------------------------------------------- staff: availability & requests
+-- A staff member's own status for an event (Available / Busy / Offline) and the
+-- first name customers see. Staff can only set their own row.
+create or replace function public.set_event_staff_status(p_event_id uuid, p_display_name text, p_status text)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_actor uuid := auth.uid(); v_name text := btrim(regexp_replace(coalesce(p_display_name, ''), '\s+', ' ', 'g'));
+begin
+  if v_actor is null or not public.is_staff() then raise exception 'staff only' using errcode = '42501'; end if;
+  if p_status not in ('available', 'busy', 'offline') then return jsonb_build_object('error', 'bad_status'); end if;
+  if length(v_name) not between 1 and 30 then return jsonb_build_object('error', 'name_required'); end if;
+  if not exists (select 1 from public.events where id = p_event_id and status = 'live') then return jsonb_build_object('error', 'event_not_live'); end if;
+  insert into public.event_staff (event_id, user_id, display_name, status, updated_at)
+  values (p_event_id, v_actor, v_name, p_status, now())
+  on conflict (event_id, user_id) do update set display_name = excluded.display_name, status = excluded.status, updated_at = now();
+  insert into public.admin_audit (actor, action, subject_id, detail)
+  values (v_actor, 'event_staff_status', p_event_id, jsonb_build_object('status', p_status, 'display_name', v_name));
+  return jsonb_build_object('status', p_status, 'display_name', v_name);
+end; $$;
+
+-- Release stale requests before a staff screen reads the board.
+create or replace function public.release_stale_event_order_requests(p_event_id uuid)
+returns integer
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_staff() then raise exception 'staff only' using errcode = '42501'; end if;
+  return public.event_orders_release_stale(p_event_id);
+end; $$;
+
+-- Accept or decline an order a customer sent to you.
+create or replace function public.respond_event_order(p_order_id uuid, p_accept boolean, p_reason text default null)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_actor uuid := auth.uid(); v_order public.event_orders%rowtype;
+begin
+  if v_actor is null or not public.is_staff() then raise exception 'staff only' using errcode = '42501'; end if;
+  select * into v_order from public.event_orders where id = p_order_id;
+  if not found then return jsonb_build_object('error', 'not_found'); end if;
+  perform public.event_orders_release_stale(v_order.event_id);
+  select * into v_order from public.event_orders where id = p_order_id for update;
+  if v_order.order_status <> 'open' then return jsonb_build_object('error', 'order_not_open'); end if;
+  if v_order.assignment_status = 'expired' then return jsonb_build_object('error', 'request_expired'); end if;
+  if v_order.assignment_status is distinct from 'requested' then return jsonb_build_object('error', 'not_requested'); end if;
+  if v_order.assigned_to is distinct from v_actor then return jsonb_build_object('error', 'not_yours'); end if;
+  if p_accept then
+    update public.event_orders set assignment_status = 'accepted', accepted_at = now(), updated_at = now() where id = p_order_id;
+  else
+    update public.event_orders set assignment_status = 'declined', assigned_to = null, updated_at = now() where id = p_order_id;
+  end if;
+  insert into public.admin_audit (actor, action, subject_id, detail)
+  values (v_actor, case when p_accept then 'event_order_accept' else 'event_order_decline' end, p_order_id,
+          jsonb_build_object('order_number', v_order.order_number, 'reason', nullif(btrim(coalesce(p_reason, '')), '')));
+  return jsonb_build_object('assignment_status', case when p_accept then 'accepted' else 'declined' end);
+end; $$;
+
+-- ---------------------------------------------------------------- customers (by pass token)
+-- Called only by the customer-order Edge Function (service role), which
+-- rate-limits. The pass access_token is the identity: name and phone come from
+-- the booking, never from the request.
+create or replace function public.event_orders_pass(p_token text)
+returns public.reservations language sql stable security definer set search_path = public as $$
+  select * from public.reservations where access_token = p_token and p_token ~ '^[a-f0-9]{32}$'
+$$;
+revoke execute on function public.event_orders_pass(text) from public, anon, authenticated;
+
+create or replace function public.customer_order_context(p_token text)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare r public.reservations%rowtype; e public.events%rowtype; v_reason text;
+begin
+  r := public.event_orders_pass(p_token);
+  if r.id is null then return null; end if;
+  select * into e from public.events where id = r.event_id;
+  perform public.event_orders_release_stale(e.id);
+  v_reason := case
+    when r.status not in ('confirmed', 'checked_in') then 'pass_not_valid'
+    when e.status <> 'live' or coalesce(e.ends_at, e.starts_at) < now() then 'event_closed'
+    when not exists (select 1 from public.event_menu_items where event_id = e.id and is_active) then 'no_menu'
+    else null end;
+  return jsonb_build_object(
+    'can_order', v_reason is null, 'reason', v_reason,
+    'pass', jsonb_build_object('reservation_number', r.reservation_number, 'guest_name', r.guest_name, 'status', r.status),
+    'event', jsonb_build_object('name', e.name, 'venue', e.venue, 'starts_at', e.starts_at),
+    'menu', (select coalesce(jsonb_agg(jsonb_build_object('id', id, 'name', name, 'description', description, 'price_kes', price_kes) order by position, name), '[]')
+               from public.event_menu_items where event_id = e.id and is_active),
+    'staff', (select coalesce(jsonb_agg(jsonb_build_object('id', id, 'name', display_name) order by display_name), '[]')
+                from public.event_staff where event_id = e.id and status = 'available'),
+    'orders', (select coalesce(jsonb_agg(jsonb_build_object('order_number', o.order_number, 'receipt_token', o.receipt_token,
+                 'total_kes', o.total_kes, 'stage', public.event_order_stage(o), 'created_at', o.created_at) order by o.created_at desc), '[]')
+                 from public.event_orders o where o.reservation_id = r.id));
+end; $$;
+
+create or replace function public.customer_create_event_order(p_token text, p_items jsonb, p_staff_id uuid, p_note text default null)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare r public.reservations%rowtype; e public.events%rowtype; st public.event_staff%rowtype; v_priced jsonb; v_order public.event_orders%rowtype; v_phone text;
+begin
+  r := public.event_orders_pass(p_token);
+  if r.id is null then return jsonb_build_object('error', 'pass_not_found'); end if;
+  if r.status not in ('confirmed', 'checked_in') then return jsonb_build_object('error', 'pass_not_valid'); end if;
+  select * into e from public.events where id = r.event_id;
+  if e.status <> 'live' or coalesce(e.ends_at, e.starts_at) < now() then return jsonb_build_object('error', 'event_closed'); end if;
+  perform public.event_orders_release_stale(e.id);
+  if (select count(*) from public.event_orders o where o.reservation_id = r.id and o.order_status = 'open') >= 3 then
+    return jsonb_build_object('error', 'too_many_open');
+  end if;
+  select * into st from public.event_staff where id = p_staff_id and event_id = e.id;
+  if not found or st.status <> 'available' then return jsonb_build_object('error', 'staff_unavailable'); end if;
+  v_phone := public.event_orders_norm_phone(r.phone);
+  if v_phone is null then return jsonb_build_object('error', 'pass_phone_invalid'); end if;
+  v_priced := public.event_orders_price_lines(e.id, p_items);
+  if v_priced ? 'error' then return v_priced; end if;
+  v_order := public.event_orders_insert(e, v_priced, r.guest_name, v_phone,
+               case when public.looks_like_email(coalesce(r.email, '')) then r.email end, left(p_note, 300),
+               'customer', null, r.id, st.user_id, 'requested');
+  insert into public.admin_audit (actor, action, subject_id, detail)
+  values (null, 'event_order_customer_create', v_order.id,
+          jsonb_build_object('order_number', v_order.order_number, 'reservation_number', r.reservation_number,
+                             'assigned_to', st.user_id, 'total_kes', v_order.total_kes));
+  return jsonb_build_object('order_number', v_order.order_number, 'receipt_token', v_order.receipt_token, 'total_kes', v_order.total_kes);
+end; $$;
+
+-- After a decline or expiry, the customer sends the order to someone else.
+create or replace function public.customer_reassign_event_order(p_receipt_token text, p_staff_id uuid)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_order public.event_orders%rowtype; st public.event_staff%rowtype;
+begin
+  select * into v_order from public.event_orders where receipt_token = p_receipt_token and source = 'customer';
+  if not found then return jsonb_build_object('error', 'not_found'); end if;
+  perform public.event_orders_release_stale(v_order.event_id);
+  select * into v_order from public.event_orders where id = v_order.id for update;
+  if v_order.order_status <> 'open' or v_order.assignment_status not in ('declined', 'expired') then
+    return jsonb_build_object('error', 'not_reassignable');
+  end if;
+  select * into st from public.event_staff where id = p_staff_id and event_id = v_order.event_id;
+  if not found or st.status <> 'available' then return jsonb_build_object('error', 'staff_unavailable'); end if;
+  update public.event_orders set assigned_to = st.user_id, assignment_status = 'requested', requested_at = now(), updated_at = now()
+   where id = v_order.id;
+  insert into public.admin_audit (actor, action, subject_id, detail)
+  values (null, 'event_order_customer_reassign', v_order.id, jsonb_build_object('order_number', v_order.order_number, 'assigned_to', st.user_id));
+  return jsonb_build_object('assignment_status', 'requested');
+end; $$;
+
+-- The customer may cancel until a staff member has accepted it (and nothing is paid).
+create or replace function public.customer_cancel_event_order(p_receipt_token text)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_order public.event_orders%rowtype;
+begin
+  select * into v_order from public.event_orders where receipt_token = p_receipt_token and source = 'customer' for update;
+  if not found then return jsonb_build_object('error', 'not_found'); end if;
+  if v_order.order_status <> 'open' or v_order.assignment_status = 'accepted' or v_order.paid_kes > 0 then
+    return jsonb_build_object('error', 'not_cancellable');
+  end if;
+  update public.event_orders set order_status = 'cancelled', assignment_status = 'cancelled', assigned_to = null,
+         cancelled_at = now(), cancel_reason = 'Cancelled by the customer', updated_at = now()
+   where id = v_order.id;
+  insert into public.admin_audit (actor, action, subject_id, detail)
+  values (null, 'event_order_customer_cancel', v_order.id, jsonb_build_object('order_number', v_order.order_number));
+  return jsonb_build_object('order_status', 'cancelled');
+end; $$;
+
 -- ---------------------------------------------------------------- public receipt
 -- By receipt_token only (32 hex, unguessable); called by the event-order-receipt
 -- Edge Function with the service role. The phone is masked; staff are not named.
 create or replace function public.get_event_order_receipt(p_token text)
 returns jsonb
-language plpgsql stable security definer set search_path = public as $$
-declare v public.event_orders%rowtype; e public.events%rowtype;
+language plpgsql security definer set search_path = public as $$
+declare v public.event_orders%rowtype; e public.events%rowtype; v_stage text;
 begin
   if p_token is null or p_token !~ '^[a-f0-9]{32}$' then return null; end if;
   select * into v from public.event_orders where receipt_token = p_token;
   if not found then return null; end if;
+  perform public.event_orders_release_stale(v.event_id);   -- the customer's page is live
+  select * into v from public.event_orders where id = v.id;
   select * into e from public.events where id = v.event_id;
+  v_stage := public.event_order_stage(v);
   return jsonb_build_object(
     'event', jsonb_build_object('name', e.name, 'venue', e.venue, 'starts_at', e.starts_at),
     'order_number', v.order_number, 'customer_name', v.customer_name,
     'customer_phone', '0' || substr(v.customer_phone, 4, 3) || '***' || right(v.customer_phone, 3),
     'total_kes', v.total_kes, 'paid_kes', v.paid_kes - v.corrected_kes, 'refunded_kes', v.refunded_kes,
     'balance_kes', public.event_order_balance(v), 'payment_status', v.payment_status, 'order_status', v.order_status,
+    'source', v.source, 'stage', v_stage, 'assignment_status', v.assignment_status,
+    'staff_name', (select display_name from public.event_staff where event_id = v.event_id and user_id = v.assigned_to),
+    'can_cancel', v.source = 'customer' and v.order_status = 'open' and v.assignment_status is distinct from 'accepted' and v.paid_kes = 0,
+    'available_staff', case when v_stage = 'needs_staff' then
+        (select coalesce(jsonb_agg(jsonb_build_object('id', id, 'name', display_name) order by display_name), '[]')
+           from public.event_staff where event_id = v.event_id and status = 'available') end,
+    'requested_at', v.requested_at, 'accepted_at', v.accepted_at,
     'created_at', v.created_at, 'fulfilled_at', v.fulfilled_at,
     'items', (select coalesce(jsonb_agg(jsonb_build_object('name', name, 'qty', qty, 'unit_price_kes', unit_price_kes, 'line_total_kes', line_total_kes) order by name), '[]')
                 from public.event_order_items where order_id = v.id),
@@ -454,6 +734,13 @@ revoke execute on function public.cancel_event_order(uuid, text) from public, an
 revoke execute on function public.reverse_event_order_payment(uuid, text, numeric, text) from public, anon;
 revoke execute on function public.staff_directory() from public, anon;
 revoke execute on function public.get_event_order_receipt(text) from public, anon, authenticated;
+revoke execute on function public.set_event_staff_status(uuid, text, text) from public, anon;
+revoke execute on function public.release_stale_event_order_requests(uuid) from public, anon;
+revoke execute on function public.respond_event_order(uuid, boolean, text) from public, anon;
+revoke execute on function public.customer_order_context(text) from public, anon, authenticated;
+revoke execute on function public.customer_create_event_order(text, jsonb, uuid, text) from public, anon, authenticated;
+revoke execute on function public.customer_reassign_event_order(text, uuid) from public, anon, authenticated;
+revoke execute on function public.customer_cancel_event_order(text) from public, anon, authenticated;
 -- Signed-in callers; each function checks is_staff()/is_admin() itself.
 grant execute on function public.create_event_order(uuid, text, text, text, jsonb, jsonb, text) to authenticated;
 grant execute on function public.record_event_order_payment(uuid, numeric, text, text, text) to authenticated;
@@ -461,4 +748,12 @@ grant execute on function public.fulfil_event_order(uuid) to authenticated;
 grant execute on function public.cancel_event_order(uuid, text) to authenticated;
 grant execute on function public.reverse_event_order_payment(uuid, text, numeric, text) to authenticated;
 grant execute on function public.staff_directory() to authenticated;
+grant execute on function public.set_event_staff_status(uuid, text, text) to authenticated;
+grant execute on function public.release_stale_event_order_requests(uuid) to authenticated;
+grant execute on function public.respond_event_order(uuid, boolean, text) to authenticated;
+-- Customers act only through the customer-order / event-order-receipt Edge Functions.
 grant execute on function public.get_event_order_receipt(text) to service_role;
+grant execute on function public.customer_order_context(text) to service_role;
+grant execute on function public.customer_create_event_order(text, jsonb, uuid, text) to service_role;
+grant execute on function public.customer_reassign_event_order(text, uuid) to service_role;
+grant execute on function public.customer_cancel_event_order(text) to service_role;

@@ -1,4 +1,4 @@
-import { kes, localPhone, methodLabel, ORDER_STATUS, PAYMENT_STATUS, paidTowards, when, type EventOrder } from "@/lib/event-orders";
+import { kes, localPhone, methodLabel, PAYMENT_STATUS, paidTowards, STAGE, when, type EventOrder } from "@/lib/event-orders";
 
 // The order as staff see it right after creating it and on its own screen:
 // number up front, then customer, items, money and who did what. `names` maps
@@ -9,7 +9,7 @@ export default function OrderSummary({ order, eventName, names, me }: {
   const who = (id: string | null) => (!id ? "—" : id === me ? "You" : names[id] ?? "Staff");
   const balance = Number(order.event_order_balance);
   const ps = PAYMENT_STATUS[order.payment_status];
-  const os = ORDER_STATUS[order.order_status];
+  const st = STAGE[order.event_order_stage];
   const payments = order.event_order_payments ?? [];
   return (
     <div className="stack eo-summary">
@@ -18,7 +18,8 @@ export default function OrderSummary({ order, eventName, names, me }: {
         <strong className="num">{order.order_number}</strong>
         <div className="row" style={{ justifyContent: "flex-start", gap: 8 }}>
           <span className={`pill ${ps.tone}`}>{ps.label}</span>
-          <span className={`pill ${os.tone}`}>{os.label}</span>
+          <span className={`pill ${st.tone}`}>{st.label}</span>
+          {order.source === "customer" && <span className="pill">From pass</span>}
         </div>
       </div>
 
@@ -61,7 +62,8 @@ export default function OrderSummary({ order, eventName, names, me }: {
       )}
 
       <p className="small" style={{ margin: 0 }}>
-        Taken by {who(order.created_by)} · {when(order.created_at)}
+        {order.source === "customer" ? `Ordered by the customer · sent to ${who(order.assigned_to)}` : `Taken by ${who(order.created_by)}`} · {when(order.created_at)}
+        {order.accepted_at && order.source === "customer" ? ` · Accepted ${when(order.accepted_at)}` : ""}
         {order.fulfilled_at ? ` · Fulfilled ${when(order.fulfilled_at)} by ${who(order.fulfilled_by)}` : ""}
         {order.cancel_reason ? ` · Cancelled: ${order.cancel_reason}` : ""}
       </p>

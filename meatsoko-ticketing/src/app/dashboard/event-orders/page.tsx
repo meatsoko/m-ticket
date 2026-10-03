@@ -17,12 +17,14 @@ export default async function EventOrdersPage({ searchParams }: { searchParams: 
   const event = list.find((e) => e.id === searchParams.event) ?? upcoming[0] ?? list[0];
   if (!event) return <p className="dash-empty">No events yet.</p>;
 
-  const [orders, menu, staff] = await Promise.all([
+  await supabase.rpc("release_stale_event_order_requests", { p_event_id: event.id });
+  const [orders, menu, staff, roster] = await Promise.all([
     supabase.from("event_orders")
       .select(`${ORDER_COLUMNS},event_order_items(name,qty,unit_price_kes,line_total_kes),event_order_payments(${PAYMENT_COLUMNS})`)
       .eq("event_id", event.id).order("seq", { ascending: false }).limit(5000),
     supabase.from("event_menu_items").select("id,event_id,name,description,price_kes,is_active,position").eq("event_id", event.id).order("position").order("name"),
     supabase.rpc("staff_directory"),
+    supabase.from("event_staff").select("user_id,display_name,status,updated_at").eq("event_id", event.id).order("display_name"),
   ]);
   if (orders.error) return <p className="dash-error">Couldn&apos;t load orders: {orders.error.message}</p>;
   return (
@@ -32,6 +34,7 @@ export default async function EventOrdersPage({ searchParams }: { searchParams: 
       orders={(orders.data ?? []) as unknown as EventOrder[]}
       menu={(menu.data ?? []) as MenuItem[]}
       staff={(staff.data ?? []) as { user_id: string; email: string; role: string }[]}
+      roster={(roster.data ?? []) as { user_id: string; display_name: string; status: "available" | "busy" | "offline"; updated_at: string }[]}
     />
   );
 }

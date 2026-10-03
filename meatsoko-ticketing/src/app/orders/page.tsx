@@ -2,7 +2,7 @@ import { requireStaff } from "@/lib/require-staff";
 import AppShell from "@/components/AppShell";
 import OrdersHome from "@/components/orders/OrdersHome";
 import { orderEvents, staffNames } from "@/lib/event-orders-server";
-import { ORDER_COLUMNS, type EventOrder } from "@/lib/event-orders";
+import { ORDER_COLUMNS, type EventOrder, type StaffStatus } from "@/lib/event-orders";
 
 export const dynamic = "force-dynamic";
 
@@ -20,15 +20,19 @@ export default async function OrdersPage({ searchParams }: { searchParams: { eve
       </AppShell>
     );
   }
-  const [{ data: orders }, names] = await Promise.all([
-    supabase.from("event_orders").select(`${ORDER_COLUMNS},event_order_payments(reference)`).eq("event_id", event.id)
+  // Customer requests not accepted within 5 minutes go back to the customer first.
+  await supabase.rpc("release_stale_event_order_requests", { p_event_id: event.id });
+  const [{ data: orders }, names, { data: mine }] = await Promise.all([
+    supabase.from("event_orders").select(`${ORDER_COLUMNS},event_order_items(name,qty),event_order_payments(reference)`).eq("event_id", event.id)
       .order("seq", { ascending: false }).limit(1000),
     staffNames(supabase),
+    supabase.from("event_staff").select("display_name,status").eq("event_id", event.id).eq("user_id", user.id).maybeSingle(),
   ]);
   return (
     <AppShell title="Orders" role={role}>
       <div className="pad">
-        <OrdersHome event={event} events={events} orders={(orders ?? []) as unknown as EventOrder[]} me={user.id} names={names} />
+        <OrdersHome event={event} events={events} orders={(orders ?? []) as unknown as EventOrder[]} me={user.id} names={names}
+          myStatus={(mine as { display_name: string; status: StaffStatus } | null) ?? null} suggestedName={names[user.id] ?? ""} />
         <div className="bottom-gap" />
       </div>
     </AppShell>
