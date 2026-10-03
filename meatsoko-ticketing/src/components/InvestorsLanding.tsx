@@ -113,6 +113,21 @@ export default function InvestorsLanding() {
         </div>
       </section>
 
+      {/* ---------- A word from Wendy ---------- */}
+      <section className="inv-word" aria-labelledby="word-title">
+        <WendyVideo onRegister={openForm} />
+        <div className="inv-word-copy">
+          <span className="inv-eyebrow">A word to our investors</span>
+          <h2 id="word-title">Hear it from the people running the day.</h2>
+          <p>
+            Wendy, our event organiser, on what MeatSoko is building and why we&apos;d like you there.
+            Filmed at {INVESTOR_VENUE}, where we&apos;ll host you on {INVESTOR_DAY}.
+          </p>
+          <p className="inv-word-sign"><strong>Wendy</strong><span>Event organiser, MeatSoko</span></p>
+          <button type="button" className="inv-cta inv-cta-dark" onClick={openForm}>Register your attendance</button>
+        </div>
+      </section>
+
       {/* ---------- Why invest ---------- */}
       <section id="why" className="inv-why" aria-labelledby="why-title">
         <div className="inv-why-head">
@@ -164,5 +179,35 @@ export default function InvestorsLanding() {
         document.querySelector(".storefront") ?? document.body,
       )}
     </main>
+  );
+}
+
+// Wendy's 53-second message (vertical, filmed at Thika Greens). Nothing loads
+// until it is tapped; it plays with sound and native controls, and offers the
+// registration form when it ends. Never autoplays.
+function WendyVideo({ onRegister }: { onRegister: (e: React.MouseEvent<HTMLElement>) => void }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  const [state, setState] = useState<"idle" | "playing" | "ended">("idle");
+  const play = () => { const v = ref.current; if (!v) return; v.currentTime = state === "ended" ? 0 : v.currentTime; setState("playing"); void v.play().catch(() => setState("idle")); };
+  return (
+    <div className={`inv-video is-${state}`}>
+      <video ref={ref} src="/videos/investors-wendy.mp4" poster="/images/investors/wendy-poster.jpg"
+        width={478} height={850} preload="none" playsInline controls={state === "playing"}
+        onPlay={() => setState("playing")} onEnded={() => setState("ended")}
+        aria-label="Wendy, MeatSoko's event organiser, addresses investors (53 seconds)" />
+      {state === "idle" && (
+        <button type="button" className="inv-video-play" onClick={play} aria-label="Play Wendy's message to investors, 53 seconds, with sound">
+          <span aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg></span>
+          <small>Watch · 0:53</small>
+        </button>
+      )}
+      {state === "ended" && (
+        <div className="inv-video-end">
+          <strong>Join us on {INVESTOR_DAY}</strong>
+          <button type="button" className="inv-cta" onClick={onRegister}>Register your attendance</button>
+          <button type="button" className="inv-video-again" onClick={play}>Watch again</button>
+        </div>
+      )}
+    </div>
   );
 }

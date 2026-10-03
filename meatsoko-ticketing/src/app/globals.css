@@ -1858,3 +1858,32 @@ a.login-submit { display: grid; place-items: center; text-decoration: none; }
   .inv-headline span, .inv-kicker, .inv-lede, .inv-hero .inv-cta, .inv-sublink { transform: none; }
   .inv-glow, .inv-modal, .inv-modal-scrim { animation: none; }
 }
+
+/* Investors: Wendy's video message, between the hero and Why MeatSoko. A
+   vertical video in a phone-shaped frame beside the copy (stacked on phones). */
+.inv-word { max-width: 1040px; margin: 0 auto; padding: 100px 3vw 0; display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 64px; align-items: center; }
+.inv-video { position: relative; overflow: hidden; aspect-ratio: 478 / 850; border-radius: 28px; background: #04190f; box-shadow: 0 30px 60px rgba(6,42,25,.28), 0 0 0 8px #fff, 0 0 0 9px var(--store-line); }
+.inv-video video { display: block; width: 100%; height: 100%; object-fit: cover; }
+.inv-video-play { position: absolute; inset: 0; display: grid; place-items: center; align-content: center; gap: 12px; border: 0; background: linear-gradient(180deg, rgba(3,20,12,0) 45%, rgba(3,20,12,.55)); color: #fff; font: inherit; cursor: pointer; }
+.inv-video-play > span { display: grid; place-items: center; width: 78px; height: 78px; border-radius: 50%; background: rgba(255,255,255,.92); box-shadow: 0 10px 30px rgba(0,0,0,.3); transition: transform .2s; }
+.inv-video-play svg { width: 30px; height: 30px; margin-left: 4px; fill: #062a19; }
+.inv-video-play:hover > span { transform: scale(1.06); }
+.inv-video-play:focus-visible > span { outline: 3px solid #3fcf8e; outline-offset: 4px; }
+.inv-video-play small { font-size: 13px; font-weight: 700; letter-spacing: .06em; text-shadow: 0 1px 6px rgba(0,0,0,.5); }
+.inv-video-end { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 4px; padding: 24px; text-align: center; color: #fff; background: rgba(3,20,12,.72); backdrop-filter: blur(4px); }
+.inv-video-end strong { font-size: 20px; letter-spacing: -.02em; }
+.inv-video-end .inv-cta { margin-top: 14px; }
+.inv-video-again { margin-top: 10px; border: 0; background: none; color: rgba(255,255,255,.8); font: inherit; font-size: 13px; text-decoration: underline; cursor: pointer; }
+.inv-word-copy h2 { margin: 12px 0 0; font-size: clamp(30px, 3.6vw, 48px); line-height: 1.05; letter-spacing: -.045em; }
+.inv-word-copy p { margin: 16px 0 0; max-width: 460px; color: #5d5953; font-size: 16px; line-height: 1.65; }
+.inv-word-sign { display: grid; gap: 2px; }
+.inv-word-sign strong { color: var(--store-ink); font-size: 15px; }
+.inv-word-sign span { font-size: 13px; }
+.inv-cta-dark { background: #062a19; color: #fff; box-shadow: none; }
+.inv-cta-dark:hover { background: #0b4a2c; box-shadow: 0 12px 28px rgba(6,42,25,.25); }
+@media (max-width: 760px) {
+  .inv-word { grid-template-columns: 1fr; gap: 32px; padding: 64px 8px 0; justify-items: center; }
+  .inv-video { width: min(100%, 340px); }
+  .inv-word-copy { text-align: center; }
+  .inv-word-copy p { margin-left: auto; margin-right: auto; }
+}
