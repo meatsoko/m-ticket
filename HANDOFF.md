@@ -1,6 +1,7 @@
 # HANDOFF — resuming on another machine
 
-Practical setup only. Context, architecture and warnings are in `CLAUDE.md`.
+Practical setup only (updated **2026-10-03**). Rules and layout are in `CLAUDE.md`; the
+current state of features, events and open items is in `meatsoko-ticketing/CLAUDE.md`.
 **Nothing here contains a secret.** Variables are named; values never are.
 
 ---
@@ -13,151 +14,99 @@ cd m-ticket/meatsoko-ticketing      # the app is in this subdirectory
 npm install
 ```
 
-Default branch is `main`, and **`main` is the production branch** — pushing deploys.
+`main` is the production branch — pushing deploys.
 
-## 2. Required software
+## 2. Software
 
-| Tool | Version used | Notes |
+| Tool | Version last used | Notes |
 |---|---|---|
-| Node | **22.23.1** | `package.json` says `>=18.17.0`; Vercel warns that an unpinned `engines` range auto-upgrades on new majors |
-| npm | 10.9.8 | lockfile is `package-lock.json` |
-| Supabase CLI | **2.67.1** | `brew install supabase/tap/supabase`. **No `functions logs` subcommand** — see `CLAUDE.md` §7 |
-| Deno | 2.6.3 | type-checking Edge Functions only (`deno check`); not needed to run the app |
-| psql | any recent | only for `scripts/db.sh` |
-| gh | any recent | optional, for PRs |
-| Docker | — | **not running locally**, and not needed. `supabase db dump` and the local stack require it; neither is part of the normal workflow |
+| Node / npm | 26.9 / 11.19 | `package.json` needs `>=18.17` |
+| Supabase CLI | **2.118** | `brew install supabase/tap/supabase`. Has `supabase db query --linked`; has **no** `functions logs` (dashboard only) |
+| Docker | Desktop, running | for the integration harness and `deno check` via `denoland/deno:2.6.3` |
+| Deno | 2.6.3 (optional) | only if you want `deno check` without Docker |
+| gh | any | optional |
 
-## 3. Environment variables to recreate — **names only**
+## 3. Environment — names only
 
-### `meatsoko-ticketing/.env` (gitignored; `.env.example` is the template)
+### `meatsoko-ticketing/.env` and `.env.local` (gitignored; template `.env.example`)
 
 ```
-NEXT_PUBLIC_SUPABASE_URL
-NEXT_PUBLIC_SUPABASE_ANON_KEY
-NEXT_PUBLIC_APP_URL
-DARAJA_ENV
-DARAJA_CONSUMER_KEY
-DARAJA_CONSUMER_SECRET
-DARAJA_SHORTCODE
-DARAJA_PASSKEY
-DARAJA_CALLBACK_URL
-DARAJA_TRANSACTION_TYPE
+NEXT_PUBLIC_SUPABASE_URL        NEXT_PUBLIC_SUPABASE_ANON_KEY   NEXT_PUBLIC_APP_URL
+NEXT_PUBLIC_MERCH_PAYMENTS      NEXT_PUBLIC_PAYSTACK_POPUP      NEXT_PUBLIC_DARAJA_ENABLED
+SUPABASE_DB_PASSWORD (only for scripts/db.sh)
 ```
 
-`NEXT_PUBLIC_APP_URL` must be `https://event.meatsokogroup.com` — it is baked into every
-QR and WhatsApp link at generation time.
+`NEXT_PUBLIC_APP_URL` must be `https://event.meatsokogroup.com` in production — it is baked
+into QR and share links. Locally, leave the three feature flags unset unless testing them.
 
-### Vercel project environment variables
+### Vercel project variables
 
-`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_APP_URL`.
+`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_APP_URL`, plus the
+feature flags above as set for production.
 
-### Supabase Edge Function secrets — already set on the project
+### Supabase Edge Function secrets — live on the project, nothing to copy
 
-`supabase secrets list` shows names and digests, never values. Currently set:
-
-```
-APP_URL              RESEND_API_KEY         TICKET_EMAIL_FROM
-DARAJA_ENV           DARAJA_CONSUMER_KEY    DARAJA_CONSUMER_SECRET
-DARAJA_SHORTCODE     DARAJA_PASSKEY         DARAJA_CALLBACK_URL
-SUPABASE_URL         SUPABASE_ANON_KEY      SUPABASE_SERVICE_ROLE_KEY
-SUPABASE_DB_URL      SUPABASE_JWKS          SUPABASE_PUBLISHABLE_KEYS
-SUPABASE_SECRET_KEYS
-```
-
-These live on the Supabase project, not on your machine — **no action needed** unless one
-must change: `supabase secrets set NAME=value`, then redeploy the functions that read it.
-
-### `meatsoko-ticketing/.env.local` — optional, for `scripts/db.sh`
+`supabase secrets list` shows names and digests. Set as of 2026-10-03:
 
 ```
-SUPABASE_DB_PASSWORD
+APP_URL  PAYSTACK_SECRET_KEY  RESEND_API_KEY  TICKET_EMAIL_FROM  MERCH_NOTIFY_EMAIL
+DARAJA_ENV  DARAJA_CONSUMER_KEY  DARAJA_CONSUMER_SECRET  DARAJA_SHORTCODE  DARAJA_PASSKEY
+DARAJA_CALLBACK_URL  (+ the SUPABASE_* ones Supabase manages)
 ```
 
-From Dashboard → Settings → Database. Covered by the `.env.*` ignore rule.
+Optional, unset: `VENDOR_FEE_KES` (overrides the 3,500 tent fee), `MERCH_FX_URL`,
+`WHATSAPP_WEBHOOK_URL`/`_TOKEN`.
 
-## 4. Gitignored files to copy across separately
+## 4. Copy across by hand (gitignored)
 
-| File | Why it is not in git | Needed? |
-|---|---|---|
-| `meatsoko-ticketing/.env` | live Supabase + Daraja credentials | **Yes** — or rebuild from `.env.example` |
-| `meatsoko-ticketing/.env.supabase` | template for function secrets; **still unfilled placeholders** on the original machine | No |
-| `meatsoko-ticketing/ADMIN_LOGIN.local.md` | demo admin credentials | Only if you need the demo login before creating real accounts |
-| `meatsoko-ticketing/supabase/.temp/` | regenerated by `supabase link` | No |
-| `.claude/settings.local.json` | local tool permissions; ignored via a **global** gitignore on the original machine, so it may show as untracked here | No — do not commit it |
+| File | Needed? |
+|---|---|
+| `meatsoko-ticketing/.env`, `.env.local` | **Yes** (or rebuild from `.env.example` + dashboards) |
+| `meatsoko-ticketing/assets/*.mp4` | Only to re-edit videos (originals of `public/videos/*`) |
+| `CLAUDE.local.md` | Your own machine notes, if any |
+| `.claude/settings.local.json` | No — per-machine permissions |
 
-`next-env.d.ts` and `deno.lock` regenerate themselves.
-
-## 5. Accounts and credentials to configure by hand
+## 5. Accounts
 
 | | |
 |---|---|
-| **GitHub** | push access to `meatsoko/m-ticket` |
-| **Supabase** | `supabase login`, then `supabase link --project-ref tyirenanflcmwfywurvk`. The link prompts for the **database password** and stores it in the OS keychain — this is what lets `supabase db push` connect without a password flag |
-| **Vercel** | access to project `m-ticket-azure` (team `meatsoko254`) |
-| **Resend** | domain `event.meatsokogroup.com` is already verified; only needed to rotate the key |
-| **Safaricom Daraja** | parked — see `DARAJA_PRODUCTION.md` |
-| **App staff accounts** | **none exist yet beyond a demo admin.** Created by hand per `ADMIN_ACCESS.md`; there is no sign-up page by design |
+| GitHub | push access to `meatsoko/m-ticket` |
+| Supabase | `supabase login`, then `supabase link --project-ref tyirenanflcmwfywurvk` (asks for the DB password; type it at the prompt, never into a file) |
+| Vercel | project `m-ticket-azure`, team `meatsoko254`; Root Directory `meatsoko-ticketing`, Framework Preset **Next.js** |
+| Paystack | shared with the WooCommerce store — its webhook stays pointed there |
+| Resend | domain `event.meatsokogroup.com` verified |
+| App staff | created by hand per `meatsoko-ticketing/ADMIN_ACCESS.md`; no sign-up page |
 
 ## 6. Supabase project
 
 | | |
 |---|---|
-| Project ref | `tyirenanflcmwfywurvk` |
-| Region | `aws-1-eu-west-1` |
-| Dashboard | `https://supabase.com/dashboard/project/tyirenanflcmwfywurvk` |
-| Function logs | dashboard only — the CLI has no `functions logs` |
-| Migrations applied | 10, through `20260924140000_lock_admit_pass` (`supabase migration list`) |
-| Edge Functions | `daraja-callback`, `lookup`, `order-status`, `redeem`, `reservation-by-token`, `reservation-lookup`, `reservation-status`, `reserve`, `stk-push`, `sync-tokens`, `ticket-by-token` |
+| Project ref / region | `tyirenanflcmwfywurvk` / `aws-1-eu-west-1` |
+| Migrations | 34, through `20261002150000_maic_summit_poster_rename` |
+| Edge Functions (23) | `daraja-callback investor-register lookup merch-checkout merch-fx-refresh merch-order online-access online-register order-status paystack-reconcile paystack-verify paystack-webhook platter-addon redeem reservation-by-token reservation-lookup reservation-status reserve stk-push sync-tokens ticket-by-token upgrade-reservation vendor-apply` |
+| `verify_jwt` | per function in `supabase/config.toml` — don't change it to make something work |
 
-`supabase/config.toml` sets `verify_jwt` per function. `redeem` and `sync-tokens` require a
-JWT; the guest-facing ones do not. **Do not change these to make something work.**
+## 7. Data you'll meet
 
-## 7. Deployment configuration
+- Events: `nyamafest-main` (live, 17 Oct), `meatsoko-token-summit` (live, Coming soon,
+  5 Dec), `nyamafest` and `nyamafest-launch` (closed).
+- `NF-23X5MW` — disposable test reservation, approved for deletion (ask first).
+- The database holds **real guest bookings, payments and registrations**. There is no
+  seed data; for experiments use the integration harness, never the live project.
 
-| | |
-|---|---|
-| Vercel project | `m-ticket-azure` |
-| **Root Directory** | **`meatsoko-ticketing`** |
-| **Framework Preset** | **`Next.js`** — not "Other". See `CLAUDE.md` §2; getting this wrong produces a green build that 404s on every route |
-| Output Directory | framework default — **not** `public` |
-| Production branch | `main` |
-| Domain | `event.meatsokogroup.com` (DNS already correct; Valid Configuration) |
-| Frontend deploy | push to `main` |
-| Edge Function deploy | `supabase functions deploy <name>` |
-| Migration deploy | `supabase db push` |
-
-## 8. Test / demo data
-
-- **`NF-23X5MW`** — reservation on phone `0700000000`, status `confirmed`. Disposable and
-  **approved for deletion**. Use it for the outstanding camera-scan verification, then
-  remove it with `./scripts/db.sh < scripts/delete-test-reservation.sql` or the Table
-  Editor. It will otherwise scan in like a real guest.
-- **Demo admin** — in `ADMIN_LOGIN.local.md`. Delete once real accounts exist.
-- Three events exist; `nyamafest` (27 Sep, capacity 500, payments off) is the live one.
-- No seed script and no fixtures. The database holds **real guest bookings** — treat it as
-  production, because it is.
-
-## 9. First commands after cloning
+## 8. First commands
 
 ```bash
 cd m-ticket/meatsoko-ticketing
 npm install
-cp .env.example .env            # then fill it in from your own copy
-
-supabase login
-supabase link --project-ref tyirenanflcmwfywurvk
+cp .env.example .env               # then fill in from your own copy
+supabase login && supabase link --project-ref tyirenanflcmwfywurvk
 
 npm run lint
-npm run build                   # expect 13 routes, including  ƒ /
-supabase migration list         # expect 10, through 20260924140000
-supabase secrets list           # names + digests only
-
-npm run dev                     # http://localhost:3000
+npx tsc --noEmit -p .
+supabase migration list --linked   # local and remote should match (34)
+./tests/harness/run.sh             # expect: ok: 238   FAIL: 0
+npm run dev                        # http://localhost:3000
 ```
 
-Then read, in order: `CLAUDE.md` → `meatsoko-ticketing/LAUNCH_CHECKLIST.md` →
-`meatsoko-ticketing/REMAINING_GAPS.md`.
-
-> **Before changing anything**, note that the site is live and taking real bookings and
-> payments. `CLAUDE.md` §8 lists what not to do; `meatsoko-ticketing/CLAUDE.md` has the
-> current state of each feature.
+Then read `CLAUDE.md` → `meatsoko-ticketing/CLAUDE.md`.

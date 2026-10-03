@@ -34,3 +34,6 @@ deno.lock
 
 # local-only notes (credentials etc) — never commit
 *.local.md
+
+# local test harness output
+tests/harness/last-run.log

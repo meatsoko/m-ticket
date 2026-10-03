@@ -1,11 +1,14 @@
 -- ============================================================
--- MeatSoko Ticketing — database schema (SRS v1.0) — HISTORICAL SNAPSHOT
+-- MeatSoko Ticketing — database schema (SRS v1.0): the BASE LAYER
 --
--- Do NOT apply this file. It stops at SRS v1.0 and has none of the later
--- reservations, Paystack, merchandise, vendor, online-attendance or
--- permission lock-down work. The ordered files in supabase/migrations/ are the
--- source of truth (`supabase db push`). Kept only as a readable reference for
--- the original core tables.
+-- The original core tables. On its own it is out of date: everything since
+-- (reservations, Paystack, merchandise, vendors, online attendance, investors,
+-- the permission lock-downs) is in supabase/migrations/, which build on top of
+-- this file. A fresh database = this file, then every migration in order —
+-- exactly what tests/harness/run.sh does.
+--
+-- Never apply it to the live project (it already has these tables); deploy
+-- changes there with `supabase db push`.
 -- ============================================================
 create extension if not exists pgcrypto;
 

@@ -1,101 +1,147 @@
-# MeatSoko project handoff
+# MeatSoko — project context
 
-Last updated: 2026-09-29  
-Current branch: `main` (production — every push deploys). Pre-merge rollback point for PR #8: `1a740e7`.  
-Merch storefront and platter flow merged via PRs #5–#7 (`e7f31c4`, 2026-09-28)
+Last updated: **2026-10-03**. Read with the repo-root `CLAUDE.md` (layout, safety rules,
+what not to do) and `../HANDOFF.md` (setting up a new machine).
 
-## Product direction
+`main` is production: every push deploys `https://event.meatsokogroup.com` (Vercel).
+Edge Functions and migrations deploy separately (see "Deploying"). Work on a branch,
+build and test, then merge to `main` only when the user says to push.
 
-MeatSoko is becoming a merchandise-first site. The storefront is the main experience; the existing event and ticketing system remains an events module. Preserve the ticket purchase, reservation, payment, QR pass, and gate-scanning flows while changing storefront or event presentation.
+## What the site is
 
-The user wants the storefront to use a warm cream, black, and red visual system. Desktop event pages use a wider editorial layout; keep the established mobile ticketing experience intact.
+A merchandise-first store plus an events module, for the MeatSoko Ecosystem brand.
 
-## Stack and commands
+| Area | Routes | Notes |
+|---|---|---|
+| Store | `/`, `/shop`, `/shop/[slug]`, `/cart`, `/checkout`, `/checkout/complete`, `/order/[token]`, `/returns` | Catalogue in `src/lib/merchandise.ts` (USD prices; `null` = "Price coming soon", not buyable). Paystack checkout is gated by `NEXT_PUBLIC_MERCH_PAYMENTS=on` in Vercel |
+| Events | `/events` (line-up), `/e/[slug]`, `/ticket-terms` | Line-up = Up next (ticket card) · Coming soon (poster) · Past |
+| Passes | `/r/[token]` (reservation), `/t/[token]` (paid ticket), `/lookup` (emails passes, never shows tokens) | Tokens are bearer credentials |
+| Post-payment | `/upgrade/complete`, `/platters/complete`, `/vendor/complete` | Verify with Paystack on return |
+| Online | `/watch/[code]` | Private YouTube watch page per registration |
+| Investors | `/investors` | Landing page + registration form (dialog) |
+| Staff | `/login`, `/reset-password`, `/dashboard/*`, `/scan`, `/gate` | No sign-up page, by design |
+| Legacy | `/admin`, `/admin/events/[id]` | Redirect to the dashboard |
 
-- Next.js 14.2, React 18, TypeScript, App Router.
-- Supabase for events, tickets, reservations, payments, and staff operations.
-- `npm run dev` starts the local app.
-- `npm run lint` runs Next lint.
-- `npm run build` creates a production build.
-- Supabase migrations are in `supabase/migrations/` and are the source of truth; `supabase/schema.sql` is a historical SRS v1.0 snapshot — do not apply it.
+Stack: Next.js 14.2 (App Router) · React 18 · TypeScript · Supabase (Postgres + RLS, Deno
+Edge Functions) · Paystack · Resend · Vercel (+ Vercel Analytics).
 
-## Main routes
+## Live events (2026-10-03)
 
-- `/` — merchandise-led storefront homepage.
-- `/shop` — merchandise collections and product cards.
-- `/cart` and `/checkout` — current merchandise flow scaffolding.
-- `/events` — event listing; open events link into `/e/[slug]`.
-- `/e/[slug]` — event detail and existing ticket or reservation checkout.
-- `/t/[token]`, `/r/[token]`, `/lookup` — issued pass and reservation experiences.
-- `/admin/events/[id]` — event management, ticket types, preorder items, reservation packages.
-- `/gate` and `/scan` — event entry and scanning tools.
+- **NyamaFest Main** (`nyamafest-main`): **Sat 17 Oct 2026, 6:00 am → Sun 18 Oct 6:00 am**
+  (Africa/Nairobi), Thika Greens Golf Course, capacity 500. Migration `20261002090000` set
+  the hours (it was 5 pm; emails sent before 2026-10-02 say 5 pm).
+  - **General Admission is free**; tables (Basic / Moderate / Big Family, each with a family
+    platter) are paid upgrades of the same pass. `GetTicketsPanel` is two screens: choose
+    (GA and Attend online side by side, tables below) → your details.
+  - **Attend online**: free registration → private watch link (`online-register`,
+    `online-access`). The YouTube stream ID is set in Event settings — **not set yet**.
+  - **Platter add-ons** for in-person passes (`platter-addon`), up to 5 of each.
+  - **Vendors**: "Become a vendor" in the event hero; KSh 3,500 tent fee via Paystack
+    (`vendor-apply`; `VENDOR_FEE_KES` secret overrides it — keep it unset).
+  - Early-bird platter prices end 2026-10-07; USD display prices are a fixed mapping in
+    `src/lib/family-package-pricing.ts`; charges are KSh from `preorder_items`.
+- **MEATSOKO Token Launch & Fintech Summit** (`meatsoko-token-summit`, MAIC): Sat 5 Dec
+  2026, Nairobi — **Coming soon**, no registration, no time. `reservations_open_at =
+  starts_at` keeps bookings closed; the event page hides booking and vendor sign-up; the
+  homepage skips it; 00:00–23:59 displays as "Time to be announced". Poster:
+  `/images/events/maic-token-summit-poster-2.jpg` (cropped).
+- `nyamafest` (27 Sep) and `nyamafest-launch` (6 Sep) are closed.
 
-## Current merchandise work
+## Investors (`/investors`)
 
-- Catalog is front-end-only in `src/lib/merchandise.ts`; it currently has 15 items in Hoodies, Polos, T-shirts, and Headwear (caps and beanies).
-- Product images are served from `public/images/merchandise/`. The originals are in `assets/`.
-- Each product has one image, a style name, and a color. Prices are intentionally absent; do not invent or display prices until the user supplies them.
-- Product order is deliberately varied so color variants do not line up in repetitive columns.
-- `src/components/MerchandiseCard.tsx` provides the zoom-on-hover image and checkout link. On touch/mobile, the Checkout action stays visible.
-- `/checkout?product=<image-filename>` resolves and displays the selected product. This is only a selection/checkout entry point: the merchandise cart, product options, price, inventory, delivery, and payment flow are not implemented yet.
-- Homepage hero image is the green hoodie, blended into the cream background to give it a floating look. Campaign image is `public/images/campaign/nyamafest-poster.jpeg`.
-- The upcoming-event card on `/` queries the nearest live event that has not ended and links directly to `/e/[slug]`. It falls back to `/events` if no matching event is found.
+- Investors' visit: **Friday 16 October 2026, Thika Greens Golf Course**, time confirmed by
+  email. Constants in `src/lib/investors.ts` and `supabase/functions/_shared/investor.ts`
+  (keep in step).
+- Landing (`InvestorsLanding.tsx`): dark-emerald hero with drifting glass bubbles (inspired
+  by `assets/dealroom.mp4`; the user chose to keep only the bubbles), Wendy's video
+  (event organiser, 53 s, filmed at Thika Greens — `public/videos/investors-wendy.mp4`,
+  re-encoded to 5 MB; tap-to-play with sound, never autoplays), Why MeatSoko (no invented
+  figures), The visit. Every register button opens `InvestorForm` in a dialog.
+- Form: title (Mr/Mrs/Ms/Dr/Prof/Hon), name, occupation, email, 1–10 guest names — **all
+  required**. `investor-register` never overwrites an existing registration for an email
+  (re-sends the confirmation instead). Dashboard: Events & tickets → Investors.
 
-## Event and payment behavior to preserve
+## Dashboard (`/dashboard`, store theme)
 
-- Existing event ticket purchases remain backed by the existing ticket checkout flow. Reservation events use `ReservationForm` and reservation package data.
-- `src/components/EarlyBirdCountdown.tsx` shows the early-bird timer in the event hero, replacing the generic Festival label. The countdown is no longer in the package picker.
-- For NyamaFest family platters, `src/lib/family-package-pricing.ts` maps the user-specified USD presentation prices: Basic `$15 / $20`, Moderate `$35 / $40`, Big Family `$50 / $55`. It is a fixed display mapping, not runtime foreign-exchange conversion. Savings are shown as the USD difference (for example, “Save $5”).
-- Actual reservations and payment amounts remain KSh from the stored `preorder_items` prices. Order/payment records remain normalized in KSh.
-- `20260928100000_nyamafest_usd_display_prices.sql` contains the chosen KSh package values. `20261002090000_nyamafest_starts_6am.sql` sets the `nyamafest-main` event to 6:00 AM Saturday 17 October through 6:00 AM the next day in `Africa/Nairobi` (superseding the 5 PM start of `20260928130000`); pages show it with `nairobiTimeRange()` as “6:00 am – 6:00 am next day”.
-- Check whether migrations have been applied in the target Supabase project before attempting to apply or replay them. Do not modify live Supabase data or apply migrations without the user's authorization.
+Overview · Orders · Inventory · Events & tickets (Create event, Tickets — activity, passes,
+payments & refunds via `refund_event_order` — Vendors, Investors) · Gate scanner (phones
+only). Admin accounts (2026-10-03): `meatsoko247@gmail.com` (the user's), a demo admin
+(`dem…@meatsokogroup.com`, **to delete**) and an `apn…@gmail.com` admin the user hasn't
+identified. Staff password reset: "Forgot password?" on `/login` → `/reset-password`;
+needs `https://event.meatsokogroup.com/reset-password` in Supabase Auth redirect URLs and
+custom SMTP — confirm with the user that both are set.
+
+## Design rules
+
+- **Theme split — don't unify.** Mobile ticketing (event page on phones, `/r`, `/t`,
+  scanner, gate, lookup, watch) keeps the brown "ember & char" theme with dark mode. The
+  store, `/dashboard`, `/login`, `/investors` use the store theme (cream `#f6f3ed`, ink
+  `#171717`, red `#d32f3b`). Store tokens come from the `.storefront` / `.dash` wrappers,
+  never `:root`. The desktop event page (`.app.wide-event-shell`, ≥900px) forces light
+  tokens. (User, 2026-09-30: "keep the brown theme in mobile ticketing".)
+- Brand: `public/images/brand/meatsoko-logo-mark.png` (bars, headers/footer) and
+  `meatsoko-logo.png` (with tagline, login). No "M" mark any more.
+- Never invent prices, figures or claims. Unpriced merch stays "Price coming soon".
+- Verify every UI change at desktop and 390px widths.
+
+## Payments, email, money
+
+- Paystack for everything (tickets `MT…`, merch `MS…`, vendors `MV…`). The account is
+  shared with the WooCommerce store, which owns the only webhook — **don't move it**.
+  Confirmation = buyer's return (`paystack-verify`, `merch-order`) + `paystack-reconcile`
+  every 5 min (pg_cron). InlineJS popup when `NEXT_PUBLIC_PAYSTACK_POPUP=on`, else redirect.
+- Daraja/M-Pesa STK is hidden unless `NEXT_PUBLIC_DARAJA_ENABLED=on` (Safaricom hasn't
+  enabled M-Pesa Express).
+- All email goes through `supabase/functions/_shared/resend.ts`. Money is stored in KSh;
+  merch is priced in USD and charged in KES at `merch_fx_rates`.
+
+## Deploying (in this order when a change spans them)
+
+1. Migrations: `supabase migration list --linked`, then `supabase db push --linked` (forward
+   only; every new SECURITY DEFINER function revokes EXECUTE from PUBLIC).
+2. Edge Functions: `supabase functions deploy <name>` (each changed one, plus any that
+   import a changed `_shared/` file).
+3. Frontend: merge to `main` and push (Vercel, ~80 s). Then check the live page with curl.
+
+Live data changes go in a migration (with a comment saying why), applied only with the
+user's say-so. Use `supabase db query --linked "<sql>"` for read-only checks.
+
+## Checking work
+
+- `npm run lint`, `npx tsc --noEmit -p .`, and `npm run build` **in a temporary git
+  worktree** (so the user's dev server isn't disturbed): `git worktree add --detach <dir>
+  HEAD`, symlink `node_modules`, copy `.env`/`.env.local`, build, remove.
+- Edge Functions: `deno check <fn>/index.ts` (or `docker run --rm -v
+  $PWD/supabase/functions:/f -w /f denoland/deno:2.6.3 deno check <fn>/index.ts`).
+- **Integration harness: `./tests/harness/run.sh`** (Docker) — fresh Postgres from
+  `schema.sql` + migrations, real Edge Functions; expect `ok: 238 FAIL: 0`. Add checks
+  for every new function or permission. See `tests/harness/README.md`.
+- Browser checks: Chrome automation tabs run in the background — timers, animation frames
+  and `<video>` loading pause there, so don't treat a stalled animation or video as a bug;
+  check phone layouts with a 390px `<iframe>`. Kill stray `next dev` processes before
+  starting another (`pkill -f "next dev"`); several at once make the browser hang.
+
+## Open items (2026-10-03)
+
+- Delete test reservation `NF-23X5MW` (`0700000000`, still `confirmed`) — approved,
+  `scripts/delete-test-reservation.sql`, needs the user's go-ahead to run.
+- Delete the demo admin; identify the `apn…` admin.
+- Set the YouTube stream ID for online attendance.
+- `NEXT_PUBLIC_MERCH_PAYMENTS=on` + one small real merch purchase, if not done.
+- Price (and add to the merch database) the Hustle Game 21 hoodie.
+- Older docs (`LAUNCH_CHECKLIST.md`, `REMAINING_GAPS.md`, `REMAINING_WORK.md`) still
+  describe the 27 Sep launch — rewrite or archive.
+- `assets/*.mp4` are local originals, not committed.
 
 ## Useful files
 
-- Storefront structure and styling: `src/app/page.tsx`, `src/app/shop/page.tsx`, `src/app/globals.css`, `src/components/StoreChrome.tsx`.
-- Product catalogue and cards: `src/lib/merchandise.ts`, `src/components/MerchandiseCard.tsx`.
-- Event details and layout: `src/app/e/[slug]/page.tsx`, `src/app/events/page.tsx`, `src/components/AppShell.tsx`.
-- Ticket checkout: `src/components/EventCheckout.tsx`.
-- Reservation and platter checkout: `src/components/ReservationForm.tsx`.
-- Admin and Supabase context: `TECHNICAL_DOCUMENTATION.md` (§13: traps and failure drills), `ADMIN_ACCESS.md`, `INTAKE.md`, `REMAINING_GAPS.md`, `REMAINING_WORK.md`, and `LAUNCH_CHECKLIST.md`.
-
-## Working guidance
-
-- Keep merchandise catalog data separate from event-specific preorder items. Merchandise needs its own product, variant, inventory, cart, and checkout design when the user is ready to finalize those details.
-- Keep mobile layouts intentionally compact and verify changes at both mobile and desktop widths.
-- Avoid changing ticketing and reservation business logic as part of storefront work unless the user specifically asks.
-- Preserve existing Supabase order snapshots and transaction values when updating presentation.
-- Never put Supabase secrets or payment credentials in source control.
-- Check the repository status before editing and stage only files relevant to the requested work; this repository can contain user-supplied image assets.
-
-## Merchandise payments (branch `feat/merch-product-page`)
-
-- Schema: `supabase/migrations/20260929120000_merchandise_store.sql` — catalogue, per-size stock with a movement ledger, delivery options/zones, USD→KES rates, orders. Additive; read its header before changing anything.
-  **Applied to the live project 2026-09-29** (together with the pending `20260928100000` platter prices and `20260928130000` event hours). Verified live with the anon key: catalogue readable (6 groups / 22 products / 82 sizes), orders unreadable, every write function returns `42501`, direct table writes blocked by RLS. No FX rate recorded yet, so checkout stays closed.
-- Prices are USD; customers pay KES through Paystack at the rate in `merch_fx_rates`. **No scheduler**: `merch-checkout` refreshes the rate on demand when the stored one is > 6 h old (`_shared/fx.ts`, source open.er-api.com, `MERCH_FX_URL` to change). If the feed fails, the last rate works until 36 h old, then checkout closes. `merch-fx-refresh` (service-role key) forces a refresh by hand.
-- Edge Functions: `merch-checkout` (creates the order, opens Paystack), `merch-order` (buyer view by reference or access_token; verifies with Paystack if the webhook is late), `merch-fx-refresh`. `paystack-webhook` routes `MS…` references to merch and everything else (`MT…`) down the unchanged ticket path.
-- Storefront: `/checkout` → Paystack → `/checkout/complete?reference=…` → `/order/<access_token>`. Pay stays disabled until `NEXT_PUBLIC_MERCH_PAYMENTS=on`.
-- Go-live order: ~~apply the migration~~ (done) → ~~deploy the three merch functions and `paystack-webhook`~~ (done 2026-09-29: merch-checkout v1, merch-order v1, merch-fx-refresh v1, paystack-webhook v2 — v1 is the pre-merch rollback point) → ~~set `PAYSTACK_SECRET_KEY`~~ (done; `sk_live`) → ~~first rate~~ (done 2026-09-29: 129.5491 via a live quote) → set `NEXT_PUBLIC_MERCH_PAYMENTS=on` in Vercel → one small real purchase.
-- The frontend catalogue still comes from `src/lib/merchandise.ts`; the database is seeded from it and re-prices every order, so the two must agree until the storefront reads from the database.
-
-## Email and payment, shared across tickets, reservations and merchandise
-
-- **Email:** every message goes through `supabase/functions/_shared/resend.ts` (`sendEmail`): ticket email, reservation pass (QR attached as `cid:reservation-qr`), organiser reservation alert, merch buyer confirmation, merch organiser alert. Same `RESEND_API_KEY` / `TICKET_EMAIL_FROM`. Merch organiser alerts go to the `MERCH_NOTIFY_EMAIL` secret (comma-separated; unset = no alert).
-- **Payment:** tickets (`stk-push`), reservation preorders (`reserve`) and merch (`merch-checkout`) all initialise Paystack without a `channels` list (every method enabled on the account — card, M-Pesa, etc.) and return `accessCode`; the pages open Paystack InlineJS as a popup (`src/lib/paystack-popup.ts`), fall back to the hosted redirect if the script is blocked, and ask the server before assuming a closed popup means unpaid.
-- **Daraja (direct M-Pesa STK)** is hidden in the UI unless `NEXT_PUBLIC_DARAJA_ENABLED=on` — Safaricom has not enabled M-Pesa Express on the shortcode. The code path is intact.
-
-## Paystack webhook is shared — confirmations come from reconciliation
-
-- The Paystack account is shared with the WooCommerce store at `assets.meatsoko.com`; its single live webhook points there (`/wc-api/Tbz_WC_Paystack_Webhook/`). **Do not move it** — that would break the WooCommerce store. Our `paystack-webhook` therefore receives nothing from live Paystack.
-- Payments are confirmed (1) on the buyer's return — `merch-order` / `paystack-verify` verify with Paystack — and (2) by `paystack-reconcile`, run every 5 min by pg_cron (`20260929150000_paystack_reconcile_cron.sql`), which asks Paystack about pending MS/MT orders created 2 min – 3 h ago. It needs no key and rate-limits itself (6 runs / 10 min).
-- Longer term: a separate Paystack business for events/merch would give its own webhook and payout reporting.
-
-## Booking takeover fix (LIVE since 2026-09-29, PR #8)
-
-- `reserve`: a booking is keyed on **phone + email** (since 2026-09-29, `20260929170000_booking_per_phone_and_email.sql`: unique `(event_id, phone, lower(email))` replaced `unique (event_id, phone)`). Same phone + different email → a **new, separate booking** with its own number and pass; the existing booking is untouched (a shared handset can book for several people). Same phone + same email (any case) → amended, but the pass token is **never returned**; it is emailed to the address on the booking. New bookings return their own token. `phone_in_use` is no longer returned (the form still understands it).
-- Deployed 2026-09-29: migration first, then `reserve`. Local harness 52/52; not yet exercised live with a real second booking.
-- **General Admission first, tables as an upgrade (LIVE 2026-09-29, `nyamafest-main`, migration `20260929180000`).** An event with an active `reservation_types.is_general_admission` type shows `GeneralAdmissionForm` (free, 1 person) instead of `ReservationForm`; the booking form can then only issue/amend that free ticket (`create_reservation` returns `upgrade_required` / `already_booked`). Tables are bought via `upgrade-reservation`, authorised by the pass `access_token` only; `start_reservation_upgrade` creates a pending order (+`reservation_upgrades` row, 30-min seat hold) and `confirm_paystack_payment` applies it on payment — same number/token/QR, headcount = table size. A second paid upgrade is flagged for refund. Local harness 111/111; live probes checked; no real end-to-end purchase yet.
-- **"Get tickets" panel (branch `feat/ticket-panel`, 2026-09-30).** `GetTicketsPanel` replaces the free-ticket form on General Admission events: GA + tables in one list, details after a pick, one button. Choosing a table sends `table_type_id` to `reserve`, which creates the free ticket and — only for a booking it just CREATED — starts the upgrade via `_shared/table-upgrade.ts` (shared with `upgrade-reservation`). An existing booking matched by phone + email gets `upgrade.error = "existing_booking"`, never an upgrade. Event page adds facts/trust strip, share bar, tabs (`events.lineup`, `events.table_plan_url`, migration `20260930120000`), and `/ticket-terms`. Harness 123/123.
-- `lookup` and `reservation-lookup` never return pass/QR tokens: they email passes to the address on the booking/order and reply `{found, emailed, sent_to (masked), no_email}`. `LookupForm` shows "check your email".
-- Deployed with the merge of PR #8 (`ec026d8`): Vercel first, then `reserve`, `lookup`, `reservation-lookup`. Verified live: takeover attempt on a known phone → `409 phone_in_use`, booking unchanged; lookups reply with counts only; `/lookup` renders the email-me flow.
-- DB lock-down (`20260929160000_lock_down_open_functions.sql`) **is applied** and independent of the merge.
+| | |
+|---|---|
+| Store | `src/app/page.tsx`, `src/app/shop/`, `src/components/StoreChrome.tsx`, `src/components/store/`, `src/lib/merchandise.ts` |
+| Event page & booking | `src/app/e/[slug]/page.tsx`, `src/components/GetTicketsPanel.tsx`, `TableUpgrade.tsx`, `PlatterAddons.tsx`, `VendorSignup.tsx`, `ReservationForm.tsx`, `EventCheckout.tsx` |
+| Line-up | `src/app/events/page.tsx`, `src/components/EventTicket.tsx`, `src/lib/ticket-event.ts`, `src/lib/event-time.ts` (`nairobiTimeRange`) |
+| Investors | `src/components/InvestorsLanding.tsx`, `InvestorForm.tsx`, `src/components/dashboard/InvestorsBoard.tsx` |
+| Dashboard | `src/app/dashboard/`, `src/components/dashboard/` |
+| Styles | `src/app/globals.css` (one file; sections are commented) |
+| Server | `supabase/functions/*`, `supabase/functions/_shared/*`, `supabase/migrations/*` |
+| Docs | `TECHNICAL_DOCUMENTATION.md` (§13 traps: CORS/EarlyDrop, Edge auth), `ADMIN_ACCESS.md`, `INTAKE.md`, `DARAJA_PRODUCTION.md` |

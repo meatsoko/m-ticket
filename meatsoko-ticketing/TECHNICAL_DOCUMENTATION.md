@@ -81,7 +81,7 @@ admin_users and admin_audit support access and change history
 
 The migration history includes rate limiting and inventory availability, RSVP/reservation and preorder support, guest email requirements, duplicate-email protection, admission locking, and Paystack payment/provider fields and confirmation RPC. See the dated migration files for exact DDL and constraints.
 
-**Schema source warning:** `supabase/schema.sql` is a historical bootstrap snapshot and is not aligned with the full migration sequence or current reservation/preorder and Paystack behavior. For an existing project, apply ordered migrations. Do not use the snapshot as a production restore/bootstrap until it has been reconciled and reviewed.
+**Schema source:** `supabase/schema.sql` is the original core schema — the base layer. A fresh database is that file followed by every migration in order (exactly what `tests/harness/run.sh` builds). The live project already has it; deploy changes there only with `supabase db push`.
 
 Amounts are represented as KES in the application/database. Paystack initialization and verification use the provider's smallest currency unit and compare the verified transaction amount with the server-calculated order amount. Client-supplied totals are not authoritative.
 

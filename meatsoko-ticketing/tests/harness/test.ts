@@ -1,0 +1,871 @@
+// Drives the real Edge Function files against PostgREST + Postgres.
+// Only external services are faked: Paystack, the FX feed and Resend.
+const JWT_SECRET = "test-secret-test-secret-test-secret-00";
+const b64url = (b: Uint8Array | string) => btoa(typeof b === "string" ? b : String.fromCharCode(...b)).replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
+async function jwt(payload: Record<string, unknown>) {
+  const head = b64url(JSON.stringify({ alg: "HS256", typ: "JWT" })), body = b64url(JSON.stringify(payload));
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(JWT_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${head}.${body}`)));
+  return `${head}.${body}.${b64url(sig)}`;
+}
+const SERVICE_KEY = await jwt({ role: "service_role", exp: 4102444800 });
+Deno.env.set("SUPABASE_URL", "http://supabase.test");
+Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", SERVICE_KEY);
+Deno.env.set("SUPABASE_ANON_KEY", await jwt({ role: "anon", exp: 4102444800 }));
+Deno.env.set("PAYSTACK_SECRET_KEY", "sk_test_fake");
+Deno.env.set("APP_URL", "https://event.meatsokogroup.com");
+Deno.env.set("RESEND_API_KEY", "re_test_fake");
+Deno.env.set("TICKET_EMAIL_FROM", "MeatSoko <tickets@example.test>");
+Deno.env.set("MERCH_NOTIFY_EMAIL", "orders@example.test, owner@example.test");
+
+const paystack = new Map<string, { amount: number; currency: string; status: string }>();
+const sentEmails: any[] = [];
+let feedCalls = 0;
+const realFetch = globalThis.fetch;
+globalThis.fetch = async (input: any, init?: any) => {
+  const req = new Request(input, init);
+  const url = new URL(req.url);
+  if (url.host === "supabase.test") {
+    const target = `http://mt-harness-rest:3000${url.pathname.replace(/^\/rest\/v1/, "")}${url.search}`;
+    return realFetch(new Request(target, { method: req.method, headers: req.headers, body: req.body, duplex: "half" } as any));
+  }
+  if (url.host === "api.paystack.co" && url.pathname === "/transaction/initialize") {
+    const b = await req.json();
+    paystack.set(b.reference, { amount: b.amount, currency: b.currency, status: "success" });
+    return Response.json({ status: true, data: { authorization_url: `https://checkout.paystack.test/${b.reference}`, reference: b.reference } });
+  }
+  if (url.host === "api.paystack.co" && url.pathname.startsWith("/transaction/verify/")) {
+    const ref = decodeURIComponent(url.pathname.split("/").pop()!);
+    const t = paystack.get(ref);
+    if (!t) return Response.json({ status: false, message: "Transaction reference not found" }, { status: 400 });
+    return Response.json({ status: true, data: { reference: ref, status: t.status, amount: t.amount, currency: t.currency } });
+  }
+  if (url.host === "open.er-api.com") { feedCalls++; return Response.json({ rates: { KES: 129.5 }, time_last_update_unix: Math.floor(Date.now() / 1000) - 20 * 3600 }); }
+  if (url.host === "api.resend.com") { sentEmails.push(await req.json()); return Response.json({ id: "email_1" }); }
+  throw new Error(`unexpected fetch in test: ${req.url}`);
+};
+
+const handlers: Record<string, (r: Request) => Promise<Response>> = {};
+let loading = "";
+(Deno as any).serve = (h: any) => { handlers[loading] = h; return { finished: Promise.resolve() }; };
+for (const [name, path] of [["checkout", "merch-checkout"], ["order", "merch-order"], ["webhook", "paystack-webhook"], ["fx", "merch-fx-refresh"], ["reconcile", "paystack-reconcile"], ["reserve", "reserve"], ["reslookup", "reservation-lookup"], ["lookup", "lookup"], ["verify", "paystack-verify"], ["upgrade", "upgrade-reservation"], ["bytoken", "reservation-by-token"], ["vendor", "vendor-apply"], ["oreg", "online-register"], ["oacc", "online-access"], ["addon", "platter-addon"], ["inv", "investor-register"]]) {
+  loading = name; await import(`/fns/${path}/index.ts`);
+}
+const call = async (name: string, body: unknown, headers: Record<string, string> = {}) => {
+  const res = await handlers[name](new Request("http://fn.test/", { method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.9", ...headers }, body: typeof body === "string" ? body : JSON.stringify(body) }));
+  return { status: res.status, body: await res.json().catch(() => null) };
+};
+let failures = 0;
+const check = (label: string, ok: boolean, detail: unknown = "") => { if (!ok) failures++; console.log(`${ok ? "ok  " : "FAIL"} ${label}${ok ? "" : "  " + JSON.stringify(detail)}`); };
+
+const customer = { first_name: "Amina", last_name: "Otieno", phone: "0712 345 678", email: "amina@example.test" };
+
+// 1. exchange rate: self-refreshing
+let r = await call("fx", {}, { authorization: "Bearer not-the-key" });
+check("manual refresher rejects a non-service caller (401)", r.status === 401, r);
+r = await call("checkout", { action: "quote" });
+check("quote on an empty rate table fetches and records a rate", r.status === 200 && r.body?.rate === 129.5 && feedCalls === 1, { r, feedCalls });
+r = await call("checkout", { action: "quote" });
+check("second quote within 6 h reuses it (no refetch, despite a 20 h-old feed timestamp)", r.status === 200 && feedCalls === 1, { r, feedCalls });
+// 2. refusals
+r = await call("checkout", { customer: { ...customer, phone: "12345" }, delivery: { code: "event" }, lines: [{ slug: "green-hoodie", size: "M", qty: 1 }] });
+check("bad phone -> 400 invalid_phone", r.status === 400 && r.body?.error === "invalid_phone", r);
+r = await call("checkout", { customer, delivery: { code: "event" }, lines: [{ slug: "white-cap", size: "One size", qty: 1 }] });
+check("unpriced cap -> 409 unpriced", r.status === 409 && r.body?.error === "unpriced", r);
+r = await call("checkout", { customer, delivery: { code: "event" }, lines: [{ slug: "green-hoodie", size: "XXXL", qty: 1 }] });
+check("unknown size -> 409 unavailable_item", r.status === 409 && r.body?.error === "unavailable_item", r);
+r = await call("checkout", { customer, delivery: { code: "standard", zone: "Nairobi CBD", address: "Moi Avenue" }, lines: [{ slug: "red-t-shirt", size: "L", qty: 1 }] });
+check("standard delivery charges the area fee (Nairobi CBD +$2)", r.status === 200 && r.body?.total_usd === 19, r);
+
+// 3. happy path: 2 x green hoodie M ($90) + 1 x red tee L ($17) at 129.50, collect at NyamaFest
+r = await call("checkout", { customer, delivery: { code: "event" }, lines: [{ slug: "green-hoodie", size: "M", qty: 2 }, { slug: "red-t-shirt", size: "L", qty: 1 }] });
+check("checkout opens Paystack", r.status === 200 && !!r.body?.authorizationUrl, r);
+const ref: string = r.body?.reference;
+check("reference is MS + 32 hex", /^MS[a-f0-9]{32}$/.test(ref ?? ""), ref);
+check("Paystack asked for KSh 25,512 in cents, currency KES", paystack.get(ref)?.amount === 2551200 && paystack.get(ref)?.currency === "KES", paystack.get(ref));
+
+r = await call("order", { reference: ref });
+check("return page verifies and confirms (paid)", r.status === 200 && r.body?.payment_status === "paid", r.body);
+check("order response carries no phone/email", !JSON.stringify(r.body).includes("amina@") && !JSON.stringify(r.body).includes("254712"), r.body);
+const buyerMail = sentEmails.find((m) => m.to?.[0] === "amina@example.test");
+const orgMail = sentEmails.find((m) => m.to?.includes("orders@example.test"));
+check("buyer confirmation sent, in USD with one KSh line", !!buyerMail && /MS-/.test(buyerMail.subject) && buyerMail.html.includes("$197") && buyerMail.html.includes("KSh 25,512"), buyerMail?.subject);
+check("organiser alert sent to both MERCH_NOTIFY_EMAIL addresses with phone + sizes", !!orgMail && orgMail.to.length === 2 && orgMail.text.includes("254712345678") && orgMail.text.includes("size M"), orgMail);
+check("exactly two emails for the order", sentEmails.length === 2, sentEmails.length);
+const token: string = r.body?.access_token;
+
+// 4. webhook arriving after the return page: routed to merch, idempotent
+const signed = async (payload: unknown) => {
+  const raw = JSON.stringify(payload);
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode("sk_test_fake"), { name: "HMAC", hash: "SHA-512" }, false, ["sign"]);
+  const sig = Array.from(new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(raw))), (b) => b.toString(16).padStart(2, "0")).join("");
+  return { raw, sig };
+};
+let w = await signed({ event: "charge.success", data: { reference: ref } });
+r = await call("webhook", w.raw, { "x-paystack-signature": w.sig });
+check("webhook for the MS reference -> 200, no repeat emails", r.status === 200 && sentEmails.length === 2, { r, emails: sentEmails.length });
+w = await signed({ event: "charge.success", data: { reference: "MT" + "0".repeat(32) } });
+r = await call("webhook", w.raw, { "x-paystack-signature": w.sig });
+check("webhook for an MT (ticket) reference still takes the ticket path (unknown -> 200)", r.status === 200, r);
+r = await call("webhook", w.raw, { "x-paystack-signature": "0".repeat(128) });
+check("webhook with a bad signature -> 401", r.status === 401, r);
+
+// 4b. a rate older than 6 h is refreshed on the next quote
+await fetch(`http://supabase.test/rest/v1/merch_fx_rates?as_of=not.is.null`, { method: "PATCH", headers: { apikey: SERVICE_KEY, authorization: `Bearer ${SERVICE_KEY}`, "content-type": "application/json" }, body: JSON.stringify({ as_of: new Date(Date.now() - 7 * 3600_000).toISOString() }) });
+r = await call("checkout", { action: "quote" });
+check("rate older than 6 h -> refreshed on the next quote", r.status === 200 && feedCalls === 2, { r, feedCalls });
+
+// 5. order page by token
+r = await call("order", { access_token: token });
+check("order page by access_token", r.status === 200 && r.body?.order_number && r.body?.items?.length === 2 && Number(r.body?.total_kes) === 25512, r.body);
+r = await call("order", { access_token: "0".repeat(32) });
+check("unknown token -> 404", r.status === 404, r);
+
+// 6. an abandoned payment releases its hold
+r = await call("checkout", { customer: { ...customer, phone: "0712345679" }, delivery: { code: "pickup" }, lines: [{ slug: "red-polo", size: "S", qty: 1 }] });
+const ref2 = r.body?.reference;
+paystack.get(ref2)!.status = "abandoned";
+r = await call("order", { reference: ref2 });
+check("abandoned at Paystack -> order failed, hold released", r.body?.payment_status === "failed", r.body);
+
+// 6b. paid but never came back: only the reconciler confirms it
+const emailsBefore = sentEmails.length;
+r = await call("checkout", { customer: { ...customer, phone: "0712345680", email: "late@example.test" }, delivery: { code: "event" }, lines: [{ slug: "red-t-shirt", size: "M", qty: 1 }] });
+const lateRef = r.body?.reference;
+// the buyer pays on Paystack, then closes the tab: no merch-order call, no webhook
+await fetch(`http://supabase.test/rest/v1/merch_orders?paystack_reference=eq.${lateRef}`, { method: "PATCH", headers: { apikey: SERVICE_KEY, authorization: `Bearer ${SERVICE_KEY}`, "content-type": "application/json" }, body: JSON.stringify({ created_at: new Date(Date.now() - 5 * 60_000).toISOString() }) });
+r = await call("reconcile", {});
+check("reconciler confirms a paid order nobody came back for", r.status === 200 && r.body?.outcome?.["merch:confirmed"] === 1, r.body);
+r = await call("order", { access_token: (await (await fetch(`http://supabase.test/rest/v1/merch_orders?select=access_token&paystack_reference=eq.${lateRef}`, { headers: { apikey: SERVICE_KEY, authorization: `Bearer ${SERVICE_KEY}` } })).json())[0].access_token });
+check("that order is now paid", r.body?.payment_status === "paid", r.body?.payment_status);
+check("reconciler sent the buyer email and the organiser alert", sentEmails.length === emailsBefore + 2, sentEmails.length - emailsBefore);
+r = await call("reconcile", {});
+check("next run leaves it alone (no repeat emails)", r.status === 200 && !r.body?.outcome?.["merch:confirmed"] && sentEmails.length === emailsBefore + 2, r.body);
+let limited = 0; for (let i = 0; i < 6; i++) { const x = await call("reconcile", {}); if (x.status === 429) limited++; }
+check("reconciler rate-limits itself (6 per 10 min)", limited >= 1, limited);
+
+// 7. the event emails, now sent through the shared sender
+const { sendTicketEmail } = await import("/fns/_shared/email.ts");
+const { sendReservationEmail } = await import("/fns/_shared/reservation-email.ts");
+const { notifyOrganizer } = await import("/fns/_shared/notify.ts");
+sentEmails.length = 0;
+let out: any = await sendTicketEmail({ to: "g@example.test", eventName: "NyamaFest", venue: "Thika", startsAt: null, tickets: [{ token: "a".repeat(32), typeName: "Regular", bundleQty: 1 }] });
+check("ticket email via shared sender", out.sent && sentEmails[0]?.subject === "Your NyamaFest ticket" && sentEmails[0].html.includes("/t/" + "a".repeat(32)), { out, m: sentEmails[0]?.subject });
+out = await sendReservationEmail({ to: "r@example.test", guestName: "Wanjiku Mwangi", reservationNumber: "NF-ABC123", partySize: 4, typeName: "Family", expectedArrival: null, eventName: "NyamaFest", eventVenue: "Thika", eventStartsAt: null, passUrl: "https://event.meatsokogroup.com/r/" + "b".repeat(32), preorder: [], amountKes: 0, paid: true, contactPhone: null });
+const resMail = sentEmails[1];
+check("reservation email keeps its QR attachment (cid reservation-qr)", out.sent && resMail?.subject === "NyamaFest — reservation NF-ABC123" && resMail.attachments?.[0]?.content_id === "reservation-qr" && resMail.attachments[0].content.length > 100, { out, subject: resMail?.subject, att: resMail?.attachments?.[0]?.content_id });
+const results = await notifyOrganizer({ email: "org@example.test", whatsapp: null }, { reservationNumber: "NF-ABC123", guestName: "Wanjiku Mwangi", phone: "254712345678", email: "r@example.test", partySize: 4, expectedArrival: null, amountKes: 0, paid: true, eventName: "NyamaFest" } as any);
+check("organiser reservation alert via shared sender", JSON.stringify(results).includes("email:sent") && sentEmails[2]?.to?.[0] === "org@example.test", { results });
+Deno.env.delete("RESEND_API_KEY");
+out = await sendTicketEmail({ to: "g@example.test", eventName: "X", venue: null, startsAt: null, tickets: [] });
+check("no RESEND_API_KEY -> not_configured, nothing sent", !out.sent && out.reason === "not_configured" && sentEmails.length === 3, out);
+
+// 8. booking takeover and the function lock-down
+Deno.env.set("RESEND_API_KEY", "re_test_fake");
+const svc = { apikey: SERVICE_KEY, authorization: `Bearer ${SERVICE_KEY}`, "content-type": "application/json", prefer: "return=representation" };
+const ev = (await (await fetch("http://supabase.test/rest/v1/events", { method: "POST", headers: svc, body: JSON.stringify({ name: "NyamaFest Test", slug: "nf-test", starts_at: new Date(Date.now() + 9 * 864e5).toISOString(), ends_at: new Date(Date.now() + 10 * 864e5).toISOString(), status: "live", reservation_mode: "free" }) })).json())[0];
+const guest = { event_id: ev?.id, guest_name: "Wanjiru Kamau", phone: "0711111111", email: "wanjiru@example.test", accompanying_guests: 1 };
+sentEmails.length = 0;
+r = await call("reserve", guest);
+check("new booking returns its own pass token", r.status === 200 && /^[a-f0-9]{32}$/.test(r.body?.access_token ?? ""), r.body);
+const ownToken = r.body?.access_token;
+r = await call("reserve", { ...guest, guest_name: "Friend Otieno", email: "friend@example.test", accompanying_guests: 0 });
+check("same phone, different email -> a NEW booking with its own token", r.status === 200 && /^[a-f0-9]{32}$/.test(r.body?.access_token ?? "") && r.body?.access_token !== ownToken && !r.body?.updated, r.body);
+const friendToken = r.body?.access_token;
+check("the friend's pass is emailed to the friend", sentEmails.at(-1)?.to?.[0] === "friend@example.test", sentEmails.at(-1)?.to);
+const rows = await (await fetch(`http://supabase.test/rest/v1/reservations?select=guest_name,email,party_size,access_token,reservation_number&event_id=eq.${ev?.id}&order=created_at`, { headers: svc })).json();
+const row = rows.find((x: any) => x.access_token === ownToken);
+check("two bookings on one phone, distinct numbers", rows.length === 2 && rows[0].reservation_number !== rows[1].reservation_number, rows.map((x: any) => x.reservation_number));
+check("the original booking was not touched", row?.guest_name === "Wanjiru Kamau" && row?.email === "wanjiru@example.test" && row?.party_size === 2, row);
+r = await call("reserve", { ...guest, guest_name: "Friend Otieno", email: "FRIEND@example.test", accompanying_guests: 2 });
+check("friend amends own booking (case-insensitive), no token returned", r.status === 200 && r.body?.updated === true && !("access_token" in (r.body ?? {})), r.body);
+const rows2 = await (await fetch(`http://supabase.test/rest/v1/reservations?select=guest_name,email,party_size,access_token&event_id=eq.${ev?.id}`, { headers: svc })).json();
+check("amend hit the friend's row only", rows2.length === 2 && rows2.find((x: any) => x.access_token === friendToken)?.party_size === 3 && rows2.find((x: any) => x.access_token === ownToken)?.party_size === 2, rows2.map((x: any) => [x.email, x.party_size]));
+const mailsBefore = sentEmails.length;
+r = await call("reserve", { ...guest, email: "Wanjiru@Example.test", accompanying_guests: 3 });
+check("same phone + same email (any case) amends, but returns NO token", r.status === 200 && r.body?.updated === true && !("access_token" in (r.body ?? {})), r.body);
+check("the amended pass is emailed to the address on the booking", sentEmails.length === mailsBefore + 1 && sentEmails.at(-1)?.to?.[0]?.toLowerCase() === "wanjiru@example.test", sentEmails.at(-1)?.to);
+r = await call("reslookup", { phone: "0711111111" });
+check("lookup by phone emails the pass and returns no token or number", r.status === 200 && r.body?.found === 2 && r.body?.emailed === 2 && r.body?.sent_to?.map((x: string) => x.toLowerCase()).includes("w•••@example.test") && !JSON.stringify(r.body).includes(ownToken) && !JSON.stringify(r.body).includes("NF-"), r.body);
+check("lookup emails each pass to its own booking's address", sentEmails.slice(-2).map((m: any) => m.to?.[0]?.toLowerCase()).sort().join() === "friend@example.test,wanjiru@example.test", sentEmails.slice(-2).map((m: any) => m.to));
+r = await call("lookup", { phone: "0711111111" });
+check("ticket lookup replies with counts only", r.status === 200 && r.body?.found === 0 && Array.isArray(r.body?.sent_to) && !("tickets" in r.body), r.body);
+
+const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+const authedKey = await jwt({ role: "authenticated", sub: crypto.randomUUID(), exp: 4102444800 });
+const rpc = async (fn: string, body: unknown, key = anonKey) => {
+  const res = await fetch(`http://supabase.test/rest/v1/rpc/${fn}`, { method: "POST", headers: { apikey: key, authorization: `Bearer ${key}`, "content-type": "application/json" }, body: JSON.stringify(body) });
+  return { status: res.status, body: await res.json().catch(() => null) };
+};
+for (const [fn, body] of [
+  ["create_reservation", { p_event_id: ev?.id, p_guest_name: "X", p_phone: "254722222222", p_email: "x@example.test", p_accompanying: 0, p_arrival: null, p_preorders: [], p_source: "web", p_reservation_type_id: null }],
+  ["confirm_payment", { p_checkout_request_id: "ws_CO_1", p_receipt: "X", p_amount: 1 }],
+  ["resolve_pass", { p_token: ownToken }],
+  ["rate_limit_hit", { p_bucket: "x", p_limit: 1, p_window_seconds: 60, p_increment: true }],
+  ["gen_reservation_number", { p_prefix: "NF" }],
+  ["rate_limit_gc", {}],
+  ["refund_order", { p_order_id: crypto.randomUUID(), p_reason: "x", p_reversal_ref: null }],
+] as [string, unknown][]) {
+  const a = await rpc(fn, body);
+  check(`anon -> ${fn}: permission denied`, a.body?.code === "42501", a);
+}
+const au = await rpc("refund_order", { p_order_id: crypto.randomUUID(), p_reason: "x", p_reversal_ref: null }, authedKey);
+check("signed-in user still reaches refund_order (which refuses non-admins itself)", au.status === 200 && au.body?.result === "forbidden", au);
+const avail = await rpc("availability", { p_event_id: ev?.id });
+check("availability stays public for the event page", avail.status === 200, avail);
+
+// 9. General Admission + table upgrade (migration 20260929180000)
+console.log("\n--- general admission + table upgrade ---");
+let ipN = 0;
+const ip = () => ({ "x-forwarded-for": `198.51.100.${++ipN % 250}` });
+const post = async (path: string, body: unknown) => (await (await fetch(`http://supabase.test/rest/v1/${path}`, { method: "POST", headers: svc, body: JSON.stringify(body) })).json());
+const get = async (path: string) => (await (await fetch(`http://supabase.test/rest/v1/${path}`, { headers: svc })).json());
+const patch = async (path: string, body: unknown) => fetch(`http://supabase.test/rest/v1/${path}`, { method: "PATCH", headers: svc, body: JSON.stringify(body) });
+const svcRpc = async (fn: string, body: unknown) => rpc(fn, body, SERVICE_KEY);
+
+const gaEv = (await post("events", { name: "NyamaFest GA", slug: "nf-ga", starts_at: new Date(Date.now() + 9 * 864e5).toISOString(), ends_at: new Date(Date.now() + 10 * 864e5).toISOString(), status: "live", reservation_mode: "optional_preorder", payments_enabled: true, capacity: 60 }))[0];
+const eb = new Date(Date.now() + 5 * 864e5).toISOString();
+const [basicP, modP, bigP] = await post("preorder_items", [
+  { event_id: gaEv.id, name: "Basic Family Platter", price_kes: 1945, compare_at_price_kes: 2593, early_bird_ends_at: eb, max_per_reservation: 1, position: 1 },
+  { event_id: gaEv.id, name: "Moderate Family Platter", price_kes: 4538, compare_at_price_kes: 5187, early_bird_ends_at: eb, max_per_reservation: 1, position: 2 },
+  { event_id: gaEv.id, name: "Big Family Platter", price_kes: 6484, compare_at_price_kes: 7132, early_bird_ends_at: eb, max_per_reservation: 1, position: 3 },
+]);
+const rt = (name: string, size: number, pos: number, platter: string | null, ga = false) => ({ event_id: gaEv.id, name, fixed_party_size: size, min_party_size: 1, max_party_size: ga ? 1 : null, position: pos, included_preorder_item_id: platter, is_general_admission: ga });
+const [gaT, basicT, modT, bigT] = await post("reservation_types", [
+  rt("General Admission", 1, 0, null, true),
+  rt("Basic Family Table", 3, 1, basicP?.id), rt("Moderate Family Table", 7, 2, modP?.id), rt("Big Family Table", 10, 3, bigP?.id),
+]);
+check("GA fixture created", !!gaT?.id && !!bigT?.id, { gaT, bigT });
+const badGa = await fetch("http://supabase.test/rest/v1/reservation_types", { method: "POST", headers: svc, body: JSON.stringify({ event_id: gaEv.id, name: "Bad GA", fixed_party_size: 2, min_party_size: 1, is_general_admission: true, is_active: false }) });
+check("a General Admission type must be exactly one person with no platter", badGa.status === 400, badGa.status);
+
+const guestN = (n: number) => ({ event_id: gaEv.id, guest_name: `Guest ${n}`, phone: `07220000${String(n).padStart(2, "0")}`, email: `guest${n}@example.test`, reservation_type_id: gaT.id, accompanying_guests: 0, preorders: [], provider: "paystack" });
+const ticket = async (n: number) => (await call("reserve", guestN(n), ip())).body;
+const booking = async (token: string) => (await get(`reservations?select=id,reservation_number,access_token,party_size,status,order_id,reservation_type_id&access_token=eq.${token}`))[0];
+const attendance = async () => (await svcRpc("expected_attendance", { p_event_id: gaEv.id })).body?.expected_attendance;
+
+// --- free ticket ---
+sentEmails.length = 0;
+const t1 = await ticket(1);
+check("GA: free ticket issued with its own pass, no payment", /^[a-f0-9]{32}$/.test(t1?.access_token ?? "") && t1?.payment_required === false && t1?.amount_kes === 0 && t1?.party_size === 1, t1);
+let b1 = await booking(t1.access_token);
+check("GA: booking is General Admission, 1 person, confirmed, no order", b1?.reservation_type_id === gaT.id && b1?.party_size === 1 && b1?.status === "confirmed" && b1?.order_id === null, b1);
+const gaMail = sentEmails.at(-1);
+check("GA: pass emailed with QR attachment and an upgrade link", gaMail?.to?.[0] === "guest1@example.test" && gaMail?.attachments?.[0]?.content_id === "reservation-qr" && gaMail?.html?.includes(`/r/${t1.access_token}#upgrade`) && gaMail?.text?.includes("General Admission"), { to: gaMail?.to, att: gaMail?.attachments?.length });
+let v = await call("bytoken", { token: t1.access_token });
+check("GA: pass page shows General Admission + 3 upgrade options", v.body?.type_name === "General Admission" && v.body?.upgrade?.available === true && v.body?.upgrade?.options?.map((o: any) => o.party_size).join() === "3,7,10", v.body?.upgrade);
+r = await call("reserve", { ...guestN(1), guest_name: "Guest One Renamed" }, ip());
+b1 = await booking(t1.access_token);
+check("GA: same phone+email re-submit amends name only, returns no token", r.body?.updated === true && !("access_token" in (r.body ?? {})) && b1?.party_size === 1, r.body);
+
+// --- unauthorised routes to a table ---
+r = await call("reserve", { ...guestN(1), reservation_type_id: basicT.id, preorders: [{ preorder_item_id: basicP.id, qty: 1 }] }, ip());
+b1 = await booking(t1.access_token);
+check("GA: table via the booking form (knowing phone+email) refused, booking untouched", r.status === 409 && r.body?.error === "upgrade_required" && b1?.party_size === 1 && b1?.order_id === null && b1?.reservation_type_id === gaT.id, { r: r.body, b1 });
+r = await call("reserve", { ...guestN(2), reservation_type_id: bigT.id }, ip());
+check("GA: new booking straight to a table refused (must start as GA)", r.status === 409 && r.body?.error === "upgrade_required", r.body);
+r = await call("reserve", { ...guestN(2), preorders: [{ preorder_item_id: basicP.id, qty: 1 }] }, ip());
+check("GA: GA booking with a platter attached refused", r.status === 409 && r.body?.error === "upgrade_required", r.body);
+r = await call("upgrade", { access_token: "0".repeat(32), reservation_type_id: basicT.id }, ip());
+check("upgrade: unknown pass token -> 404", r.status === 404 && r.body?.error === "not_found", r);
+r = await call("upgrade", { access_token: b1.reservation_number, reservation_type_id: basicT.id }, ip());
+check("upgrade: booking NUMBER is not accepted as a credential", r.status === 404, r);
+r = await call("upgrade", { phone: guestN(1).phone, email: guestN(1).email, reservation_type_id: basicT.id }, ip());
+check("upgrade: phone + email without the pass -> 404", r.status === 404, r);
+r = await call("upgrade", { access_token: t1.access_token, reservation_type_id: gaT.id }, ip());
+check("upgrade: cannot 'upgrade' to General Admission", r.status === 400 && r.body?.error === "bad_reservation_type", r.body);
+const anonUp = await rpc("start_reservation_upgrade", { p_token: t1.access_token, p_reservation_type_id: basicT.id });
+check("upgrade: anon cannot call start_reservation_upgrade directly", anonUp.body?.code === "42501", anonUp);
+const authUp = await rpc("start_reservation_upgrade", { p_token: t1.access_token, p_reservation_type_id: basicT.id }, authedKey);
+check("upgrade: signed-in user cannot call start_reservation_upgrade directly", authUp.body?.code === "42501", authUp);
+const anonRead = await (await fetch("http://supabase.test/rest/v1/reservation_upgrades?select=id", { headers: { apikey: anonKey, authorization: `Bearer ${anonKey}` } })).json().catch(() => null);
+check("upgrade: reservation_upgrades not readable with the anon key", !Array.isArray(anonRead) || anonRead.length === 0, anonRead);
+
+// --- failed / cancelled payment ---
+const before = await attendance();
+r = await call("upgrade", { access_token: t1.access_token, reservation_type_id: basicT.id }, ip());
+check("upgrade: Basic opens Paystack at the early-bird KSh price", r.status === 200 && !!r.body?.authorizationUrl && r.body?.amount_kes === 1945 && r.body?.party_size === 3, r.body);
+const failRef = r.body?.reference;
+const initBody = paystack.get(failRef);
+check("upgrade: Paystack charged KES 1945 for this reference", initBody?.amount === 194500 && initBody?.currency === "KES", initBody);
+check("upgrade: pending upgrade holds its 2 extra seats", (await attendance()) === before + 2, { before, now: await attendance() });
+paystack.get(failRef)!.status = "abandoned";
+r = await call("verify", { reference: failRef });
+b1 = await booking(t1.access_token);
+check("failed payment: not_paid, booking stays General Admission", r.body?.result === "not_paid" && b1?.party_size === 1 && b1?.order_id === null && b1?.reservation_type_id === gaT.id, { r: r.body, b1 });
+paystack.get(failRef)!.status = "failed";
+r = await call("verify", { reference: failRef });
+b1 = await booking(t1.access_token);
+check("failed payment (declined): booking still General Admission", r.body?.result === "not_paid" && b1?.party_size === 1, r.body);
+
+// --- successful upgrade (new attempt supersedes the failed one) ---
+sentEmails.length = 0;
+r = await call("upgrade", { access_token: t1.access_token, reservation_type_id: basicT.id }, ip());
+const okRef = r.body?.reference;
+const ups = await get(`reservation_upgrades?select=status,order_id&reservation_id=eq.${b1.id}&order=created_at`);
+check("upgrade: newer attempt supersedes the older unpaid one", ups.length === 2 && ups[0].status === "superseded" && ups[1].status === "pending", ups);
+check("upgrade: superseded attempt no longer holds seats (only +2 held)", (await attendance()) === before + 2, await attendance());
+r = await call("verify", { reference: okRef });
+b1 = await booking(t1.access_token);
+check("upgrade paid: confirmed", r.body?.result === "confirmed", r.body);
+check("upgrade paid: SAME booking number and QR token", b1?.reservation_number === t1.reservation_number && b1?.access_token === t1.access_token, b1);
+check("upgrade paid: headcount now 3, type Basic Family Table, order attached", b1?.party_size === 3 && b1?.reservation_type_id === basicT.id && !!b1?.order_id && b1?.status === "confirmed", b1);
+const orderRow = (await get(`orders?select=status,amount_kes,paystack_reference&id=eq.${b1.order_id}`))[0];
+check("upgrade paid: order paid KSh 1945 with the Paystack reference", orderRow?.status === "paid" && Number(orderRow?.amount_kes) === 1945 && orderRow?.paystack_reference === okRef, orderRow);
+const upMail = sentEmails.at(-1);
+check("upgrade paid: updated pass emailed with the table name, platter, PAID, no upgrade link", upMail?.to?.[0] === "guest1@example.test" && upMail?.text?.includes("Basic Family Table") && upMail?.text?.includes("Basic Family Platter") && upMail?.text?.includes("PAID") && !upMail?.html?.includes("#upgrade") && upMail?.attachments?.[0]?.content_id === "reservation-qr", upMail?.text);
+v = await call("bytoken", { token: t1.access_token });
+check("upgrade paid: pass page shows table name, platter paid, no further upgrade", v.body?.type_name === "Basic Family Table" && v.body?.party_size === 3 && v.body?.payment_status === "paid" && v.body?.preorder?.[0]?.name === "Basic Family Platter" && v.body?.general_admission === false && !v.body?.upgrade?.available, v.body);
+r = await call("verify", { reference: okRef });
+check("upgrade paid: verifying again is idempotent (already)", r.body?.result === "already", r.body);
+r = await call("upgrade", { access_token: t1.access_token, reservation_type_id: bigT.id }, ip());
+check("upgrade: a second upgrade is refused (already_upgraded)", r.status === 409 && r.body?.error === "already_upgraded", r.body);
+r = await call("reserve", guestN(1), ip());
+b1 = await booking(t1.access_token);
+check("upgrade: re-submitting the free form cannot downgrade the table", r.body?.updated === true && r.body?.unchanged === true && !("access_token" in (r.body ?? {})) && b1?.party_size === 3 && b1?.reservation_type_id === basicT.id, { r: r.body, b1 });
+// the superseded attempt is now paid after all (an old tab): flagged, never silently applied or ignored
+paystack.get(failRef)!.status = "success";
+r = await call("verify", { reference: failRef });
+const failOrder = (await get(`orders?select=status,paid_at&paystack_reference=eq.${failRef}`))[0];
+b1 = await booking(t1.access_token);
+check("duplicate payment: second paid upgrade -> upgrade_conflict, order flagged for refund, booking unchanged", r.body?.result === "upgrade_conflict" && failOrder?.status === "flagged" && !!failOrder?.paid_at && b1?.party_size === 3, { r: r.body, failOrder });
+
+// --- Moderate and Big ---
+const t2 = await ticket(2), t3 = await ticket(3);
+for (const [t, type, size, price] of [[t2, modT, 7, 4538], [t3, bigT, 10, 6484]] as const) {
+  r = await call("upgrade", { access_token: t.access_token, reservation_type_id: type.id }, ip());
+  const ok1 = r.status === 200 && r.body?.amount_kes === price;
+  r = await call("verify", { reference: r.body?.reference });
+  const b = await booking(t.access_token);
+  check(`upgrade ${type.name}: KSh ${price}, headcount ${size}, same number/token`, ok1 && r.body?.result === "confirmed" && b?.party_size === size && b?.reservation_type_id === type.id && b?.reservation_number === t.reservation_number && b?.access_token === t.access_token, { r: r.body, b });
+}
+
+// --- concurrent upgrades on one ticket ---
+const t4 = await ticket(4);
+const [c1, c2] = await Promise.all([
+  call("upgrade", { access_token: t4.access_token, reservation_type_id: basicT.id }, ip()),
+  call("upgrade", { access_token: t4.access_token, reservation_type_id: modT.id }, ip()),
+]);
+check("concurrent: both attempts open Paystack (one supersedes the other)", c1.status === 200 && c2.status === 200, [c1.body, c2.body]);
+const [v1, v2] = await Promise.all([call("verify", { reference: c1.body?.reference }), call("verify", { reference: c2.body?.reference })]);
+const concResults = [v1.body?.result, v2.body?.result].sort().join();
+const b4 = await booking(t4.access_token);
+const applied = await get(`reservation_upgrades?select=status&reservation_id=eq.${b4.id}&status=eq.applied`);
+check("concurrent: both paid -> exactly one applied, the other flagged", concResults === "confirmed,upgrade_conflict" && applied.length === 1, concResults);
+check("concurrent: headcount is one table's size, not both", b4?.party_size === 3 || b4?.party_size === 7, b4);
+
+// --- capacity ---
+const t5 = await ticket(5), t6 = await ticket(6), t7 = await ticket(7);
+let att = await attendance();
+await patch(`events?id=eq.${gaEv.id}`, { capacity: att + 5 });
+r = await call("upgrade", { access_token: t5.access_token, reservation_type_id: bigT.id }, ip());
+check("capacity: Big table (+9) refused when only 5 seats left", r.status === 409 && r.body?.error === "full", r.body);
+r = await call("upgrade", { access_token: t5.access_token, reservation_type_id: basicT.id }, ip());
+check("capacity: Basic table (+2) fits", r.status === 200, r.body);
+r = await call("upgrade", { access_token: t6.access_token, reservation_type_id: basicT.id }, ip());
+check("capacity: the pending hold counts — another +2 fits (5 - 2 = 3 left)", r.status === 200, r.body);
+r = await call("upgrade", { access_token: t7.access_token, reservation_type_id: basicT.id }, ip());
+check("capacity: third +2 refused while two holds are pending (1 left)", r.status === 409 && r.body?.error === "full", r.body);
+// an abandoned upgrade stops holding seats after 30 minutes
+const heldBefore = await attendance();
+const t6up = (await get(`reservation_upgrades?select=order_id&reservation_id=eq.${(await booking(t6.access_token)).id}&status=eq.pending`))[0];
+await patch(`orders?id=eq.${t6up?.order_id}`, { created_at: new Date(Date.now() - 31 * 60 * 1000).toISOString() });
+check("capacity: an abandoned upgrade's hold lapses after 30 minutes", (await attendance()) === heldBefore - 2, { heldBefore, now: await attendance() });
+b1 = await booking(t6.access_token);
+check("capacity: ...and that booking is still General Admission", b1?.party_size === 1 && b1?.order_id === null, b1);
+att = await attendance();
+await patch(`events?id=eq.${gaEv.id}`, { capacity: att });
+r = await call("reserve", guestN(8), ip());
+check("capacity: free ticket refused when the event is full", r.status === 409 && r.body?.error === "full", r.body);
+await patch(`events?id=eq.${gaEv.id}`, { capacity: 500 });
+
+// --- paid, but the guest closed the tab: the 5-minute reconcile job applies it ---
+const t10 = await ticket(10);
+r = await call("upgrade", { access_token: t10.access_token, reservation_type_id: modT.id }, ip());
+await patch(`orders?paystack_reference=eq.${r.body?.reference}`, { created_at: new Date(Date.now() - 4 * 60 * 1000).toISOString() });
+// earlier sections used up reconcile's global 6-per-10-minutes budget
+await fetch(`http://supabase.test/rest/v1/rate_limits?bucket=eq.paystack-reconcile:global`, { method: "DELETE", headers: svc });
+r = await call("reconcile", {});
+const b10 = await booking(t10.access_token);
+check("reconcile: the lapsed-hold upgrade that WAS paid is applied too (money wins over the hold)", (await booking(t6.access_token))?.party_size === 3);
+check("reconcile: paid upgrade applied without the guest returning", r.status === 200 && b10?.party_size === 7 && b10?.reservation_type_id === modT.id, { r: r.body, b10 });
+
+// --- QR validation at the gate ---
+let res2 = await svcRpc("resolve_pass", { p_token: t1.access_token });
+check("gate: upgraded pass resolves as the same reservation, party 3", JSON.stringify(res2.body).includes(t1.reservation_number) && JSON.stringify(res2.body).includes('"party_size": 3') || JSON.stringify(res2.body).includes('"party_size":3'), res2.body);
+res2 = await svcRpc("admit_pass", { p_token: t1.access_token, p_station: "test-gate", p_scanned_by: null, p_scanned_at: new Date().toISOString(), p_arrived: 3 });
+const firstAdmit = JSON.stringify(res2.body);
+res2 = await svcRpc("admit_pass", { p_token: t1.access_token, p_station: "test-gate", p_scanned_by: null, p_scanned_at: new Date().toISOString(), p_arrived: 3 });
+check("gate: upgraded pass admits once, second scan says already admitted", /admitted|ok|success/i.test(firstAdmit) && /already/i.test(JSON.stringify(res2.body)), { firstAdmit, second: res2.body });
+res2 = await svcRpc("admit_pass", { p_token: t2.access_token, p_station: "test-gate", p_scanned_by: null, p_scanned_at: new Date().toISOString(), p_arrived: 7 });
+check("gate: an upgraded Moderate pass admits", /admitted|ok|success/i.test(JSON.stringify(res2.body)), res2.body);
+const t9 = await ticket(9);
+res2 = await svcRpc("admit_pass", { p_token: t9.access_token, p_station: "test-gate", p_scanned_by: null, p_scanned_at: new Date().toISOString(), p_arrived: 1 });
+check("gate: a plain General Admission pass admits", /admitted|ok|success/i.test(JSON.stringify(res2.body)), res2.body);
+r = await call("upgrade", { access_token: t9.access_token, reservation_type_id: basicT.id }, ip());
+check("upgrade: a pass already used at the gate cannot be upgraded", r.status === 409 && r.body?.error === "not_upgradable", r.body);
+
+// --- Find My Pass ---
+sentEmails.length = 0;
+r = await call("reslookup", { email: "GUEST3@example.test" }, ip());
+check("find my pass: upgraded guest's pass emailed (counts only, no token)", r.body?.found === 1 && r.body?.emailed === 1 && !JSON.stringify(r.body).includes(t3.access_token) && sentEmails.at(-1)?.text?.includes("Big Family Table"), r.body);
+r = await call("reslookup", { email: "guest2@example.test" }, ip());
+check("find my pass: a pass already used at the gate is withheld, as before", r.body?.found === 0, r.body);
+sentEmails.length = 0;
+r = await call("reslookup", { phone: guestN(7).phone }, ip());
+check("find my pass: GA guest's email carries the upgrade link", r.body?.emailed === 1 && sentEmails.at(-1)?.html?.includes(`/r/${t7.access_token}#upgrade`), r.body);
+
+// --- existing paid table booking on an event WITHOUT General Admission is unchanged ---
+const oldEv = (await post("events", { name: "Old style", slug: "nf-old", starts_at: new Date(Date.now() + 9 * 864e5).toISOString(), ends_at: new Date(Date.now() + 10 * 864e5).toISOString(), status: "live", reservation_mode: "optional_preorder", payments_enabled: true, capacity: 100 }))[0];
+const [oldP] = await post("preorder_items", [{ event_id: oldEv.id, name: "Basic Family Platter", price_kes: 1945, max_per_reservation: 1, position: 1 }]);
+const [oldT] = await post("reservation_types", [{ event_id: oldEv.id, name: "Basic Family Table", fixed_party_size: 3, min_party_size: 1, max_party_size: null, position: 1, included_preorder_item_id: oldP.id, is_general_admission: false }]);
+sentEmails.length = 0;
+r = await call("reserve", { event_id: oldEv.id, guest_name: "Old Flow", phone: "0733000001", email: "old@example.test", reservation_type_id: oldT.id, preorders: [], provider: "paystack" }, ip());
+check("existing flow: paid table booking still opens Paystack", r.status === 200 && r.body?.payment_required === true && r.body?.amount_kes === 1945 && /^[a-f0-9]{32}$/.test(r.body?.access_token ?? ""), r.body);
+const oldTok = r.body?.access_token;
+r = await call("verify", { reference: r.body?.reference });
+const ob = await booking(oldTok);
+check("existing flow: payment confirms the table booking and emails it", r.body?.result === "confirmed" && ob?.status === "confirmed" && ob?.party_size === 3 && sentEmails.at(-1)?.to?.[0] === "old@example.test" && !sentEmails.at(-1)?.html?.includes("#upgrade"), { r: r.body, ob });
+v = await call("bytoken", { token: oldTok });
+check("existing flow: pass page offers no upgrade on a non-GA event", v.body?.upgrade === null && v.body?.type_name === "Basic Family Table", v.body);
+
+// 10. Table in one step (reserve + table_type_id), the "Get tickets" panel
+if (!Deno.env.get("SKIP_ONESTEP")) {
+console.log("\n--- table in one step ---");
+await patch(`events?id=eq.${gaEv.id}`, { capacity: 500 });
+const one = (n: number) => ({ ...guestN(n), table_type_id: basicT.id });
+sentEmails.length = 0;
+r = await call("reserve", one(40), ip());
+const t40 = r.body;
+check("one step: free ticket created AND table payment opened", /^[a-f0-9]{32}$/.test(t40?.access_token ?? "") && !!t40?.upgrade?.authorizationUrl && t40?.upgrade?.amount_kes === 1945 && t40?.upgrade?.party_size === 3, t40);
+let b40 = await booking(t40.access_token);
+check("one step: until paid, the booking is General Admission (1 person, no order)", b40?.party_size === 1 && b40?.order_id === null && b40?.reservation_type_id === gaT.id, b40);
+check("one step: the free ticket was emailed straight away", sentEmails.some((m: any) => m.to?.[0] === "guest40@example.test"), sentEmails.map((m: any) => m.to));
+check("one step: Paystack amount KES 1945, token not sent to Paystack", paystack.get(t40.upgrade.reference)?.amount === 194500, paystack.get(t40.upgrade.reference));
+r = await call("verify", { reference: t40.upgrade.reference });
+b40 = await booking(t40.access_token);
+check("one step paid: same booking becomes the Basic table (3), same QR token", r.body?.result === "confirmed" && b40?.party_size === 3 && b40?.reservation_type_id === basicT.id && b40?.access_token === t40.access_token && b40?.reservation_number === t40.reservation_number, { r: r.body, b40 });
+
+r = await call("reserve", one(41), ip());
+const t41 = r.body;
+paystack.get(t41.upgrade.reference)!.status = "abandoned";
+r = await call("verify", { reference: t41.upgrade.reference });
+const b41 = await booking(t41.access_token);
+check("one step, payment abandoned: guest keeps the free General Admission ticket", r.body?.result === "not_paid" && b41?.party_size === 1 && b41?.status === "confirmed" && b41?.order_id === null, { r: r.body, b41 });
+
+// the existing-booking route must never upgrade (that would be the takeover)
+r = await call("reserve", { ...guestN(42) }, ip());
+const t42tok = r.body?.access_token;
+r = await call("reserve", one(42), ip());
+const b42 = await booking(t42tok);
+const ups42 = await get(`reservation_upgrades?select=id&reservation_id=eq.${b42.id}`);
+check("one step on an EXISTING booking (phone+email): no token, no upgrade started", r.status === 200 && !("access_token" in (r.body ?? {})) && r.body?.upgrade?.error === "existing_booking" && ups42.length === 0 && b42.party_size === 1, { r: r.body, ups42 });
+r = await call("reserve", { ...one(1) }, ip());
+check("one step on an already-upgraded booking: unchanged, no upgrade", r.body?.unchanged === true && !r.body?.upgrade?.authorizationUrl, r.body);
+
+// capacity: the free ticket fits, the table doesn't
+att = await attendance();
+await patch(`events?id=eq.${gaEv.id}`, { capacity: att + 2 });
+r = await call("reserve", { ...guestN(43), table_type_id: bigT.id }, ip());
+const b43 = r.body?.access_token ? await booking(r.body.access_token) : null;
+check("one step, not enough room for the table: free ticket issued, table refused (full)", !!r.body?.access_token && r.body?.upgrade?.error === "full" && b43?.party_size === 1, r.body);
+await patch(`events?id=eq.${gaEv.id}`, { capacity: 500 });
+
+r = await call("reserve", { ...guestN(44), table_type_id: "not-a-uuid" }, ip());
+check("one step: a malformed table id is ignored (plain free ticket)", !!r.body?.access_token && !r.body?.upgrade, r.body);
+r = await call("reserve", { ...guestN(45), table_type_id: gaT.id }, ip());
+check("one step: 'upgrading' to General Admission is refused, free ticket kept", !!r.body?.access_token && r.body?.upgrade?.error === "bad_reservation_type", r.body);
+r = await call("upgrade", { access_token: t41.access_token, reservation_type_id: modT.id }, ip());
+check("pass-page upgrade still works after the refactor", r.status === 200 && r.body?.amount_kes === 4538 && !!r.body?.authorizationUrl && !("ok" in r.body), r.body);
+
+}
+// 11. Dashboard overview numbers (src/lib/dashboard-data.ts), as a signed-in admin
+console.log("\n--- dashboard overview ---");
+{
+  const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2.45.4");
+  const { loadOverview } = await import("/src/lib/dashboard-data.ts");
+  const adminUid = crypto.randomUUID();
+  await fetch("http://supabase.test/rest/v1/rpc/test_make_user", { method: "POST", headers: svc, body: JSON.stringify({ p_id: adminUid }) });
+  await fetch("http://supabase.test/rest/v1/admin_users", { method: "POST", headers: svc, body: JSON.stringify({ user_id: adminUid, role: "admin" }) });
+  const adminKey = await jwt({ role: "authenticated", sub: adminUid, exp: 4102444800 });
+  const asAdmin = createClient("http://supabase.test", adminKey, { auth: { persistSession: false }, global: { headers: { Authorization: `Bearer ${adminKey}` } } });
+  const o: any = await loadOverview(asAdmin as any, 30);
+  const expMerch = (await get("merch_orders?select=total_kes&payment_status=eq.paid")).reduce((s: number, r: any) => s + Number(r.total_kes), 0);
+  const expTix = (await get("orders?select=amount_kes&status=eq.paid")).reduce((s: number, r: any) => s + Number(r.amount_kes), 0);
+  const revenue = o.kpis.find((k: any) => k.label === "Revenue");
+  check("overview: revenue = paid merch + paid tickets (KSh)", Math.round(revenue.value) === Math.round(expMerch + expTix) && revenue.value > 0, { got: revenue.value, expMerch, expTix });
+  check("overview: daily series sums to the same revenue", Math.round(o.series.reduce((s: number, p: any) => s + p.merch + p.tickets, 0)) === Math.round(revenue.value) && o.series.length === 30, o.series.length);
+  const paidMerch = (await get("merch_orders?select=id&payment_status=eq.paid")).length;
+  check("overview: merch orders KPI counts paid orders", o.kpis.find((k: any) => k.label === "Merch orders").value === paidMerch, paidMerch);
+  check("overview: best sellers come from paid merch items", o.bestSellers.length > 0 && o.bestSellers.every((b: any) => b.sold > 0), o.bestSellers);
+  check("overview: event bookings KPI counts non-cancelled bookings", o.kpis.find((k: any) => k.label === "Event bookings").value > 0);
+  check("overview: next live event attendance with tickets by type", !!o.attendance && o.attendance.expected > 0 && o.attendance.byType.length > 0, o.attendance);
+
+  // Tickets view (dashboard/tickets): preorders need "staff read order items"
+  const tq = "id,reservation_number,status,reservation_types(name),orders(status,amount_kes,order_items(qty,unit_price_kes,preorder_items(name)))";
+  const { data: tv, error: tvErr } = await asAdmin.from("reservations").select(tq).eq("access_token", t1.access_token).single();
+  const lines = (tv as any)?.orders?.order_items ?? [];
+  check("tickets view: admin sees the upgraded booking's platter line", !tvErr && lines.length === 1 && lines[0].preorder_items?.name === "Basic Family Platter" && Number(lines[0].unit_price_kes) === 1945, { tvErr, tv });
+  const anonOi = await (await fetch("http://supabase.test/rest/v1/order_items?select=id", { headers: { apikey: anonKey, authorization: `Bearer ${anonKey}` } })).json();
+  check("tickets view: order lines not readable without a staff session", Array.isArray(anonOi) && anonOi.length === 0, anonOi);
+  const userKey = await jwt({ role: "authenticated", sub: crypto.randomUUID(), exp: 4102444800 });
+  const userOi = await (await fetch("http://supabase.test/rest/v1/order_items?select=id", { headers: { apikey: userKey, authorization: `Bearer ${userKey}` } })).json();
+  check("tickets view: signed-in non-staff read no order lines", Array.isArray(userOi) && userOi.length === 0, userOi);
+  // cancel from the drawer: RLS-checked update, then the gate refuses the pass
+  const t7row = await booking(t7.access_token);
+  const { data: cx, error: cxErr } = await asAdmin.from("reservations").update({ status: "cancelled" }).eq("id", t7row.id).in("status", ["confirmed", "pending_payment"]).select("id");
+  check("tickets view: admin can cancel a valid booking", !cxErr && cx?.length === 1, { cxErr, cx });
+  const gate = await svcRpc("admit_pass", { p_token: t7.access_token, p_station: "t", p_scanned_by: null, p_scanned_at: new Date().toISOString(), p_arrived: 1 });
+  check("tickets view: the gate refuses a cancelled pass", JSON.stringify(gate.body).includes("cancelled"), gate.body);
+  const { data: cx2 } = await asAdmin.from("reservations").update({ status: "cancelled" }).eq("access_token", t1.access_token).in("status", ["confirmed", "pending_payment"]).select("id");
+  check("tickets view: a checked-in booking can't be cancelled", (cx2 ?? []).length === 0, cx2);
+
+  // Refunds (refund_event_order)
+  const orderOf = async (tok: string) => (await booking(tok))?.order_id;
+  const refund = (body: Record<string, unknown>, client: any = asAdmin) => client.rpc("refund_event_order", body);
+  // keep_ga: refund t10's Moderate table (paid via reconcile), booking back to free GA
+  const o10 = await orderOf(t10.access_token);
+  let rf: any = await refund({ p_order_id: o10, p_reason: "Guest changed plans", p_reversal_ref: "PSK-RF-1", p_outcome: "keep_ga" });
+  let b = await booking(t10.access_token);
+  const o10row = (await get(`orders?select=status,refund_reason,reversal_ref,refunded_at&id=eq.${o10}`))[0];
+  const up10 = await get(`reservation_upgrades?select=status&order_id=eq.${o10}`);
+  check("refund keep_ga: order refunded with reason + Paystack ref", rf.data?.result === "refunded" && o10row?.status === "refunded" && o10row?.reversal_ref === "PSK-RF-1" && !!o10row?.refunded_at, { rf, o10row });
+  check("refund keep_ga: booking back to General Admission, 1 person, same token, still valid", b?.reservation_type_id === gaT.id && b?.party_size === 1 && b?.order_id === null && b?.status === "confirmed" && b?.access_token === t10.access_token, b);
+  check("refund keep_ga: upgrade marked refunded", up10?.[0]?.status === "refunded", up10);
+  r = await call("upgrade", { access_token: t10.access_token, reservation_type_id: basicT.id }, ip());
+  check("refund keep_ga: the guest can upgrade again later", r.status === 200 && !!r.body?.authorizationUrl, r.body);
+  rf = await refund({ p_order_id: o10, p_reason: "again", p_outcome: "keep_ga" });
+  check("refund: refunding twice is ignored", rf.data?.result === "ignored", rf.data);
+  // cancel: t3's Big table
+  const o3 = await orderOf(t3.access_token);
+  rf = await refund({ p_order_id: o3, p_reason: "Event no longer suits", p_outcome: "cancel" });
+  b = await booking(t3.access_token);
+  const g3 = await svcRpc("admit_pass", { p_token: t3.access_token, p_station: "t", p_scanned_by: null, p_scanned_at: new Date().toISOString(), p_arrived: 1 });
+  check("refund cancel: order refunded, booking cancelled, gate refuses", rf.data?.result === "refunded" && b?.status === "cancelled" && JSON.stringify(g3.body).includes("cancelled"), { rf: rf.data, b, g3: g3.body });
+  // keep: the flagged duplicate payment from the upgrade flow (not linked to a booking)
+  const dupOrder = (await get(`orders?select=id,status&paystack_reference=eq.${failRef}`))[0];
+  const before1 = await booking(t1.access_token);
+  rf = await refund({ p_order_id: dupOrder.id, p_reason: "Duplicate payment", p_outcome: "keep" });
+  const after1 = await booking(t1.access_token);
+  check("refund keep: flagged duplicate refunded, the real booking untouched", dupOrder.status === "flagged" && rf.data?.result === "refunded" && JSON.stringify(before1) === JSON.stringify(after1), { dupOrder, rf: rf.data });
+  // keep_ga refused for a booking that isn't an upgrade (old-style table) — and nothing changes
+  const oldOrder = (await booking(oldTok))?.order_id;
+  rf = await refund({ p_order_id: oldOrder, p_reason: "x", p_outcome: "keep_ga" });
+  const oldRow = (await get(`orders?select=status&id=eq.${oldOrder}`))[0];
+  check("refund keep_ga on a non-upgrade: refused, order still paid", rf.data?.result === "not_an_upgrade" && oldRow?.status === "paid", { rf: rf.data, oldRow });
+  rf = await refund({ p_order_id: oldOrder, p_reason: "  ", p_outcome: "cancel" });
+  check("refund needs a reason", rf.data?.result === "reason_required", rf.data);
+  // permissions
+  const staffUid = crypto.randomUUID();
+  await fetch("http://supabase.test/rest/v1/rpc/test_make_user", { method: "POST", headers: svc, body: JSON.stringify({ p_id: staffUid }) });
+  await fetch("http://supabase.test/rest/v1/admin_users", { method: "POST", headers: svc, body: JSON.stringify({ user_id: staffUid, role: "staff" }) });
+  const staffKey = await jwt({ role: "authenticated", sub: staffUid, exp: 4102444800 });
+  const asStaff = createClient("http://supabase.test", staffKey, { auth: { persistSession: false }, global: { headers: { Authorization: `Bearer ${staffKey}` } } });
+  rf = await refund({ p_order_id: oldOrder, p_reason: "x", p_outcome: "keep" }, asStaff);
+  check("refund: gate staff are refused (admins only)", rf.data?.result === "forbidden", rf);
+  const anonRf = await rpc("refund_event_order", { p_order_id: oldOrder, p_reason: "x", p_outcome: "keep" });
+  check("refund: anon cannot call it", anonRf.body?.code === "42501", anonRf);
+  const audit = await asAdmin.from("admin_audit").select("action,detail").eq("action", "refund_event_order");
+  check("refund: every refund is in the audit log with its outcome", (audit.data ?? []).length === 3 && (audit.data ?? []).every((a: any) => ["keep_ga", "cancel", "keep"].includes(a.detail?.outcome)), audit.data);
+
+  // Tickets hub queries (dashboard/tickets/page.tsx), exactly as written there
+  const q1 = await asAdmin.from("orders").select("id,event_id,status,amount_kes,created_at,paid_at,refunded_at,refund_reason,reversal_ref,paystack_reference,buyer_phone,buyer_email,events(name)").in("status", ["paid", "flagged", "refunded"]).order("created_at", { ascending: false }).limit(2000);
+  const q2 = await asAdmin.from("reservation_upgrades").select("order_id,reservation_id,status,created_at,applied_at,reservation_types(name)").limit(4000);
+  const q3 = await asAdmin.from("redemptions").select("scanned_at,station,reservation_id,ticket_id").order("scanned_at", { ascending: false }).limit(1000);
+  const q4 = await asAdmin.from("reservations").select(`id,event_id,order_id,reservation_number,access_token,guest_name,phone,email,party_size,status,created_at,checked_in_at,arrived_party_size,
+               events(name,slug),reservation_types(name,is_general_admission),
+               orders(status,amount_kes,paid_at,paystack_reference,order_items(qty,unit_price_kes,preorder_items(name)))`).limit(5);
+  const q5 = await asAdmin.from("tickets").select(`id,qr_token,status,redeemed_at,created_at,ticket_types(name,bundle_qty,event_id,events(name,slug)),orders(buyer_phone,buyer_email,amount_kes,status,paid_at,paystack_reference)`).limit(5);
+  check("tickets hub: every query runs for an admin", [q1, q2, q3, q4, q5].every((q) => !q.error) && (q1.data ?? []).some((o: any) => o.status === "refunded") && (q2.data ?? []).length > 0 && (q3.data ?? []).length > 0,
+    [q1, q2, q3, q4, q5].map((q) => q.error?.message ?? (q.data ?? []).length));
+  const anonClient = createClient("http://supabase.test", Deno.env.get("SUPABASE_ANON_KEY")!, { auth: { persistSession: false } });
+  const oa: any = await loadOverview(anonClient as any, 30);
+  check("overview: without a staff session RLS shows no money", oa.kpis.find((k: any) => k.label === "Revenue").value === 0 && oa.bestSellers.length === 0, oa.kpis);
+}
+
+// 13. Vendors (vendor-apply, MV payments)
+console.log("\n--- vendors ---");
+{
+  const vend = (n: number, extra: Record<string, unknown> = {}) => ({ event_id: gaEv.id, name: `Vendor ${n} Grills`, phone: `07330000${String(n).padStart(2, "0")}`, email: `vendor${n}@example.test`, vendor_type: "food", description: "Choma and chips", ...extra });
+  const vrow = async (phone: string) => (await get(`vendor_applications?select=id,reference_number,status,paystack_reference,prior_references,flag_reason,amount_kes&event_id=eq.${gaEv.id}&phone=eq.254${phone.slice(1)}`));
+  sentEmails.length = 0;
+  let v = await call("vendor", vend(1), ip());
+  const ref1 = v.body?.reference, num1 = v.body?.reference_number;
+  let rows = await vrow(vend(1).phone);
+  check("vendor: registration saved as pending_payment, Paystack opened for KSh 3,500", v.status === 200 && /^MV[a-f0-9]{32}$/.test(ref1 ?? "") && v.body?.amount_kes === 3500 && paystack.get(ref1)?.amount === 350000 && paystack.get(ref1)?.currency === "KES" && rows.length === 1 && rows[0].status === "pending_payment", { v: v.body, rows });
+  paystack.get(ref1)!.status = "abandoned";
+  let vv = await call("verify", { reference: ref1 });
+  rows = await vrow(vend(1).phone);
+  check("vendor: abandoned payment -> not_paid, registration stays pending", vv.body?.result === "not_paid" && rows[0].status === "pending_payment", { vv: vv.body, rows });
+  v = await call("vendor", vend(1, { vendor_type: "drinks" }), ip());
+  const ref2 = v.body?.reference;
+  rows = await vrow(vend(1).phone);
+  check("vendor: retry reuses the same registration (same number), new payment, old ref kept", v.status === 200 && v.body?.reference_number === num1 && ref2 !== ref1 && rows.length === 1 && rows[0].paystack_reference === ref2 && rows[0].prior_references.includes(ref1), rows);
+  vv = await call("verify", { reference: ref2 });
+  rows = await vrow(vend(1).phone);
+  check("vendor: payment confirmed -> paid, confirmation emailed to the vendor", vv.body?.result === "confirmed" && rows[0].status === "paid" && sentEmails.some((m: any) => m.to?.[0] === "vendor1@example.test" && m.subject?.includes(num1)), { vv: vv.body, rows });
+  v = await call("vendor", vend(1), ip());
+  check("vendor: paid phone can't register twice for the event", v.status === 409 && v.body?.error === "already_registered" && v.body?.reference_number === num1, v.body);
+  paystack.get(ref1)!.status = "success";
+  vv = await call("verify", { reference: ref1 });
+  rows = await vrow(vend(1).phone);
+  check("vendor: old tab paid too -> duplicate_payment flagged for refund, tent stays paid", vv.body?.result === "duplicate_payment" && rows[0].status === "paid" && (rows[0].flag_reason ?? "").includes(ref1), { vv: vv.body, rows });
+  vv = await call("verify", { reference: ref1 });
+  check("vendor: re-checking the duplicate doesn't flag it twice", (await vrow(vend(1).phone))[0].flag_reason.split(ref1).length === 2, vv.body);
+  v = await call("vendor", vend(2), ip());
+  paystack.get(v.body.reference)!.amount = 10000;
+  vv = await call("verify", { reference: v.body.reference });
+  check("vendor: wrong amount -> flagged, not paid", vv.body?.result === "amount_mismatch" && (await vrow(vend(2).phone))[0].status === "flagged", vv.body);
+  check("vendor: bad vendor type refused", (await call("vendor", vend(3, { vendor_type: "guns" }), ip())).body?.error === "bad_vendor_type");
+  check("vendor: bad phone refused", (await call("vendor", vend(3, { phone: "12345" }), ip())).body?.error === "invalid_phone");
+  check("vendor: email required (Paystack needs one)", (await call("vendor", vend(3, { email: "nope" }), ip())).body?.error === "email_required");
+  const closedEv = (await post("events", { name: "Closed fest", slug: "nf-closed", starts_at: new Date(Date.now() + 9 * 864e5).toISOString(), ends_at: new Date(Date.now() + 10 * 864e5).toISOString(), status: "closed", reservation_mode: "free" }))[0];
+  check("vendor: closed event refused", (await call("vendor", vend(3, { event_id: closedEv.id }), ip())).body?.error === "event_not_live");
+  await patch(`events?id=eq.${gaEv.id}`, { reservations_open_at: new Date(Date.now() + 86400000).toISOString() });
+  check("vendor: announced-but-not-open (coming soon) event refused", (await call("vendor", vend(3), ip())).body?.error === "event_not_live");
+  await patch(`events?id=eq.${gaEv.id}`, { reservations_open_at: null });
+  // reconcile: pending vendor who paid and closed the tab
+  v = await call("vendor", vend(4), ip());
+  await patch(`vendor_applications?paystack_reference=eq.${v.body.reference}`, { updated_at: new Date(Date.now() - 4 * 60 * 1000).toISOString() });
+  await fetch(`http://supabase.test/rest/v1/rate_limits?bucket=eq.paystack-reconcile:global`, { method: "DELETE", headers: svc });
+  await call("reconcile", {});
+  check("vendor: reconcile confirms a paid vendor who closed the tab", (await vrow(vend(4).phone))[0].status === "paid");
+  // permissions
+  const anonV = await (await fetch("http://supabase.test/rest/v1/vendor_applications?select=id", { headers: { apikey: anonKey, authorization: `Bearer ${anonKey}` } })).json().catch(() => null);
+  check("vendor: anon can't read registrations", !Array.isArray(anonV) || anonV.length === 0, anonV);
+  const anonC = await rpc("confirm_vendor_payment", { p_reference: ref2, p_amount_kes: 3500 });
+  check("vendor: anon can't confirm a payment", anonC.body?.code === "42501", anonC);
+  const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2.45.4");
+  const mk = async (role: "admin" | "staff") => {
+    const uid = crypto.randomUUID();
+    await fetch("http://supabase.test/rest/v1/rpc/test_make_user", { method: "POST", headers: svc, body: JSON.stringify({ p_id: uid }) });
+    await fetch("http://supabase.test/rest/v1/admin_users", { method: "POST", headers: svc, body: JSON.stringify({ user_id: uid, role }) });
+    const k = await jwt({ role: "authenticated", sub: uid, exp: 4102444800 });
+    return createClient("http://supabase.test", k, { auth: { persistSession: false }, global: { headers: { Authorization: `Bearer ${k}` } } });
+  };
+  const adminC = await mk("admin"), staffC = await mk("staff");
+  const sr = await staffC.from("vendor_applications").select("id").eq("event_id", gaEv.id);
+  check("vendor: staff can read registrations (dashboard)", (sr.data ?? []).length >= 3, sr.error);
+  v = await call("vendor", vend(5), ip());
+  const v5 = (await vrow(vend(5).phone))[0];
+  const su = await staffC.from("vendor_applications").update({ status: "cancelled" }).eq("id", v5.id).select("id");
+  check("vendor: gate staff can't change a registration", (su.data ?? []).length === 0, su);
+  const au = await adminC.from("vendor_applications").update({ status: "cancelled", admin_note: "no show" }).eq("id", v5.id).in("status", ["pending_payment"]).select("id");
+  check("vendor: admin can cancel a pending registration", (au.data ?? []).length === 1 && (await vrow(vend(5).phone)).length === 1, au);
+  paystack.get(v.body.reference)!.status = "success";
+  vv = await call("verify", { reference: v.body.reference });
+  check("vendor: paid after being cancelled -> flagged for refund, never dropped", vv.body?.result === "flagged", vv.body);
+}
+
+// 14. Online attendance (online-register, online-access, Find My Pass)
+console.log("\n--- online attendance ---");
+{
+  const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2.45.4");
+  const day = 864e5;
+  const onEv = (await post("events", { name: "NyamaFest Online Test", slug: "nf-online", starts_at: new Date(Date.now() + 9 * day).toISOString(), ends_at: new Date(Date.now() + 9.5 * day).toISOString(), status: "live", reservation_mode: "free", capacity: 100, online_enabled: true }))[0];
+  const reg = (n: string, extra: Record<string, unknown> = {}) => ({ event_id: onEv.id, name: `Watcher ${n}`, email: `watcher.${n}@example.test`, country: "KE", ...extra });
+  const attBefore = (await svcRpc("expected_attendance", { p_event_id: onEv.id })).body?.expected_attendance;
+  sentEmails.length = 0;
+  let o = await call("oreg", reg("ke"), ip());
+  const codeKe = o.body?.access_code;
+  check("online: Kenyan registers with name/email/country, no phone", o.status === 200 && /^[a-f0-9]{32}$/.test(codeKe ?? "") && /^ONL-[A-Z2-9]{6}$/.test(o.body?.registration_number ?? "") && o.body?.emailed === true, o.body);
+  const mail = sentEmails.at(-1);
+  check("online: confirmation email has the private watch link and no gate/platter content", mail?.to?.[0] === "watcher.ke@example.test" && mail?.html?.includes(`/watch/${codeKe}`) && /Nairobi time/.test(mail?.text ?? "") && !/platter|QR|gate/i.test(mail?.text ?? ""), mail?.text);
+  o = await call("oreg", reg("uk", { country: "GB", name: "Watcher London" }), ip());
+  const codeUk = o.body?.access_code;
+  check("online: international attendee (GB) registers", o.status === 200 && !!codeUk, o.body);
+  check("online: unknown country refused", (await call("oreg", reg("x", { country: "XX" }), ip())).body?.error === "invalid_country");
+  check("online: email required", (await call("oreg", reg("y", { email: "nope" }), ip())).body?.error === "email_required");
+  o = await call("oreg", reg("ke", { email: "WATCHER.KE@example.test" }), ip());
+  check("online: same email again -> link re-emailed, code NOT returned", o.status === 200 && o.body?.existing === true && !("access_code" in (o.body ?? {})) && o.body?.emailed === true && sentEmails.at(-1)?.html?.includes(codeKe), o.body);
+  const rows = await get(`online_registrations?select=id&event_id=eq.${onEv.id}`);
+  check("online: no duplicate registration created", rows.length === 2, rows.length);
+  check("online: physical capacity unaffected by online registrations", (await svcRpc("expected_attendance", { p_event_id: onEv.id })).body?.expected_attendance === attBefore, attBefore);
+  const offEv = (await post("events", { name: "No online", slug: "nf-noonline", starts_at: new Date(Date.now() + 9 * day).toISOString(), ends_at: new Date(Date.now() + 10 * day).toISOString(), status: "live", reservation_mode: "free" }))[0];
+  check("online: event without online attendance refused", (await call("oreg", reg("z", { event_id: offEv.id }), ip())).body?.error === "online_not_available");
+  await patch(`events?id=eq.${offEv.id}`, { online_enabled: true, online_price_kes: 500 });
+  check("online: a priced online ticket is refused until payments exist", (await call("oreg", reg("z", { event_id: offEv.id }), ip())).body?.error === "payments_not_supported");
+  // watch page states
+  await patch(`events?id=eq.${onEv.id}`, { stream_youtube_id: "dQw4w9WgXcQ" });
+  let w = await call("oacc", { code: codeKe });
+  check("watch: before the event -> countdown state, stream ID withheld", w.status === 200 && w.body?.state === "before" && w.body?.stream_youtube_id === null && w.body?.event?.starts_at, w.body);
+  await patch(`events?id=eq.${onEv.id}`, { starts_at: new Date(Date.now() + 5 * 60e3).toISOString(), ends_at: new Date(Date.now() + 3600e3).toISOString() });
+  w = await call("oacc", { code: codeKe });
+  check("watch: 5 minutes before the start -> still the countdown, no stream yet", w.body?.state === "before" && w.body?.stream_youtube_id === null, w.body);
+  await patch(`events?id=eq.${onEv.id}`, { starts_at: new Date(Date.now() - 60e3).toISOString(), ends_at: new Date(Date.now() + 3600e3).toISOString() });
+  w = await call("oacc", { code: codeUk });
+  check("watch: during the event -> live with the stream ID", w.body?.state === "live" && w.body?.stream_youtube_id === "dQw4w9WgXcQ", w.body);
+  await patch(`events?id=eq.${onEv.id}`, { starts_at: new Date(Date.now() - 10 * 3600e3).toISOString(), ends_at: new Date(Date.now() - 3600e3).toISOString() });
+  w = await call("oacc", { code: codeUk });
+  check("watch: after the event -> ended, stream ID withheld", w.body?.state === "ended" && w.body?.stream_youtube_id === null, w.body);
+  check("watch: unknown code -> 404", (await call("oacc", { code: "0".repeat(32) })).status === 404);
+  check("watch: malformed code -> 404", (await call("oacc", { code: "../etc" })).status === 404);
+  const accessRow = (await get(`online_registrations?select=access_count,last_access_at&access_code=eq.${codeUk}`))[0];
+  check("watch: visits are counted for the dashboard", accessRow?.access_count === 2 && !!accessRow?.last_access_at, accessRow);
+  // revoke / restore (admin), staff can't
+  const mk = async (role: "admin" | "staff") => {
+    const uid = crypto.randomUUID();
+    await fetch("http://supabase.test/rest/v1/rpc/test_make_user", { method: "POST", headers: svc, body: JSON.stringify({ p_id: uid }) });
+    await fetch("http://supabase.test/rest/v1/admin_users", { method: "POST", headers: svc, body: JSON.stringify({ user_id: uid, role }) });
+    const k = await jwt({ role: "authenticated", sub: uid, exp: 4102444800 });
+    return createClient("http://supabase.test", k, { auth: { persistSession: false }, global: { headers: { Authorization: `Bearer ${k}` } } });
+  };
+  const adminO = await mk("admin"), staffO = await mk("staff");
+  const sr = await staffO.from("online_registrations").select("id").eq("event_id", onEv.id);
+  check("online: staff can read registrations (dashboard)", (sr.data ?? []).length === 2, sr.error);
+  const su = await staffO.from("online_registrations").update({ status: "revoked" }).eq("access_code", codeKe).select("id");
+  check("online: gate staff can't revoke", (su.data ?? []).length === 0, su);
+  const ar = await adminO.from("online_registrations").update({ status: "revoked", revoked_at: new Date().toISOString() }).eq("access_code", codeKe).select("id");
+  w = await call("oacc", { code: codeKe });
+  check("online: admin revokes -> watch link answers 410 revoked", (ar.data ?? []).length === 1 && w.status === 410 && w.body?.error === "revoked", w);
+  sentEmails.length = 0;
+  let lk = await call("reslookup", { email: "watcher.ke@example.test" }, ip());
+  check("find my pass: a revoked online registration is not re-sent", lk.body?.online === 0, lk.body);
+  await adminO.from("online_registrations").update({ status: "active", revoked_at: null }).eq("access_code", codeKe);
+  check("online: admin restores access", (await call("oacc", { code: codeKe })).status === 200);
+  lk = await call("reslookup", { email: "Watcher.UK@example.test" }, ip());
+  check("find my pass: emails the online watch link, never returns the code", lk.status === 200 && lk.body?.online === 1 && lk.body?.emailed === 1 && !JSON.stringify(lk.body).includes(codeUk) && sentEmails.at(-1)?.html?.includes(`/watch/${codeUk}`), lk.body);
+  const anonR = await (await fetch("http://supabase.test/rest/v1/online_registrations?select=id", { headers: { apikey: anonKey, authorization: `Bearer ${anonKey}` } })).json().catch(() => null);
+  check("online: anon can't read registrations", !Array.isArray(anonR) || anonR.length === 0, anonR);
+  const gate = await svcRpc("admit_pass", { p_token: codeUk, p_station: "t", p_scanned_by: null, p_scanned_at: new Date().toISOString(), p_arrived: 1 });
+  check("online: an online access code is not a gate pass", JSON.stringify(gate.body).includes("not_found"), gate.body);
+  check("online: registration closes after the event", (await call("oreg", reg("late"), ip())).body?.error === "event_ended");
+}
+
+// 15. Platter add-ons (platter-addon, start_platter_addon, confirm/refund branches)
+console.log("\n--- platter add-ons ---");
+{
+  const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2.45.4");
+  await patch(`events?id=eq.${gaEv.id}`, { capacity: 500, starts_at: new Date(Date.now() + 9 * 864e5).toISOString(), ends_at: new Date(Date.now() + 10 * 864e5).toISOString() });
+  for (const pi of [basicP, modP, bigP]) await patch(`preorder_items?id=eq.${pi.id}`, { max_per_reservation: 5 });   // as the migration does for NyamaFest
+  const att0 = (await svcRpc("expected_attendance", { p_event_id: gaEv.id })).body?.expected_attendance;
+  const g = (await call("reserve", guestN(60), ip())).body;
+  sentEmails.length = 0;
+  let a = await call("addon", { access_token: g.access_token, items: [{ preorder_item_id: basicP.id, qty: 2 }] }, ip());
+  let bk = await booking(g.access_token);
+  check("add-on: GA attendee adds 2 Basic platters -> Paystack opened for KSh 3,890", a.status === 200 && a.body?.amount_kes === 3890 && paystack.get(a.body.reference)?.amount === 389000, a.body);
+  check("add-on: until paid the booking is untouched (GA, 1 person, no order)", bk?.party_size === 1 && bk?.order_id === null && bk?.reservation_type_id === gaT.id, bk);
+  let v = await call("verify", { reference: a.body.reference });
+  bk = await booking(g.access_token);
+  let pass = (await call("bytoken", { token: g.access_token })).body;
+  check("add-on paid: confirmed, booking still GA with the same QR", v.body?.result === "confirmed" && v.body?.addon === true && bk?.party_size === 1 && bk?.reservation_type_id === gaT.id && bk?.access_token === g.access_token, { v: v.body, bk });
+  check("add-on paid: pass shows the platters", pass?.addons?.length === 1 && pass.addons[0].qty === 2 && pass.addons[0].name === "Basic Family Platter", pass?.addons);
+  check("add-on paid: updated pass emailed with 'Platters · paid'", sentEmails.some((m: any) => m.to?.[0] === "guest60@example.test" && /Platters · paid/.test(m.html ?? "") && /collect at the event/i.test(m.text ?? "")), sentEmails.map((m: any) => m.to));
+  check("add-on: capacity unchanged by platters", (await svcRpc("expected_attendance", { p_event_id: gaEv.id })).body?.expected_attendance === att0 + 1, att0);
+  // table + bundle, then an add-on on top
+  const gt = (await call("reserve", { ...guestN(61), table_type_id: basicT.id }, ip())).body;
+  check("bundle: table in one step still works", !!gt?.upgrade?.authorizationUrl && gt.upgrade.amount_kes === 1945, gt);
+  await call("verify", { reference: gt.upgrade.reference });
+  const bt = await booking(gt.access_token);
+  a = await call("addon", { access_token: gt.access_token, items: [{ preorder_item_id: modP.id, qty: 1 }] }, ip());
+  v = await call("verify", { reference: a.body?.reference });
+  const bt2 = await booking(gt.access_token);
+  pass = (await call("bytoken", { token: gt.access_token })).body;
+  check("bundle + add-on: table keeps its bundled platter, add-on listed separately", bt?.party_size === 3 && bt2?.party_size === 3 && bt2?.order_id === bt?.order_id && v.body?.result === "confirmed" && pass?.preorder?.[0]?.name === "Basic Family Platter" && pass?.addons?.[0]?.name === "Moderate Family Platter", { bt2, pass: { pre: pass?.preorder, add: pass?.addons } });
+  // refusals
+  check("add-on: more than the limit refused", (await call("addon", { access_token: g.access_token, items: [{ preorder_item_id: bigP.id, qty: 6 }] }, ip())).body?.error === "bad_qty");
+  const [soda] = await post("preorder_items", [{ event_id: gaEv.id, name: "Soda", price_kes: 100, max_per_reservation: 5, position: 9 }]);
+  check("add-on: only the family platters (not other menu items)", (await call("addon", { access_token: g.access_token, items: [{ preorder_item_id: soda.id, qty: 1 }] }, ip())).body?.error === "bad_item");
+  const orphanOrders = await get(`orders?select=id&buyer_phone=eq.${"254722000060"}&status=eq.pending`);
+  check("add-on: a refused line leaves no order behind", orphanOrders.length === 0, orphanOrders);
+  check("add-on: unknown pass -> 404", (await call("addon", { access_token: "0".repeat(32), items: [{ preorder_item_id: basicP.id, qty: 1 }] }, ip())).status === 404);
+  const onlineCode = (await get(`online_registrations?select=access_code&limit=1`))[0]?.access_code;
+  check("add-on: an online attendee's code can't order platters", (await call("addon", { access_token: onlineCode, items: [{ preorder_item_id: basicP.id, qty: 1 }] }, ip())).status === 404);
+  check("add-on: a checked-in pass can't add platters", (await call("addon", { access_token: t2.access_token, items: [{ preorder_item_id: basicP.id, qty: 1 }] }, ip())).body?.error === "not_eligible");
+  // abandoned
+  a = await call("addon", { access_token: g.access_token, items: [{ preorder_item_id: bigP.id, qty: 1 }] }, ip());
+  paystack.get(a.body.reference)!.status = "abandoned";
+  v = await call("verify", { reference: a.body.reference });
+  pass = (await call("bytoken", { token: g.access_token })).body;
+  check("add-on abandoned: not_paid, pass still shows only the paid platters", v.body?.result === "not_paid" && pass?.addons?.length === 1, { v: v.body, addons: pass?.addons });
+  // paid after the booking was cancelled -> flagged
+  const gc = (await call("reserve", guestN(62), ip())).body;
+  a = await call("addon", { access_token: gc.access_token, items: [{ preorder_item_id: basicP.id, qty: 1 }] }, ip());
+  await patch(`reservations?access_token=eq.${gc.access_token}`, { status: "cancelled" });
+  v = await call("verify", { reference: a.body.reference });
+  const flaggedOrder = (await get(`orders?select=status,paid_at&paystack_reference=eq.${a.body.reference}`))[0];
+  check("add-on paid after cancellation -> addon_conflict, flagged for refund", v.body?.result === "addon_conflict" && flaggedOrder?.status === "flagged" && !!flaggedOrder?.paid_at, { v: v.body, flaggedOrder });
+  // refund an add-on: platters refunded, booking stays
+  const uid = crypto.randomUUID();
+  await fetch("http://supabase.test/rest/v1/rpc/test_make_user", { method: "POST", headers: svc, body: JSON.stringify({ p_id: uid }) });
+  await fetch("http://supabase.test/rest/v1/admin_users", { method: "POST", headers: svc, body: JSON.stringify({ user_id: uid, role: "admin" }) });
+  const ak = await jwt({ role: "authenticated", sub: uid, exp: 4102444800 });
+  const adminA = createClient("http://supabase.test", ak, { auth: { persistSession: false }, global: { headers: { Authorization: `Bearer ${ak}` } } });
+  const addonOrder = (await get(`reservation_addons?select=order_id&status=eq.applied&reservation_id=eq.${(await booking(g.access_token)).id}`))[0]?.order_id;
+  const rf = await adminA.rpc("refund_event_order", { p_order_id: addonOrder, p_reason: "Changed mind", p_outcome: "keep" });
+  bk = await booking(g.access_token);
+  pass = (await call("bytoken", { token: g.access_token })).body;
+  const adRow = (await get(`reservation_addons?select=status&order_id=eq.${addonOrder}`))[0];
+  check("add-on refund (keep): platters refunded, booking unchanged and valid", rf.data?.result === "refunded" && adRow?.status === "refunded" && bk?.status === "confirmed" && bk?.party_size === 1 && (pass?.addons ?? []).length === 0, { rf: rf.data, adRow, bk });
+  // dashboard query shape
+  const dq = await adminA.from("reservations").select("id,reservation_addons(order_id,status,orders(order_items(qty,unit_price_kes,preorder_items(name))))").eq("access_token", gt.access_token).single();
+  check("dashboard: tickets query reads add-on lines for an admin", !dq.error && (dq.data as any)?.reservation_addons?.[0]?.orders?.order_items?.[0]?.preorder_items?.name === "Moderate Family Platter", dq.error ?? dq.data);
+  const anonA = await rpc("start_platter_addon", { p_token: g.access_token, p_items: [] });
+  check("add-on: anon can't call start_platter_addon", anonA.body?.code === "42501", anonA);
+}
+
+// 16. Investors' visit (investor-register)
+console.log("\n--- investors ---");
+{
+  const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2.45.4");
+  const irow = async (email: string) => await get(`investor_registrations?select=*&email=ilike.${encodeURIComponent(email)}`);
+  const inv = (extra: Record<string, unknown> = {}) => ({ salutation: "Dr", name: "Wanjiru Kamau", occupation: "Managing Director", email: "wanjiru@example.test", guests: ["Grace Kamau"], ...extra });
+  const before = sentEmails.length;
+  let r = await call("inv", inv(), ip());
+  let rows = await irow("wanjiru@example.test");
+  const mail = sentEmails[sentEmails.length - 1];
+  check("investor: registered with one guest, INV- number, confirmation emailed", r.status === 200 && /^INV-[A-Z2-9]{6}$/.test(r.body?.reference_number ?? "") && r.body?.emailed === true && rows.length === 1 && rows[0].guest_count === 1 && sentEmails.length === before + 1, { r: r.body, rows });
+  check("investor: email greets with the title and name, has the date, venue, reference and guest", mail?.to?.[0] === "wanjiru@example.test" && mail.html.includes("Dear Dr Wanjiru Kamau") && mail.html.includes("Friday 16 October 2026") && mail.html.includes("Thika Greens Golf Course") && mail.text.includes("Thika Greens Golf Course") && mail.html.includes(r.body?.reference_number) && mail.html.includes("Grace Kamau"), mail?.html?.slice(0, 300));
+  check("investor: no guests refused (all fields mandatory)", (await call("inv", inv({ email: "a0@example.test", guests: [] }), ip())).body?.error === "guests_required");
+  check("investor: only blank guest rows refused", (await call("inv", inv({ email: "a0@example.test", guests: ["  ", ""] }), ip())).body?.error === "guests_required");
+  r = await call("inv", inv({ email: "otieno@example.test", salutation: "Hon", name: "  Peter   Otieno ", guests: ["Mary Otieno", "  ", "James Mwangi", "Aisha Noor"] }), ip());
+  rows = await irow("otieno@example.test");
+  const mail2 = sentEmails[sentEmails.length - 1];
+  check("investor: 3 guests saved by name (blank rows dropped, spaces tidied), guest_count 3", r.status === 200 && rows[0]?.guest_count === 3 && rows[0]?.name === "Peter Otieno" && JSON.stringify(rows[0]?.guests) === JSON.stringify(["Mary Otieno", "James Mwangi", "Aisha Noor"]), rows);
+  check("investor: email lists every guest", ["Mary Otieno", "James Mwangi", "Aisha Noor"].every((g) => mail2?.html?.includes(g)) && mail2.html.includes("Coming with you (3)"), mail2?.html?.slice(0, 200));
+  const n1 = (await irow("wanjiru@example.test"))[0];
+  const sentBefore = sentEmails.length;
+  r = await call("inv", inv({ email: "WANJIRU@Example.test", name: "Someone Else", guests: ["Intruder One"] }), ip());
+  const after = (await irow("wanjiru@example.test"));
+  check("investor: same email (other case) -> 409 already_registered, confirmation re-sent to the original, row unchanged", r.status === 409 && r.body?.error === "already_registered" && r.body?.reference_number === n1.reference_number && after.length === 1 && after[0].name === "Wanjiru Kamau" && after[0].guest_count === 1 && sentEmails.length === sentBefore + 1 && sentEmails[sentEmails.length - 1].to?.[0] === "wanjiru@example.test", { r: r.body, after });
+  check("investor: bad title refused", (await call("inv", inv({ email: "a1@example.test", salutation: "Sir" }), ip())).body?.error === "invalid_salutation");
+  check("investor: missing name refused", (await call("inv", inv({ email: "a2@example.test", name: "A" }), ip())).body?.error === "invalid_name");
+  check("investor: missing occupation refused", (await call("inv", inv({ email: "a3@example.test", occupation: "" }), ip())).body?.error === "invalid_occupation");
+  check("investor: bad email refused", (await call("inv", inv({ email: "not-an-email" }), ip())).body?.error === "invalid_email");
+  check("investor: 11 guests refused", (await call("inv", inv({ email: "a4@example.test", guests: Array.from({ length: 11 }, (_, i) => `Guest Number ${i}`) }), ip())).body?.error === "too_many_guests");
+  check("investor: one-letter guest name refused", (await call("inv", inv({ email: "a5@example.test", guests: ["X"] }), ip())).body?.error === "invalid_guest_name");
+  check("investor: guests must be a list", (await call("inv", inv({ email: "a6@example.test", guests: "Mary" }), ip())).body?.error === "invalid_guests");
+  check("investor: 10 guests accepted", (await call("inv", inv({ email: "a7@example.test", guests: Array.from({ length: 10 }, (_, i) => `Guest Number ${i}`) }), ip())).status === 200);
+  // database guards behind the function
+  const direct = await fetch("http://supabase.test/rest/v1/investor_registrations", { method: "POST", headers: svc, body: JSON.stringify({ reference_number: "INV-ZZZZZZ", salutation: "Mr", name: "Db Test", occupation: "Tester", email: "db@example.test", guests: ["Ok Name", " "] }) });
+  check("investor: database rejects a blank guest name even from the service role", direct.status === 400, await direct.text());
+  const direct0 = await fetch("http://supabase.test/rest/v1/investor_registrations", { method: "POST", headers: svc, body: JSON.stringify({ reference_number: "INV-ZZZZZY", salutation: "Mr", name: "Db Test", occupation: "Tester", email: "db0@example.test", guests: [] }) });
+  check("investor: database rejects an empty guest list even from the service role", direct0.status === 400, await direct0.text());
+  // access
+  const anonR = await (await fetch("http://supabase.test/rest/v1/investor_registrations?select=id", { headers: { apikey: anonKey, authorization: `Bearer ${anonKey}` } })).json().catch(() => null);
+  check("investor: anon can't read registrations", !Array.isArray(anonR) || anonR.length === 0, anonR);
+  const anonW = await fetch("http://supabase.test/rest/v1/investor_registrations", { method: "POST", headers: { apikey: anonKey, authorization: `Bearer ${anonKey}`, "content-type": "application/json" }, body: JSON.stringify({ reference_number: "INV-AAAAAA", salutation: "Mr", name: "Anon Writer", occupation: "Hacker", email: "anon@example.test" }) });
+  check("investor: anon can't insert", anonW.status === 401 || anonW.status === 403, anonW.status);
+  const mk = async (role: "admin" | "staff") => {
+    const uid = crypto.randomUUID();
+    await fetch("http://supabase.test/rest/v1/rpc/test_make_user", { method: "POST", headers: svc, body: JSON.stringify({ p_id: uid }) });
+    await fetch("http://supabase.test/rest/v1/admin_users", { method: "POST", headers: svc, body: JSON.stringify({ user_id: uid, role }) });
+    const k = await jwt({ role: "authenticated", sub: uid, exp: 4102444800 });
+    return createClient("http://supabase.test", k, { auth: { persistSession: false }, global: { headers: { Authorization: `Bearer ${k}` } } });
+  };
+  const adminC = await mk("admin"), staffC = await mk("staff");
+  const sr = await staffC.from("investor_registrations").select("id,reference_number,salutation,name,occupation,email,guests,guest_count,status,admin_note,created_at,updated_at").order("created_at", { ascending: false });
+  check("investor: staff can read the dashboard query", !sr.error && (sr.data ?? []).length >= 3, sr.error);
+  const target = (await irow("otieno@example.test"))[0];
+  const su = await staffC.from("investor_registrations").update({ status: "cancelled" }).eq("id", target.id).select("id");
+  check("investor: gate staff can't cancel", (su.data ?? []).length === 0, su);
+  const au = await adminC.from("investor_registrations").update({ status: "cancelled", admin_note: "Can't make it", updated_at: new Date().toISOString() }).eq("id", target.id).eq("status", "registered").select("id");
+  check("investor: admin can cancel (with a note)", (au.data ?? []).length === 1 && (await irow("otieno@example.test"))[0].status === "cancelled", au);
+  r = await call("inv", inv({ email: "otieno@example.test", salutation: "Hon", name: "Peter Otieno", guests: ["Mary Otieno"] }), ip());
+  check("investor: after cancelling, the same email can register again (new number)", r.status === 200 && r.body?.reference_number !== target.reference_number && (await irow("otieno@example.test")).length === 2, r.body);
+  const restore = await adminC.from("investor_registrations").update({ status: "registered" }).eq("id", target.id).eq("status", "cancelled").select("id");
+  check("investor: restoring a cancelled one while another is active is blocked (23505)", restore.error?.code === "23505", restore);
+}
+
+console.log(failures ? `\n${failures} FAILED` : "\nall passed");
+Deno.exit(failures ? 1 : 0);

@@ -1,6 +1,6 @@
 # CLAUDE.md — repository root
 
-Updated **2026-10-01**. The detailed, current project handoff is
+Updated **2026-10-03**. The detailed, current project handoff is
 **`meatsoko-ticketing/CLAUDE.md`** (product direction, routes, merch, Paystack, the
 booking rules, what is live). This file holds the repository layout and the rules that
 apply to every change. `HANDOFF.md` covers setting up a new machine.
@@ -101,11 +101,14 @@ functions. Both are applied and verified (anon gets `42501`).
   Details in `meatsoko-ticketing/TECHNICAL_DOCUMENTATION.md` §13.
 - **Migrations:** `YYYYMMDDHHMMSS_snake_case.sql`, forward-only, with prose comments
   explaining the reasoning. Business logic lives in `SECURITY DEFINER` functions;
-  concurrency uses advisory locks and unique constraints. `supabase/schema.sql` is a
-  historical snapshot — never apply it.
-- **Verification:** there is no test suite in the repo. `npm run lint`, `npm run build`,
-  `deno check` for Edge Functions (not covered by `next build`), and live probes. State the
-  honest scope of what a check proved.
+  concurrency uses advisory locks and unique constraints. `supabase/schema.sql` is the
+  base layer a *fresh* database starts from (then every migration); never apply it to the
+  live project.
+- **Verification:** `npm run lint`, `npm run build`, `deno check` for Edge Functions (not
+  covered by `next build`), and the integration harness
+  `meatsoko-ticketing/tests/harness/run.sh` (Docker; real Postgres + PostgREST + the real
+  Edge Functions, Paystack/Resend faked; 238 checks). Then live probes. State the honest
+  scope of what a check proved.
 
 ## 8. Do not
 
@@ -118,6 +121,21 @@ functions. Both are applied and verified (anon gets `42501`).
 - Put secrets in commits, docs or commit messages — no keys, passwords or `access_token`
   values. Name variables, never values.
 - Delete production data to tidy up. The test reservation `NF-23X5MW` (`0700000000`, still
-  `confirmed` as of 2026-10-01) is the one row approved for deletion
+  `confirmed` as of 2026-10-03) is the one row approved for deletion
   (`scripts/delete-test-reservation.sql`).
 - Commit `.claude/settings.local.json` or `.DS_Store` (both in the root `.gitignore`).
+
+## 9. Keeping Claude's context in sync across machines
+
+Claude Code's auto-memory lives in `~/.claude/projects/…/memory/` on each machine and is
+**not** synced. Anything a future session needs must be in the repo:
+
+- **Durable facts and rules → these `CLAUDE.md` files** (this one for rules and layout,
+  `meatsoko-ticketing/CLAUDE.md` for the current state of features, events and open items).
+  Update them at the end of any session that changes what's live; keep dates absolute.
+- **Machine-specific notes → `CLAUDE.local.md`** next to either `CLAUDE.md` (gitignored;
+  Claude Code loads it automatically) — paths, local ports, personal preferences.
+- **Setup → `HANDOFF.md`**: tools, env var *names*, accounts, first commands.
+- **Tests → `meatsoko-ticketing/tests/harness/`**, so checks survive the machine.
+- Secrets never go in any of these. Copy `.env` / `.env.local` across by hand (password
+  manager), or recreate them from `.env.example` and the dashboards.
