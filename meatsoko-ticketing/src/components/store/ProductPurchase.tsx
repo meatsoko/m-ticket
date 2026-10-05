@@ -32,7 +32,7 @@ export default function ProductPurchase({ product }: { product: MerchandiseProdu
     return () => { live = false; };
   }, [product.slug, product.sizes, oneSize]);
 
-  const soldOut = (s: string) => stock[s]?.available === 0;
+  const soldOut = (s: string) => !!product.outOfStock || stock[s]?.available === 0;
   const allSoldOut = product.sizes.every(soldOut);
   // No preorders: a product without a price can't be bought (checkout refuses it too).
   const unpriced = product.priceUsd == null;
