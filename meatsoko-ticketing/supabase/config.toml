@@ -76,6 +76,12 @@ verify_jwt = false
 [functions.investor-register]
 verify_jwt = false
 
+# Occasion booking (celebrations): public request form and the guest's private
+# link (by its 32-hex access token). Rate-limited per IP and per phone; writes
+# use the service role. No prices or payments.
+[functions.celebration-request]
+verify_jwt = false
+
 # Event Orders: public receipt, read by its unguessable receipt token (in the
 # body). Rate-limited per IP; the phone is masked and staff are not named.
 [functions.event-order-receipt]

@@ -64,7 +64,57 @@ Edge Functions) · Paystack · Resend · Vercel (+ Vercel Analytics).
   required**. `investor-register` never overwrites an existing registration for an email
   (re-sends the confirmation instead). Dashboard: Events & tickets → Investors.
 
-## Event page Program + Concept tabs (branch `feat/events-v2-celebrations`, 2026-10-06 — not merged or deployed)
+## /events hero (branch `feat/events-hero`, 2026-10-07 — migration applied, site not yet pushed)
+
+`EventsHero` (`src/components/event/EventsHero.tsx`) shows the first open event as a
+layered poster, after a festival reference the user picked: giant faded `hero_word` →
+cut-out `hero_image_url` (or the banner poster cropped to its top — NyamaFest's poster
+still says "from 5 PM") → event name in red script; stickers from real data (#FreeEntry,
+dress code, venue), a countdown card, a dark "Don't miss out" card with the cheapest
+table priced exactly as the ticket panel prices it (`src/lib/hero-price.ts`), a turning
+Get tickets badge, and `hero_headline` (fallback: tagline). Charcoal/ember in both colour
+schemes; fonts Anton + Great Vibes via `next/font` (`src/lib/fonts.ts`), applied only on
+the hero. Layout by container queries: stacked below a 760px-wide hero, floating above. `/events` uses `AppShell fullBleed`: on desktop the whole page (header, hero, sections) runs edge to edge, content with a 4vw gutter.
+Migration `20261007090000_event_hero.sql` adds the three fields (Event settings → "Events
+page hero") and sets NyamaFest's word "NYAMA" and headline "Let's feast, network &
+celebrate". Migration applied 2026-10-07, so the code can be pushed (Event settings
+saves those columns). Booking is untouched; the hero only links to `/e/<slug>`. Still needed: a
+transparent cut-out photo (a person in all white) for `hero_image_url`.
+
+Below the hero (same branch): **Featured events** (`FeaturedEvents.tsx`, client) — every
+event as a square photo card in a sideways rail (arrows on desktop, swipe on phones,
+"View all" → grid); open and announced events link to `/e/<slug>`, past ones don't;
+events without a banner borrow stand-in food photos (`STAND_IN_IMAGES` in
+`src/app/events/page.tsx`). Then **the concept** (`ConceptHighlight.tsx`) of the hero
+event: core proposition with its claim highlighted, an overview excerpt with "Read
+more…", the pillars, → the full article at **`/e/<slug>/concept`** (`EventConceptView`).
+The old Up next / Coming soon / Past sections are gone (their `.lineup-*` CSS is now
+unused).
+
+## Celebrations — occasion booking (branch `feat/events-hero`, 2026-10-07; database + function LIVE, site not yet pushed)
+
+Phase 1 of the plan: **request → the team calls back with a plan and a quote →
+confirmed**. No prices or payments anywhere (the organiser hasn't set packages or a
+deposit rule; Paystack deposits/instalments are phase 2).
+- Migration `20261007120000_celebration_requests.sql` (applied 2026-10-07): one table;
+  RLS on, **no anon access**; staff read; staff update only `status, reply, staff_note,
+  handled_by, updated_at` (column grants). No functions to lock down.
+- Edge Function **`celebration-request`** (deployed, `verify_jwt = false`, rate-limited per
+  IP and per phone): `create` → `{reference_number, token}` and emails the guest their
+  private link + the team (secret **`CELEBRATIONS_NOTIFY_EMAIL`**, comma-separated —
+  **not set yet**); `get` / `cancel` by the 32-hex `access_token` only (cancel while
+  new/contacted). The `CB-` number is for phone support, never a lookup key.
+- Site: `/celebrations` (store theme; occasion → date/guests/where/budget band → details),
+  `/celebrations/<token>` (private page: progress, the team's reply, cancel),
+  Dashboard → Events & tickets → **Celebrations** (`CelebrationsBoard`: status, reply to
+  guest, internal note). Links in the store nav, phone menu and footer, and a "Plan a
+  celebration" band on `/events`.
+- Budget bands are the guest's own range (a guide for the quote), not MeatSoko prices.
+- Supersedes the parked sketch in `drafts/` (its security problems don't apply here).
+- Harness: 23 celebration checks pass (run in isolation on 2026-10-07 — the full suite
+  currently stops early on the Paystack kill switch from another session; not touched).
+
+## Event page Program + Concept tabs (2026-10-06 — live)
 
 Migration `20261006100000_event_program_concept.sql`: `event_programs` (running order,
 drafts until published) and `event_concepts` (one per event: core proposition, overview,
@@ -146,12 +196,20 @@ custom SMTP — confirm with the user that both are set.
 
 ## Payments, email, money
 
+<<<<<<< HEAD
 - **Paystack is PAUSED (2026-10-06, user's urgent request).** Server: `_shared/paystack-switch.ts`
   — no transaction opens unless the `PAYSTACK_PAYMENTS` secret is `on` (unset = paused);
   `reserve`, `stk-push`, `vendor-apply`, `merch-checkout`, `platter-addon`, `upgrade-reservation`
   return `payments_paused` (503). Site: `src/lib/payments.ts` greys out every pay button with
   "Payment coming soon" unless `NEXT_PUBLIC_PAYSTACK_PAYMENTS=on`. Verify/reconcile still run.
   Re-open: set both to `on` (Supabase secret + Vercel env, then redeploy).
+=======
+- **Paystack is PAUSED (2026-10-06, user's urgent request).** `_shared/paystack-switch.ts`:
+  no new transaction opens unless the `PAYSTACK_PAYMENTS` secret is `on` (unset = paused).
+  Guarded: `reserve`, `stk-push`, `vendor-apply`, `merch-checkout`, `platter-addon`,
+  `upgrade-reservation` (all deployed) — they return `payments_paused` (503). Verify and
+  reconcile still run for earlier references. Re-open: `supabase secrets set PAYSTACK_PAYMENTS=on`.
+>>>>>>> fb70b24 (celebrations module)
 
 - Paystack for everything (tickets `MT…`, merch `MS…`, vendors `MV…`). The account is
   shared with the WooCommerce store, which owns the only webhook — **don't move it**.
@@ -181,7 +239,7 @@ user's say-so. Use `supabase db query --linked "<sql>"` for read-only checks.
 - Edge Functions: `deno check <fn>/index.ts` (or `docker run --rm -v
   $PWD/supabase/functions:/f -w /f denoland/deno:2.6.3 deno check <fn>/index.ts`).
 - **Integration harness: `./tests/harness/run.sh`** (Docker) — fresh Postgres from
-  `schema.sql` + migrations, real Edge Functions; expect `ok: 329 FAIL: 0`. Add checks
+  `schema.sql` + migrations, real Edge Functions; expect `ok: 331 FAIL: 0`. Add checks
   for every new function or permission. See `tests/harness/README.md`.
 - **No browser testing of site features** (user, 2026-10-06): don't click through pages in
   Chrome or a local dev server to verify them — use the checks above, then tell the user
@@ -193,6 +251,7 @@ user's say-so. Use `supabase db query --linked "<sql>"` for read-only checks.
   `scripts/delete-test-reservation.sql`, needs the user's go-ahead to run.
 - Delete the demo admin; identify the `apn…` admin.
 - Set the YouTube stream ID for online attendance.
+- Set `CELEBRATIONS_NOTIFY_EMAIL` (who gets new celebration requests).
 - `NEXT_PUBLIC_MERCH_PAYMENTS=on` + one small real merch purchase, if not done.
 - Price (and add to the merch database) the Hustle Game 21 hoodie.
 - Older docs (`LAUNCH_CHECKLIST.md`, `REMAINING_GAPS.md`, `REMAINING_WORK.md`) still

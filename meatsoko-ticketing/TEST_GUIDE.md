@@ -95,6 +95,39 @@ Setup (admin): Dashboard → Event orders → **Menu** → add 2–3 items with 
 | 7.1 | `/events` | Up next = NyamaFest ticket card; Coming soon = summit poster (starts at "December 5th", no "Event poster" banner); both the same height on desktop |
 | 7.2 | `/login` → Forgot password? | Reset email arrives (needs the Supabase redirect URL + SMTP set); link opens the new-password page |
 
+## 8. /events hero (needs migration `20261007090000_event_hero` and this branch deployed)
+
+| # | Do | Expect |
+|---|----|--------|
+| 8.1 | Desktop: open `/events` | A dark hero running the full window width (no side margins, flush under the header): faded **NYAMA** at the back, the poster (top part only — no "5 PM" line) tilted in the middle, **NyamaFest** written in red script across it |
+| 8.2 | Same | Stickers #FreeEntry, #AllWhite, #ThikaGreens; a red turning **Get tickets** badge top right |
+| 8.3 | Same | Left card: days to go + "From 6:00 AM till late"; centre: "Sat 17 Oct \| Thika Greens Golf Resort" and **LET'S FEAST, NETWORK & CELEBRATE**; right dark card "Don't miss out · Free entry · tables from $15" (or $20 after the early bird ends 7 Oct) |
+| 8.4 | Click the badge and the right card | Both open `/e/nyamafest-main`; booking there is unchanged |
+| 8.5 | Phone (390px) | Word, poster and script on top; date pill and headline under them; countdown and Get tickets cards side by side; no sideways scrolling |
+| 8.6 | Scroll down slowly (Chrome/Safari 26) | The faded word sinks and fades; with "reduce motion" on, nothing moves |
+| 8.7a | Desktop, any window width | The whole page runs edge to edge — header, hero and sections — with no grey margins at the sides and no sideways scroll |
+| 8.7 | Below the hero: **Featured events** | Black band, "FEATURED EVENTS" heading, square photo cards: NyamaFest Main (red "Free entry"), the Summit ("Coming soon"), the two September NyamaFests ("Past event", with stand-in food photos). Each shows "Sat, 17 Oct • Thika Greens Golf Resort" and the name |
+| 8.7b | Desktop: the ‹ › arrows; phone: swipe | Cards slide one at a time and snap; arrows grey out at either end |
+| 8.7c | "View all" / "Show less" | Rail becomes a grid and back |
+| 8.7d | Click NyamaFest Main or the Summit; try a past card | First two open their event pages; past cards do nothing |
+| 8.7e | Below it: **the concept** (cream band) | "THE CONCEPT · NYAMAFEST", the big statement with "where the traditional red-meat economy meets the next generation." highlighted in red, a short excerpt ending in **Read more…**, the six pillars numbered 01–06, "Read the full concept →" |
+| 8.7f | Click Read more… | `/e/nyamafest-main/concept`: the full concept as an article (proposition, overview, pillars, who, objectives, vision, success, take part), Get tickets and Back to events at the end; brown theme on phones |
+| 8.8 | Dashboard → NyamaFest Main → Event settings → **Events page hero** | Change the word or headline, save, reload `/events` — it updates. Paste a transparent PNG URL into the cut-out field — it replaces the poster |
+
+## 9. Celebrations — occasion booking (database + function live; pages need the push)
+
+| # | Do | Expect |
+|---|----|--------|
+| 9.1 | Shop menu / ☰ / footer, and the "Plan a celebration" band on `/events` | All open `/celebrations` |
+| 9.2 | `/celebrations` on phone and desktop | Dark "YOUR DAY, *our grill.*" hero, how-it-works (01–03), the form |
+| 9.3 | Submit empty; then a date tomorrow; then "At our place" with no area | Field errors in place; "at least 2 days' notice"; "Tell us the area" |
+| 9.4 | Send a real request (your own phone + email; a date next month) | Lands on your private page: "Request sent…", Received → We're in touch → Confirmed steps, no prices |
+| 9.5 | Your inbox | "Your … request — MeatSoko (CB-…)" with a **See your request** button to the same page |
+| 9.6 | Team inbox (after setting `CELEBRATIONS_NOTIFY_EMAIL`) | "New … request" with name, phone, date, guests, where |
+| 9.7 | Dashboard → Events & tickets → **Celebrations** (staff or admin) | The request under New; **Update** → "We're in touch", a reply, an internal note → Save |
+| 9.8 | Refresh your private page | Step 2 lit; the reply shows under "From the MeatSoko team"; the internal note does **not** |
+| 9.9 | Private page → Cancel this request → Yes | Shows Cancelled; the dashboard shows it under Cancelled |
+
 ## Report back
 
 For anything that fails: section number, device and browser, what you expected, what you

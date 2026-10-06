@@ -41,7 +41,7 @@ export default function ProductPage({ params }: { params: { slug: string } }) {
 
         <div className="product-layout">
           <div className="product-gallery">
-            <div className="product-gallery-main">
+            <div className={`product-gallery-main${product.fit === "whole" ? " is-whole" : ""}`}>
               <Image src={product.image} alt={`${product.name} in ${product.color.toLowerCase()}`} fill priority sizes="(max-width: 900px) 100vw, 55vw" />
               <span className="product-badge">{product.categoryId === "partnerships" ? "PARTNERSHIP" : product.categoryId === "workwear" ? "MEATSOKO WORKWEAR" : "NYAMAFEST 2026"}</span>
             </div>

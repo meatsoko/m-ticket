@@ -5,7 +5,7 @@ import type { MerchandiseProduct } from "@/lib/merchandise";
 export default function MerchandiseCard({ product }: { product: MerchandiseProduct }) {
   return (
     <article className="merch-product-card">
-      <Link href={`/shop/${product.slug}`} className="merch-product-image" aria-label={`${product.name}, ${product.color} — view product`}>
+      <Link href={`/shop/${product.slug}`} className={`merch-product-image${product.fit === "whole" ? " is-whole" : ""}`} aria-label={`${product.name}, ${product.color} — view product`}>
         <Image
           src={product.image}
           alt={`${product.name}, ${product.color.toLowerCase()}`}

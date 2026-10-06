@@ -2,8 +2,20 @@ import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import Icon from "@/components/Icon";
 import { createClient } from "@/lib/supabase/server";
-import EventTicket from "@/components/EventTicket";
-import { toTicketEvent } from "@/lib/ticket-event";
+import EventsHero from "@/components/event/EventsHero";
+import { cheapestTableLabel, type HeroPlatter } from "@/lib/hero-price";
+import FeaturedEvents, { type FeaturedItem } from "@/components/event/FeaturedEvents";
+import ConceptHighlight from "@/components/event/ConceptHighlight";
+import { displayFont } from "@/lib/fonts";
+import type { EventConcept } from "@/lib/types";
+
+/** Pictures for events that have no banner of their own. */
+const STAND_IN_IMAGES = [
+  "/images/events/nyamafest-main-poster.webp",
+  "/images/table-packages/big-family.webp",
+  "/images/table-packages/moderate-family.webp",
+  "/images/table-packages/basic-family.webp",
+];
 
 const KE = "Africa/Nairobi";
 const fmt = (iso: string, o: Intl.DateTimeFormatOptions) =>
@@ -12,9 +24,9 @@ const fmt = (iso: string, o: Intl.DateTimeFormatOptions) =>
 type Phase = "past" | "now" | "soon";
 
 /**
- * The line-up. Exactly one event is open at a time: it is shown as the same
- * ticket card as the homepage hero, and it is the only one that is a link.
- * Everything else is context — announced ("Coming soon") or past.
+ * The line-up: the next open event as the hero, every event in the Featured
+ * events rail (open and announced ones link to their page; past ones don't),
+ * and the next event's concept with "Read more…" to the full article.
  */
 export default async function EventsPage() {
   const supabase = createClient();
@@ -42,103 +54,76 @@ export default async function EventsPage() {
     : { data: [] as { event_id: string }[] };
   const hasGa = new Set((ga ?? []).map((r) => r.event_id));
 
-  // Announced and past events. Only the open event (the ticket) is actionable —
-  // a closed or announced event that looks tappable is a dead end.
-  const card = (e: any) => {
-    const phase = phaseOf(e);
-    // An announced event whose registration only opens on the day (or never
-    // before it) has no date to promise: say so instead of a fake one.
-    const noRegistrationYet = !e.reservations_open_at || new Date(e.reservations_open_at) >= new Date(e.starts_at);
-    return (
-      <div key={e.id} className={`ev-card ${phase}`} aria-disabled="true">
-        <div className="row">
-          <span className="ev-date" aria-hidden="true">
-            <span className="d num">{fmt(e.starts_at, { day: "numeric" })}</span>
-            <span className="m">{fmt(e.starts_at, { month: "short" })}</span>
-          </span>
-          <div className="stack tight" style={{ flex: 1, minWidth: 0 }}>
-            <strong>{e.name}</strong>
-            <span className="small">
-              {fmt(e.starts_at, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
-              {e.venue ? ` · ${e.venue}` : ""}
-            </span>
-          </div>
-          {e.banner_url && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img className="ev-thumb" src={e.banner_url} alt="" loading="lazy" />
-          )}
-        </div>
-        {e.tagline && <span className="small">{e.tagline}</span>}
-        <div className="row ev-card-foot">
-          <span className={`pill ${phase === "soon" ? "warn" : ""}`}>{phase === "soon" ? "Coming soon" : "Closed"}</span>
-          {phase === "soon" && (
-            <span className="small">
-              {noRegistrationYet ? "Registration details coming soon."
-                : `Reservations open ${fmt(e.reservations_open_at, { day: "numeric", month: "long" })}.`}
-            </span>
-          )}
-        </div>
-      </div>
-    );
-  };
-  // Coming soon with a poster: just the poster, as tall as the Up next ticket.
-  // Not a link — there is nothing to book yet. width/height are the poster's
-  // proportions (portrait, ~2:3) so the space is reserved before it loads.
-  const poster = (e: any) => (
-    <figure key={e.id} className="lineup-poster">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={e.banner_url} loading="lazy" width={714} height={1076}
-        alt={`${e.name} — ${fmt(e.starts_at, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}${e.venue ? `, ${e.venue}` : ""}. Coming soon.`} />
-    </figure>
-  );
   const open = list.filter((e: any) => phaseOf(e) === "now");
+  // The hero is the first open event. Its price line is read the way the
+  // event page prices it.
+  const hero = open[0] ?? null;
+  let priceFrom: string | null = null;
+  if (hero) {
+    if ((hero.reservation_mode ?? "off") !== "off") {
+      const [{ data: tables }, { data: items }] = await Promise.all([
+        supabase.from("reservation_types").select("included_preorder_item_id")
+          .eq("event_id", hero.id).eq("is_active", true).eq("is_general_admission", false),
+        supabase.from("preorder_items").select("id, name, price_kes, compare_at_price_kes, early_bird_ends_at")
+          .eq("event_id", hero.id).eq("is_active", true),
+      ]);
+      const ids = new Set((tables ?? []).map((t: any) => t.included_preorder_item_id).filter(Boolean));
+      priceFrom = cheapestTableLabel((items ?? []).filter((i: any) => ids.has(i.id)) as HeroPlatter[], Date.now());
+    } else {
+      const { data: types } = await supabase.from("ticket_types").select("price_kes").eq("event_id", hero.id).eq("is_active", true);
+      const prices = (types ?? []).map((t: any) => Number(t.price_kes)).filter((n) => n > 0);
+      if (prices.length) priceFrom = `KSh ${Math.min(...prices).toLocaleString("en-KE")}`;
+    }
+  }
   const soon = list.filter((e: any) => phaseOf(e) === "soon");
   const past = list.filter((e: any) => phaseOf(e) === "past").reverse();
 
-  return (
-    <AppShell title="Events" wideEvent>
-      <div className="pad">
-        <div className="stack tight event-lineup-heading">
-          <span className="eyebrow">MeatSoko</span>
-          <h1>The line-up</h1>
-        </div>
+  // Featured events: open, then announced, then past (newest first). Events
+  // without a banner (the two closed September NyamaFests) borrow MeatSoko
+  // food photos so every card has a picture.
+  let spare = 0;
+  const featured: FeaturedItem[] = [...open, ...soon, ...past].map((e: any) => {
+    const phase = phaseOf(e);
+    return {
+      id: e.id, title: e.name,
+      when: `${fmt(e.starts_at, { weekday: "short" })}, ${fmt(e.starts_at, { day: "2-digit", month: "short" })}`,
+      venue: (e.venue || "Nairobi").split(",")[0],
+      image: e.banner_url || STAND_IN_IMAGES[spare++ % STAND_IN_IMAGES.length],
+      href: phase === "past" ? null : `/e/${e.slug}`,
+      tag: phase === "past" ? "Past event" : phase === "soon" ? "Coming soon" : hasGa.has(e.id) ? "Free entry" : "Tickets on sale",
+      tone: phase === "past" ? "past" : phase === "soon" ? "soon" : "open",
+    };
+  });
 
-        {list.length === 0 && (
+  const { data: concept } = hero
+    ? await supabase.from("event_concepts").select("*").eq("event_id", hero.id).maybeSingle()
+    : { data: null };
+
+  return (
+    <AppShell title="Events" wideEvent fullBleed>
+      {hero && <EventsHero event={hero} freeEntry={hasGa.has(hero.id)} priceFrom={priceFrom} />}
+      {featured.length > 0 && <FeaturedEvents items={featured} className={displayFont.variable} />}
+      {hero && concept && (
+        <ConceptHighlight concept={concept as EventConcept} slug={hero.slug} eventName={hero.name.replace(/\s*\bmain\b\s*/i, " ").trim()} className={displayFont.variable} />
+      )}
+      <section className={`cel-band ${displayFont.variable}`} aria-labelledby="cel-band-title">
+        <span className="cel-kicker">MeatSoko Celebrations</span>
+        <h2 id="cel-band-title">Got your own occasion?</h2>
+        <p>Birthdays, anniversaries, graduations, family days. Tell us about it and we&apos;ll plan the nyama, the grill and the setup with you.</p>
+        <Link href="/celebrations">Plan a celebration <b aria-hidden="true">→</b></Link>
+      </section>
+      {list.length === 0 && (
+        <div className="pad">
+          <div className="stack tight event-lineup-heading">
+            <span className="eyebrow">MeatSoko</span>
+            <h1>The line-up</h1>
+          </div>
           <div className="empty">
             <Icon name="ticket" size={30} />
             <strong>Nothing announced yet</strong>
           </div>
-        )}
-
-        <div className="lineup-top">
-        {open.length > 0 && (
-          <section className="lineup-section" aria-label="Up next">
-            <h2 className="lineup-label">Up next</h2>
-            <div className="lineup-open">
-              {open.map((e: any) => (
-                <Link key={e.id} href={`/e/${e.slug}`} className="lineup-ticket" aria-label={`${e.name} — get tickets`}>
-                  <span className="lineup-ticket-box"><EventTicket event={toTicketEvent(e, hasGa.has(e.id))} /></span>
-                </Link>
-              ))}
-            </div>
-          </section>
-        )}
-        {soon.length > 0 && (
-          <section className="lineup-section" aria-label="Coming soon">
-            <h2 className="lineup-label">Coming soon</h2>
-            <div className="lineup-soon">{soon.map((e: any) => e.banner_url ? poster(e) : card(e))}</div>
-          </section>
-        )}
         </div>
-        {past.length > 0 && (
-          <section className="lineup-section" aria-label="Past events">
-            <h2 className="lineup-label">Past events</h2>
-            <div className="event-lineup-grid">{past.map(card)}</div>
-          </section>
-        )}
-
-        <div className="bottom-gap" />
-      </div>
+      )}
     </AppShell>
   );
 }

@@ -52,6 +52,9 @@ export default function EventSettings({ event }: { event: any }) {
     venue: event.venue ?? "",
     description: event.description ?? "",
     banner_url: event.banner_url ?? "",
+    hero_word: event.hero_word ?? "",
+    hero_headline: event.hero_headline ?? "",
+    hero_image_url: event.hero_image_url ?? "",
     lineup: event.lineup ?? "",
     table_plan_url: event.table_plan_url ?? "",
     online_enabled: event.online_enabled === true,
@@ -85,6 +88,9 @@ export default function EventSettings({ event }: { event: any }) {
       venue: f.venue.trim(),
       description: f.description,
       banner_url: f.banner_url.trim() || null,
+      hero_word: f.hero_word.trim().toUpperCase() || null,
+      hero_headline: f.hero_headline.trim() || null,
+      hero_image_url: f.hero_image_url.trim() || null,
       lineup: f.lineup.trim() || null,
       table_plan_url: f.table_plan_url.trim() || null,
       online_enabled: f.online_enabled,
@@ -267,6 +273,25 @@ export default function EventSettings({ event }: { event: any }) {
             <span>Banner image URL</span>
             <input placeholder="https://…" value={f.banner_url}
               onChange={(e) => set("banner_url", e.target.value)} />
+          </label>
+          <span className="eyebrow">Events page hero</span>
+          <label className="field">
+            <span>Big faded word (optional)</span>
+            <input placeholder="NYAMA" maxLength={16}
+              value={f.hero_word} onChange={(e) => set("hero_word", e.target.value)} />
+            <span className="small">Sits behind the picture on /events when this is the next event. Empty = first word of the name.</span>
+          </label>
+          <label className="field">
+            <span>Hero headline (optional)</span>
+            <input placeholder="Let's feast, network & celebrate" maxLength={70}
+              value={f.hero_headline} onChange={(e) => set("hero_headline", e.target.value)} />
+            <span className="small">Empty = the tagline.</span>
+          </label>
+          <label className="field">
+            <span>Hero cut-out image URL (optional)</span>
+            <input placeholder="/images/events/….png" value={f.hero_image_url}
+              onChange={(e) => set("hero_image_url", e.target.value)} />
+            <span className="small">A transparent PNG (a person or the food, no background). Empty = the top of the banner poster.</span>
           </label>
           <label className="field">
             <span>Lineup (one act per line, optional)</span>
