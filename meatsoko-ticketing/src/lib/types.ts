@@ -24,6 +24,11 @@ export type Event = {
   online_price_kes?: number | null;
   /** False while M-Pesa provisioning is pending: preorders show but can't be bought. */
   payments_enabled?: boolean;
+  /** Shown instead of the computed hours, e.g. "From 6:00 AM till late" (migration 20261006120000). */
+  time_note?: string | null;
+  dress_code?: string | null;
+  /** "Hosted by …" under the event name. */
+  host?: string | null;
 };
 
 export type TicketType = {
@@ -75,4 +80,104 @@ export type ReservationType = {
   included_preorder_item?: PreorderItem | null;
   /** The free one-person ticket that tables upgrade (migration 20260929180000). */
   is_general_admission?: boolean;
+};
+
+// ---------- Events v2 ----------
+
+export type EventProgramItem = {
+  id: string;
+  event_id: string;
+  time_label: string;
+  title: string;
+  description: string | null;
+  speaker_host: string | null;
+  category: string | null;
+  location: string | null;
+  position: number;
+  is_published: boolean;
+};
+
+export type EventConceptPillar = { title: string; body: string };
+
+export type EventConcept = {
+  id: string;
+  event_id: string;
+  core_proposition: string | null;
+  overview: string | null;
+  pillars: EventConceptPillar[];
+  target_participants: string[];
+  objectives: string[];
+  vision: string | null;
+  success_measure: string | null;
+  take_part: string[];
+};
+
+// ---------- Celebrations ----------
+
+export type CelebrationOccasion = {
+  id: string;
+  name: string;
+  slug: string;
+  icon: string | null;
+  position: number;
+  is_active: boolean;
+};
+
+export type CelebrationPackage = {
+  id: string;
+  name: string;
+  description: string | null;
+  base_price_kes: number;
+  image_url: string | null;
+  position: number;
+  is_active: boolean;
+};
+
+export type CelebrationAddon = {
+  id: string;
+  name: string;
+  price_kes: number;
+  category: string;
+  is_active: boolean;
+  position: number;
+};
+
+export type CelebrationStatus = "pending" | "active" | "completed" | "cancelled";
+export type CelebrationFulfilmentStatus = "upcoming" | "ready" | "fulfilled";
+
+export type Celebration = {
+  id: string;
+  occasion_id: string | null;
+  package_id: string | null;
+  celebration_number: string;
+  celebrated_name: string;
+  celebration_date: string;
+  guest_count: number;
+  style_vibe: string | null;
+  notes: string | null;
+  customer_phone: string;
+  customer_email: string | null;
+  total_kes: number;
+  paid_kes: number;
+  deposit_kes: number;
+  status: CelebrationStatus;
+  fulfilment_status: CelebrationFulfilmentStatus;
+  created_at: string;
+  updated_at: string;
+
+  // Joined data
+  occasion?: CelebrationOccasion;
+  package?: CelebrationPackage;
+  addons?: (CelebrationAddon & { qty: number; price_at_booking: number })[];
+  payments?: CelebrationPayment[];
+};
+
+export type CelebrationPayment = {
+  id: string;
+  celebration_id: string;
+  amount_kes: number;
+  channel: string;
+  reference: string;
+  status: string;
+  paid_at: string;
 };

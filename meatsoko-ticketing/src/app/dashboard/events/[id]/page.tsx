@@ -7,7 +7,9 @@ import EventStatusControls from "@/components/EventStatusControls";
 import ReservationTypesPanel from "@/components/ReservationTypesPanel";
 import PreorderItemsPanel from "@/components/PreorderItemsPanel";
 import EventDashboard from "@/components/EventDashboard";
-import type { PreorderItem, ReservationType } from "@/lib/types";
+import EventProgramPanel from "@/components/dashboard/EventProgramPanel";
+import EventConceptPanel from "@/components/dashboard/EventConceptPanel";
+import type { EventConcept, EventProgramItem, PreorderItem, ReservationType } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +22,19 @@ export default async function DashboardEventPage({ params }: { params: { id: str
   const { data: ev } = await supabase.from("events").select("*").eq("id", params.id).maybeSingle();
   if (!ev) notFound();
   const isReservation = (ev.reservation_mode ?? "off") !== "off";
+
+  // Program + Concept tabs (migration 20261006100000). Admins see drafts too (RLS).
+  const [{ data: program }, { data: concept }] = await Promise.all([
+    supabase.from("event_programs").select("*").eq("event_id", ev.id).order("position"),
+    supabase.from("event_concepts").select("*").eq("event_id", ev.id).maybeSingle(),
+  ]);
+  const pageContent = (
+    <>
+      <div className="dash-title"><h2 className="dash-section-title">Event page content</h2><p>The Program and Concept tabs on the public event page.</p></div>
+      <EventProgramPanel eventId={ev.id} items={(program ?? []) as EventProgramItem[]} />
+      <EventConceptPanel eventId={ev.id} concept={(concept ?? null) as EventConcept | null} />
+    </>
+  );
 
   const header = (
     <div className="dash-title-row">
@@ -47,6 +62,7 @@ export default async function DashboardEventPage({ params }: { params: { id: str
           <div className="dash-card"><EventSettings event={ev} /></div>
           <div className="dash-card"><EventDashboard event={ev} types={types ?? []} orders={orders ?? []} tickets={tickets ?? []} /></div>
         </div>
+        {pageContent}
       </div>
     );
   }
@@ -106,6 +122,7 @@ export default async function DashboardEventPage({ params }: { params: { id: str
           {ev.reservation_mode !== "free" && <div className="dash-card"><PreorderItemsPanel eventId={ev.id} items={(items ?? []) as PreorderItem[]} /></div>}
         </div>
       </div>
+      {pageContent}
     </div>
   );
 }

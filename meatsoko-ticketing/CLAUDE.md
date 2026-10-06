@@ -29,7 +29,9 @@ Edge Functions) · Paystack · Resend · Vercel (+ Vercel Analytics).
 ## Live events (2026-10-03)
 
 - **NyamaFest Main** (`nyamafest-main`): **Sat 17 Oct 2026, 6:00 am → Sun 18 Oct 6:00 am**
-  (Africa/Nairobi), Thika Greens Golf Course, capacity 500. Migration `20261002090000` set
+  (Africa/Nairobi), Thika Greens Golf **Resort** (per the concept note), capacity 500; shown as
+  "From 6:00 AM till late", dress code all white, hosted by MEATsoko Group (`events.time_note`,
+  `dress_code`, `host`, migration `20261006120000`). Migration `20261002090000` set
   the hours (it was 5 pm; emails sent before 2026-10-02 say 5 pm).
   - **General Admission is free**; tables (Basic / Moderate / Big Family, each with a family
     platter) are paid upgrades of the same pass. `GetTicketsPanel` is two screens: choose
@@ -50,7 +52,7 @@ Edge Functions) · Paystack · Resend · Vercel (+ Vercel Analytics).
 
 ## Investors (`/investors`)
 
-- Investors' visit: **Friday 16 October 2026, Thika Greens Golf Course**, time confirmed by
+- Investors' visit: **Friday 16 October 2026, Thika Greens Golf Resort**, time confirmed by
   email. Constants in `src/lib/investors.ts` and `supabase/functions/_shared/investor.ts`
   (keep in step).
 - Landing (`InvestorsLanding.tsx`): dark-emerald hero with drifting glass bubbles (inspired
@@ -62,7 +64,20 @@ Edge Functions) · Paystack · Resend · Vercel (+ Vercel Analytics).
   required**. `investor-register` never overwrites an existing registration for an email
   (re-sends the confirmation instead). Dashboard: Events & tickets → Investors.
 
-## Event Orders (branch `feat/event-orders`, 2026-10-03 — not merged or deployed yet)
+## Event page Program + Concept tabs (branch `feat/events-v2-celebrations`, 2026-10-06 — not merged or deployed)
+
+Migration `20261006100000_event_program_concept.sql`: `event_programs` (running order,
+drafts until published) and `event_concepts` (one per event: core proposition, overview,
+pillars, who it's for, objectives, vision), public read / admin write. NyamaFest Main's
+concept is seeded from the organiser's concept note. Edited on the dashboard event page
+("Event page content"); shown as Program / Concept tabs on `/e/[slug]` only when there is
+content. The concept also has a measure of success and ways to take part. Site copy (event
+details, Investors page) follows the organiser's **Nyama Fest Concept Note** (2026-10-05) —
+`20261006120000_nyamafest_concept_details.sql` sets venue, tagline, time note, dress code,
+host and the "what's inside" list. The Celebrations sketch from the same branch is parked in `drafts/` (not built)
+until the organiser sends real packages, prices and payment rules.
+
+## Event Orders (LIVE since 2026-10-03)
 
 Staff take on-site orders on their phones; management tracks money and staff in
 Dashboard → Events & tickets → Event orders. Migration `20261003100000_event_orders.sql`
@@ -155,12 +170,11 @@ user's say-so. Use `supabase db query --linked "<sql>"` for read-only checks.
 - Edge Functions: `deno check <fn>/index.ts` (or `docker run --rm -v
   $PWD/supabase/functions:/f -w /f denoland/deno:2.6.3 deno check <fn>/index.ts`).
 - **Integration harness: `./tests/harness/run.sh`** (Docker) — fresh Postgres from
-  `schema.sql` + migrations, real Edge Functions; expect `ok: 319 FAIL: 0`. Add checks
+  `schema.sql` + migrations, real Edge Functions; expect `ok: 329 FAIL: 0`. Add checks
   for every new function or permission. See `tests/harness/README.md`.
-- Browser checks: Chrome automation tabs run in the background — timers, animation frames
-  and `<video>` loading pause there, so don't treat a stalled animation or video as a bug;
-  check phone layouts with a 390px `<iframe>`. Kill stray `next dev` processes before
-  starting another (`pkill -f "next dev"`); several at once make the browser hang.
+- **No browser testing of site features** (user, 2026-10-06): don't click through pages in
+  Chrome or a local dev server to verify them — use the checks above, then tell the user
+  exactly what to test and where. The browser is for research only.
 
 ## Open items (2026-10-03)
 

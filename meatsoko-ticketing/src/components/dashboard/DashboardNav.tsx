@@ -26,7 +26,7 @@ export default function DashboardNav({ toFulfil }: { toFulfil: number }) {
   ];
   // Events & tickets: two options, like a sub-menu.
   const eventsGroup = [
-    { href: "/dashboard/events", label: "Create event", icon: I.events },
+    { href: "/dashboard/events", label: "Manage events", icon: I.events },
     { href: "/dashboard/tickets", label: "Tickets", icon: I.tickets },
     { href: "/dashboard/event-orders", label: "Event orders", icon: I.eventOrders },
     { href: "/dashboard/vendors", label: "Vendors", icon: I.vendors },

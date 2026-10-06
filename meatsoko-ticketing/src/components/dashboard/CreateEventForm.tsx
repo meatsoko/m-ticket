@@ -89,7 +89,7 @@ export default function CreateEventForm() {
           </section>
           <section className="dash-card dash-form">
             <h2>When &amp; where</h2>
-            <label>Venue *<input value={f.venue} onChange={set("venue")} placeholder="Thika Greens Golf Course" /></label>
+            <label>Venue *<input value={f.venue} onChange={set("venue")} placeholder="Thika Greens Golf Resort" /></label>
             <div className="dash-form-row">
               <label>Starts *<input type="datetime-local" value={f.starts} onChange={set("starts")} /></label>
               <label>Ends<input type="datetime-local" value={f.ends} onChange={set("ends")} /></label>

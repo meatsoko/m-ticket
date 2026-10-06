@@ -1,14 +1,19 @@
 "use client";
 import { useState, type ReactNode } from "react";
+import ProgramTimeline from "./ProgramTimeline";
+import EventConceptView from "./EventConceptView";
+import type { EventProgramItem, EventConcept } from "@/lib/types";
 
-// Overview / Lineup / Venue / Table plan. Lineup and Table plan only appear when
-// the event has them (events.lineup, events.table_plan_url).
-export default function EventTabs({ overview, lineup, venue, tablePlanUrl, eventName }: {
+// Overview / Program / Concept / Lineup / Venue / Table plan.
+export default function EventTabs({ overview, lineup, venue, tablePlanUrl, eventName, program, concept }: {
   overview: ReactNode; lineup?: string | null; venue?: string | null; tablePlanUrl?: string | null; eventName: string;
+  program?: EventProgramItem[]; concept?: EventConcept | null;
 }) {
   const acts = (lineup ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
   const tabs = [
     { id: "overview", label: "Overview" },
+    ...(program && program.length > 0 ? [{ id: "program", label: "Program" }] : []),
+    ...(concept ? [{ id: "concept", label: "Concept" }] : []),
     ...(acts.length ? [{ id: "lineup", label: "Lineup" }] : []),
     ...(venue ? [{ id: "venue", label: "Venue" }] : []),
     ...(tablePlanUrl ? [{ id: "plan", label: "Table plan" }] : []),
@@ -25,6 +30,8 @@ export default function EventTabs({ overview, lineup, venue, tablePlanUrl, event
       )}
       <div role="tabpanel">
         {tab === "overview" && overview}
+        {tab === "program" && program && <ProgramTimeline items={program} />}
+        {tab === "concept" && concept && <EventConceptView concept={concept} />}
         {tab === "lineup" && (
           <ul className="event-lineup">{acts.map((a) => <li key={a}>{a}</li>)}</ul>
         )}
