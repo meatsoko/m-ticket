@@ -35,17 +35,6 @@ export function StoreHeader() {
   );
 }
 
-export function StoreMobileBar() {
-  return (
-    <nav className="store-mobile-bar" aria-label="Quick navigation">
-      <Link href="/" aria-label="Home"><span aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-6v-7h-4v7H4a1 1 0 0 1-1-1V10Z"/></svg></span><small>Home</small></Link>
-      <Link href="/shop" aria-label="Shop"><span aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/></svg></span><small>Shop</small></Link>
-      <Link href="/events" aria-label="Events"><span aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 8V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 0 0 8v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-8Z"/><path d="M15 5v14" strokeDasharray="2 2"/></svg></span><small>Events</small></Link>
-      <Link href="/cart" aria-label="Shopping bag"><span aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 8h14l1 13H4L5 8Z"/><path d="M9 9V6a3 3 0 0 1 6 0v3"/></svg></span><small>Bag</small></Link>
-    </nav>
-  );
-}
-
 export function StoreFooter() {
   return (
     <footer className="store-footer">
@@ -84,11 +73,9 @@ export function StoreShell({ children }: { children: React.ReactNode }) {
   return (
     <BagProvider>
       <div className="storefront">
-        <div className="store-announcement">MEATSOKO · GOOD THINGS FOR GOOD GATHERINGS</div>
         <StoreHeader />
         {children}
         <StoreFooter />
-        <StoreMobileBar />
         <BagDrawer />
       </div>
     </BagProvider>
