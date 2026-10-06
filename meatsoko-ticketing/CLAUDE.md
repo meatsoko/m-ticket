@@ -52,8 +52,8 @@ Edge Functions) · Paystack · Resend · Vercel (+ Vercel Analytics).
 
 ## Investors (`/investors`)
 
-- Investors' visit: **Friday 16 October 2026, Thika Greens Golf Resort**, time confirmed by
-  email. Constants in `src/lib/investors.ts` and `supabase/functions/_shared/investor.ts`
+- Investors' visit: **Friday 16 October 2026, from 4:00 PM, Thika Greens Golf Resort** (program
+  Day 1: arrival 4 PM, welcome 5 PM, agenda meetings into the night; `INVESTOR_TIME`). Constants in `src/lib/investors.ts` and `supabase/functions/_shared/investor.ts`
   (keep in step).
 - Landing (`InvestorsLanding.tsx`): dark-emerald hero with drifting glass bubbles (inspired
   by `assets/dealroom.mp4`; the user chose to keep only the bubbles), Wendy's video

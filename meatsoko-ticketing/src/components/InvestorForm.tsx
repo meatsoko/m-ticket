@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
 import { looksLikeEmail } from "@/lib/phone";
 import { SUPPORT } from "@/lib/support";
-import { INVESTOR_DAY, INVESTOR_VENUE, MAX_GUESTS, SALUTATIONS } from "@/lib/investors";
+import { INVESTOR_DAY, INVESTOR_TIME, INVESTOR_VENUE, MAX_GUESTS, SALUTATIONS } from "@/lib/investors";
 
 // Investors' visit registration (migration 20261001150000) -> investor-register.
 // Guests are entered by name so the organiser knows who is coming. Every field
@@ -69,13 +69,13 @@ export default function InvestorForm() {
         <p>This email is already registered for the investors&apos; visit. {done.emailed ? <>We&apos;ve emailed the confirmation to <strong>{email.trim()}</strong> again.</> : null} To change your details or guest list, call or WhatsApp <a href={SUPPORT.tel}>{SUPPORT.display}</a> and quote your reference.</p>
       ) : (
         <>
-          <p>Thank you, {salutation} {name.trim()}. We look forward to seeing you on {INVESTOR_DAY} at {INVESTOR_VENUE}.{done.emailed ? <> A confirmation is on its way to <strong>{email.trim()}</strong>.</> : null}</p>
+          <p>Thank you, {salutation} {name.trim()}. We look forward to seeing you on {INVESTOR_DAY}, {INVESTOR_TIME.toLowerCase()}, at {INVESTOR_VENUE}.{done.emailed ? <> A confirmation is on its way to <strong>{email.trim()}</strong>.</> : null}</p>
           <dl className="investor-summary">
             <div><dt>Occupation</dt><dd>{occupation.trim()}</dd></div>
             <div><dt>Coming with you</dt><dd>{named.join(", ")}</dd></div>
             <div><dt>Venue</dt><dd>{INVESTOR_VENUE}</dd></div>
           </dl>
-          <p className="investor-muted">We&apos;ll confirm the time by email. Need a change? Call or WhatsApp <a href={SUPPORT.tel}>{SUPPORT.display}</a>.</p>
+          <p className="investor-muted">Arrival and registration {INVESTOR_TIME.toLowerCase()}. Need a change? Call or WhatsApp <a href={SUPPORT.tel}>{SUPPORT.display}</a>.</p>
         </>
       )}
     </section>

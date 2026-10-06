@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
 import InvestorForm from "@/components/InvestorForm";
-import { INVESTOR_DAY, INVESTOR_VENUE } from "@/lib/investors";
+import { INVESTOR_DAY, INVESTOR_TIME, INVESTOR_VENUE } from "@/lib/investors";
 
 // The investors' landing page (/investors). Design follows the "dealroom"
 // reference: a dark emerald stage with a glowing rim, a ring of glass bubbles
@@ -153,13 +153,13 @@ export default function InvestorsLanding() {
         <div className="inv-day-copy">
           <span className="inv-eyebrow light">The visit</span>
           <h2 id="day-title">See it for yourself, the day before NyamaFest.</h2>
-          <p>Bring the people you&apos;d like with you. Register everyone in one go and we&apos;ll confirm the time by email.</p>
+          <p>Bring the people you&apos;d like with you and register everyone in one go. Arrival and registration from 4:00 PM, the welcome at 5:00 PM, then meetings across the NyamaFest agendas into the evening.</p>
           <button type="button" className="inv-cta" onClick={openForm}>Reserve your place</button>
         </div>
         <dl className="inv-day-facts">
           <div><dt>Date</dt><dd>{INVESTOR_DAY}</dd></div>
           <div><dt>Venue</dt><dd>{INVESTOR_VENUE}</dd></div>
-          <div><dt>Time</dt><dd>Confirmed by email</dd></div>
+          <div><dt>Time</dt><dd>{INVESTOR_TIME}</dd></div>
           <div><dt>Guests</dt><dd>Up to 10 with you</dd></div>
         </dl>
       </section>
