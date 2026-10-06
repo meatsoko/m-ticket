@@ -27,6 +27,7 @@ export type MerchandiseProduct = {
   summary: string;
   details: string[];
   partner?: string;
+  outOfStock?: boolean;
 };
 
 export type MerchandiseCategory = {
@@ -118,6 +119,11 @@ export const merchandiseCategories: MerchandiseCategory[] = [
       make("polos", NYAMAFEST.polo, "Red", "red-polo-nyamafest.png", 19),
       make("polos", NYAMAFEST.polo, "White", "white-polo-nyamafest.png", 19),
       make("polos", NYAMAFEST.polo, "Green", "green-polo-nyamafest-side.png", 19),
+      make("polos", {
+        style: "Executive Polo", name: "MeatSoko Executive Polo", sizes: APPAREL_SIZES,
+        summary: "A crisp white executive polo with the MeatSoko Ecosystem logo on the chest.",
+        details: ["MeatSoko Ecosystem print on the chest", "Ribbed collar and button placket", "Short sleeves"],
+      }, "White · Executive", "executive.png", 19.50, { slug: "executive-polo", outOfStock: true }),
     ],
   },
   {
@@ -165,7 +171,7 @@ export const merchandiseCategories: MerchandiseCategory[] = [
       make("partnerships", {
         ...BMB_HOODIE,
         details: ["BMB — Brian Munyolo Boxing print on the chest", "Kenya flag on the right sleeve, “fuel your soul” down the left", "MeatSoko Ecosystem print across the back", "Drawstring hood and front kangaroo pocket"],
-      }, "Black · Kenya edition", "bmb-hoodie-black-kenya.jpg", 90, { slug: "bmb-hoodie-kenya-edition", swatch: SWATCHES.KenyaBlack }),
+      }, "Black · Kenya edition", "bmb-hoodie-black-kenya.jpg", 90, { slug: "bmb-hoodie-black-kenya-edition", swatch: SWATCHES.KenyaBlack }),
       make("partnerships", BMB_HOODIE, "Blue", "bmb-hoodie-blue.jpg", 90, { slug: "bmb-hoodie-blue" }),
       make("partnerships", {
         style: "Fuel Your Soul Bottle", name: "Fuel Your Soul Water Bottle", sizes: ONE_SIZE,
@@ -179,9 +185,14 @@ export const merchandiseCategories: MerchandiseCategory[] = [
       }, "Blue", "bmb-tee-blue.jpg", 15, { slug: "bmb-t-shirt-blue" }),
       make("partnerships", {
         style: "Hustle Game 21 Hoodie", name: "Hustle Game 21 Hoodie", sizes: APPAREL_SIZES,
-        summary: "A black hoodie with the Hustle Game 21 script up front and the MeatSoko Ecosystem print across the back.",
+        summary: "A black hoodie with the Hustle Game 21 script up front and the MeatSoko Ecosystem print across the back (Model view).",
         details: ["“Hustle Game 21” script on the chest with “They doubt the dream — right up until the jet hits the sky.”", "MeatSoko Ecosystem print across the back with “Convenient . Reliable . Sustainable”", "Drawstring hood and front kangaroo pocket", "Ribbed cuffs and hem"],
-      }, "Black", "hustle-game-21-hoodie-black.jpg", null, { slug: "hustle-game-21-hoodie-black" }),
+      }, "Black · Model view", "hustle-game-21-model.jpg", 20, { slug: "hustle-game-21-hoodie-model" }),
+      make("partnerships", {
+        style: "Hustle Game 21 Hoodie", name: "Hustle Game 21 Hoodie", sizes: APPAREL_SIZES,
+        summary: "Front, side, and back views of the Hustle Game 21 hoodie showing the complete ecosystem branding.",
+        details: ["Front view with Hustle Game 21 script", "Side sleeve token detail", "Back view with MeatSoko Ecosystem red/green branding"],
+      }, "Black · Ecosystem views", "hustle-game-21-views.jpg", 20, { slug: "hustle-game-21-hoodie-views" }),
     ],
   },
 ];
@@ -214,7 +225,7 @@ export function searchProducts(query: string, limit = 6) {
     .slice(0, limit);
 }
 
-export const formatPrice = (usd: number) => `$${usd.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+export const formatPrice = (usd: number) => `$${usd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 // Delivery options. Fees are null until the organiser confirms them (same rule as
 // prices): checkout shows "Fee to be confirmed" and stays closed while the chosen
