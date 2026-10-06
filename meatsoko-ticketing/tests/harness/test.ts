@@ -1162,5 +1162,40 @@ console.log("\n--- customer event orders ---");
   check("audit: customer create, accept, decline, reassign, cancel and staff status changes logged", ["event_order_customer_create", "event_order_accept", "event_order_decline", "event_order_customer_reassign", "event_order_customer_cancel", "event_staff_status"].every((a) => aud.some((x: any) => x.action === a)), aud.map((a: any) => a.action));
 }
 
+// 19. Event page Program and Concept tabs (admin-edited, public read)
+console.log("\n--- program & concept ---");
+{
+  const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2.45.4");
+  const mk = async (role: "admin" | "staff") => {
+    const uid = crypto.randomUUID();
+    await fetch("http://supabase.test/rest/v1/rpc/test_make_user", { method: "POST", headers: svc, body: JSON.stringify({ p_id: uid }) });
+    await fetch("http://supabase.test/rest/v1/admin_users", { method: "POST", headers: svc, body: JSON.stringify({ user_id: uid, role }) });
+    const k = await jwt({ role: "authenticated", sub: uid, exp: 4102444800 });
+    return createClient("http://supabase.test", k, { auth: { persistSession: false }, global: { headers: { Authorization: `Bearer ${k}` } } });
+  };
+  const admin = await mk("admin"), staff = await mk("staff");
+  const anonC = createClient("http://supabase.test", anonKey, { auth: { persistSession: false } });
+  const ev = (await post("events", { name: "Concept Fest", slug: "concept-fest", starts_at: new Date(Date.now() + 864e5).toISOString(), ends_at: new Date(Date.now() + 2 * 864e5).toISOString(), status: "live" }))[0];
+  let r = await admin.from("event_programs").insert([{ event_id: ev.id, time_label: "06:00", title: "Gates open", is_published: true, position: 0 }, { event_id: ev.id, time_label: "09:00", title: "Secret draft", is_published: false, position: 1 }]).select("id");
+  check("program: admin adds items", !r.error && (r.data ?? []).length === 2, r.error);
+  const pub = await anonC.from("event_programs").select("title").eq("event_id", ev.id);
+  check("program: the public sees published items only", !pub.error && (pub.data ?? []).length === 1 && pub.data?.[0].title === "Gates open", pub);
+  const adminAll = await admin.from("event_programs").select("title").eq("event_id", ev.id);
+  check("program: admin sees drafts too", (adminAll.data ?? []).length === 2, adminAll);
+  const sIns = await staff.from("event_programs").insert({ event_id: ev.id, time_label: "x", title: "Staff item" }).select("id");
+  const aIns = await anonC.from("event_programs").insert({ event_id: ev.id, time_label: "x", title: "Anon item" }).select("id");
+  const sDel = await staff.from("event_programs").delete().eq("event_id", ev.id).select("id");
+  check("program: staff and the public can't add or delete", !!sIns.error && !!aIns.error && (sDel.data ?? []).length === 0 && (await get(`event_programs?select=id&event_id=eq.${ev.id}`)).length === 2, { sIns: sIns.error, aIns: aIns.error, sDel });
+  r = await admin.from("event_concepts").upsert({ event_id: ev.id, core_proposition: "Where it all meets", pillars: [{ title: "Connect", body: "x" }], objectives: ["One"], target_participants: ["Farmers"] }, { onConflict: "event_id" }).select("id");
+  const cPub = await anonC.from("event_concepts").select("core_proposition,pillars").eq("event_id", ev.id).maybeSingle();
+  check("concept: admin saves it; the public reads it", !r.error && cPub.data?.core_proposition === "Where it all meets" && cPub.data?.pillars?.[0]?.title === "Connect", { r: r.error, cPub });
+  const sUp = await staff.from("event_concepts").update({ core_proposition: "hijacked" }).eq("event_id", ev.id).select("id");
+  const aUp = await anonC.from("event_concepts").update({ core_proposition: "hijacked" }).eq("event_id", ev.id).select("id");
+  check("concept: staff and the public can't change it", (sUp.data ?? []).length === 0 && (aUp.data ?? []).length === 0 && (await get(`event_concepts?select=core_proposition&event_id=eq.${ev.id}`))[0].core_proposition === "Where it all meets", { sUp, aUp });
+  const bad = await admin.from("event_concepts").update({ pillars: { not: "an array" } }).eq("event_id", ev.id).select("id");
+  check("concept: list fields must be lists", !!bad.error, bad);
+  // (The NyamaFest Main concept seed only applies where that event exists — production.)
+}
+
 console.log(failures ? `\n${failures} FAILED` : "\nall passed");
 Deno.exit(failures ? 1 : 0);

@@ -2022,3 +2022,42 @@ a.login-submit { display: grid; place-items: center; text-decoration: none; }
 .dash-badge.eo-sg-pending { background: #f8ebd2; color: #8e5b00; }
 .dash-badge.eo-sg-paid { background: #e3f0e7; color: #2f7a4a; }
 .dash-badge.eo-sg-closed, .dash-badge.eo-sg-cancelled, .dash-badge.eo-sg-refunded { background: #eeeae4; color: var(--store-muted); }
+
+/* ---------- Event page: Program and Concept tabs (ticketing theme tokens) ---------- */
+.ev-program { margin: 0; padding: 0; list-style: none; display: grid; gap: 0; }
+.ev-program-item { display: grid; grid-template-columns: 76px 1fr; gap: var(--s3); padding: var(--s3) 0; border-top: 1px solid var(--line); }
+.ev-program-item:first-child { border-top: 0; padding-top: 0; }
+.ev-program-time { display: grid; align-content: start; gap: 2px; }
+.ev-program-time strong { color: var(--ember); font-size: .95rem; }
+.ev-program-time span { color: var(--muted); font-size: .68rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.ev-program-body { display: grid; gap: 3px; min-width: 0; }
+.ev-program-title { font-size: 1rem; }
+.ev-program-body p { margin: 4px 0 0; }
+.ev-concept { display: grid; gap: var(--s5); }
+.ev-concept-hero { padding: var(--s4); border-radius: var(--r-md); background: var(--ember-soft); text-align: center; }
+.ev-concept-hero p { margin: 6px 0 0; color: var(--ember); font-size: 1.1rem; font-weight: 800; line-height: 1.35; }
+.ev-concept-overview { margin: 0; color: var(--ink-2); line-height: 1.6; }
+.ev-concept-pillars { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--s2); }
+.ev-concept-pillar { display: grid; gap: 4px; padding: var(--s3); border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); }
+.ev-concept-pillar strong { color: var(--ember); font-size: .82rem; letter-spacing: .08em; text-transform: uppercase; }
+.ev-concept-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.ev-concept-objectives { margin: 0; padding-left: 1.3rem; display: grid; gap: 6px; color: var(--ink-2); line-height: 1.5; }
+.ev-concept-vision { padding: var(--s4); border-radius: var(--r-md); background: var(--surface-2); }
+.ev-concept-vision p { margin: 6px 0 0; line-height: 1.6; }
+
+/* Dashboard: Program and Concept editors (store theme) */
+.ep-form { display: grid; gap: 12px; padding: 16px; border: 1px solid var(--store-line); border-radius: 12px; background: #faf8f4; }
+.ep-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.ep-grid.two { grid-template-columns: 1fr 1fr; }
+.ep-field { display: grid; gap: 6px; }
+.ep-field > span { font-size: 12px; font-weight: 700; color: #4f4b46; }
+.ep-field > span em { font-weight: 400; color: var(--store-muted); font-style: normal; }
+.dash .ep-field input, .dash .ep-field textarea, .dash .ep-pillar input, .dash .ep-pillar textarea { width: 100%; padding: 9px 12px; border: 1px solid var(--store-line); border-radius: 10px; background: #fff; font: inherit; font-size: 14px; }
+.ep-check { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.ep-check input { width: auto; }
+.ep-order { white-space: nowrap; }
+.ep-order .dash-btn { padding: 4px 9px; }
+.ep-pillars { display: grid; gap: 10px; justify-items: start; }
+.ep-pillar { display: grid; grid-template-columns: 180px 1fr auto; gap: 8px; align-items: start; width: 100%; }
+.ep-ok { margin: 0; color: #2f7a4a; font-size: 13px; font-weight: 700; }
+@media (max-width: 760px) { .ep-grid.two, .ep-pillar { grid-template-columns: 1fr; } }

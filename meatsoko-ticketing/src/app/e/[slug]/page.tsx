@@ -12,7 +12,7 @@ import VendorSignup from "@/components/VendorSignup";
 import type { UpgradeOption } from "@/components/TableUpgrade";
 import EarlyBirdCountdown from "@/components/EarlyBirdCountdown";
 import { nairobiTimeRange } from "@/lib/event-time";
-import type { Event, TicketType, PreorderItem, ReservationType } from "@/lib/types";
+import type { Event, TicketType, PreorderItem, ReservationType, EventProgramItem, EventConcept } from "@/lib/types";
 
 /** Nairobi, always — the buyer and the venue are both there. */
 const KE = "Africa/Nairobi";
@@ -78,6 +78,12 @@ export default async function EventPage({ params }: { params: { slug: string } }
       sold[a.ticket_type_id] = a.sold;
     }
   }
+
+  // Program + Concept tabs (migration 20261006100000): published program items only.
+  const [{ data: program }, { data: concept }] = await Promise.all([
+    supabase.from("event_programs").select("*").eq("event_id", ev.id).eq("is_published", true).order("position"),
+    supabase.from("event_concepts").select("*").eq("event_id", ev.id).maybeSingle(),
+  ]);
 
   // A conference/expo sells on what's inside, not on a lineup. Until zones are
   // first-class data, read them from the description: "Butchery | Grills | Talks".
@@ -148,6 +154,8 @@ export default async function EventPage({ params }: { params: { slug: string } }
               lineup={ev.lineup}
               venue={ev.venue}
               tablePlanUrl={ev.table_plan_url}
+              program={(program ?? []) as EventProgramItem[]}
+              concept={(concept ?? null) as EventConcept | null}
               overview={<>
               {zones.length > 0 && (
                 <div className="stack tight event-zones-panel">

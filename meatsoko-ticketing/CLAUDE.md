@@ -62,7 +62,17 @@ Edge Functions) · Paystack · Resend · Vercel (+ Vercel Analytics).
   required**. `investor-register` never overwrites an existing registration for an email
   (re-sends the confirmation instead). Dashboard: Events & tickets → Investors.
 
-## Event Orders (branch `feat/event-orders`, 2026-10-03 — not merged or deployed yet)
+## Event page Program + Concept tabs (branch `feat/events-v2-celebrations`, 2026-10-06 — not merged or deployed)
+
+Migration `20261006100000_event_program_concept.sql`: `event_programs` (running order,
+drafts until published) and `event_concepts` (one per event: core proposition, overview,
+pillars, who it's for, objectives, vision), public read / admin write. NyamaFest Main's
+concept is seeded from the organiser's concept note. Edited on the dashboard event page
+("Event page content"); shown as Program / Concept tabs on `/e/[slug]` only when there is
+content. The Celebrations sketch from the same branch is parked in `drafts/` (not built)
+until the organiser sends real packages, prices and payment rules.
+
+## Event Orders (LIVE since 2026-10-03)
 
 Staff take on-site orders on their phones; management tracks money and staff in
 Dashboard → Events & tickets → Event orders. Migration `20261003100000_event_orders.sql`
@@ -155,12 +165,11 @@ user's say-so. Use `supabase db query --linked "<sql>"` for read-only checks.
 - Edge Functions: `deno check <fn>/index.ts` (or `docker run --rm -v
   $PWD/supabase/functions:/f -w /f denoland/deno:2.6.3 deno check <fn>/index.ts`).
 - **Integration harness: `./tests/harness/run.sh`** (Docker) — fresh Postgres from
-  `schema.sql` + migrations, real Edge Functions; expect `ok: 319 FAIL: 0`. Add checks
+  `schema.sql` + migrations, real Edge Functions; expect `ok: 326 FAIL: 0`. Add checks
   for every new function or permission. See `tests/harness/README.md`.
-- Browser checks: Chrome automation tabs run in the background — timers, animation frames
-  and `<video>` loading pause there, so don't treat a stalled animation or video as a bug;
-  check phone layouts with a 390px `<iframe>`. Kill stray `next dev` processes before
-  starting another (`pkill -f "next dev"`); several at once make the browser hang.
+- **No browser testing of site features** (user, 2026-10-06): don't click through pages in
+  Chrome or a local dev server to verify them — use the checks above, then tell the user
+  exactly what to test and where. The browser is for research only.
 
 ## Open items (2026-10-03)
 
