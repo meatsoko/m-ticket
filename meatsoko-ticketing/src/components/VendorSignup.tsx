@@ -7,7 +7,7 @@ import { openPaystackPopup } from "@/lib/paystack-popup";
 import { PAYMENTS_PAUSED, PAYMENT_PAUSED_MESSAGE } from "@/lib/payments";
 import { normalizePhone, looksLikeEmail, PHONE_HINT } from "@/lib/phone";
 
-// "Become a vendor" (migration 20260930180000): a button on the event page that
+// "Become a vendor" (migration 20260930180000): a button on /events that
 // opens a form, registers the vendor as pending, and sends them to Paystack for
 // the tent fee. The registration stays pending until the payment is confirmed.
 
@@ -18,8 +18,7 @@ const TYPES = [
   { id: "services", label: "Services" }, { id: "other", label: "Other" },
 ];
 
-// Shown inside the event hero image (right-hand side on desktop, under the
-// event details on phones) so vendors can't miss it.
+// Shown on /events in the dark "take part" band, beside Plan a celebration.
 export default function VendorSignup({ eventId, eventName }: { eventId: string; eventName: string }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -79,9 +78,8 @@ export default function VendorSignup({ eventId, eventName }: { eventId: string; 
         <button type="button" className={`btn-primary hero-vendor-btn${PAYMENTS_PAUSED ? " is-paused" : ""}`} disabled={PAYMENTS_PAUSED} title={PAYMENTS_PAUSED ? PAYMENT_PAUSED_MESSAGE : undefined} onClick={() => setOpen(true)}>{PAYMENTS_PAUSED ? "Payment coming soon" : "Become a vendor"}</button>
       </div>
 
-      {/* Portalled out of the hero (its own stacking context, so a dialog inside
-          it could sit under the page) into the app shell, which keeps the event
-          page's colours (light on the desktop layout). */}
+      {/* Portalled out of the band into the app shell, which keeps the ticketing
+          colours (light on the desktop layout). */}
       {open && createPortal(
         <div className="vendor-modal-root" role="dialog" aria-modal="true" aria-labelledby="vendor-title">
           <button type="button" className="vendor-modal-scrim" aria-label="Close" onClick={() => !busy && setOpen(false)} />

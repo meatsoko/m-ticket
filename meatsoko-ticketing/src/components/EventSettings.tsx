@@ -55,8 +55,6 @@ export default function EventSettings({ event }: { event: any }) {
     hero_word: event.hero_word ?? "",
     hero_headline: event.hero_headline ?? "",
     hero_image_url: event.hero_image_url ?? "",
-    lineup: event.lineup ?? "",
-    table_plan_url: event.table_plan_url ?? "",
     online_enabled: event.online_enabled === true,
     stream_youtube_id: event.stream_youtube_id ?? "",
     starts_at: toLocalInput(event.starts_at),
@@ -91,8 +89,6 @@ export default function EventSettings({ event }: { event: any }) {
       hero_word: f.hero_word.trim().toUpperCase() || null,
       hero_headline: f.hero_headline.trim() || null,
       hero_image_url: f.hero_image_url.trim() || null,
-      lineup: f.lineup.trim() || null,
-      table_plan_url: f.table_plan_url.trim() || null,
       online_enabled: f.online_enabled,
       // Accept a full YouTube URL or the bare ID; store the ID.
       stream_youtube_id: youtubeId(f.stream_youtube_id) || null,
@@ -292,16 +288,6 @@ export default function EventSettings({ event }: { event: any }) {
             <input placeholder="/images/events/….png" value={f.hero_image_url}
               onChange={(e) => set("hero_image_url", e.target.value)} />
             <span className="small">A transparent PNG (a person or the food, no background). Empty = the top of the banner poster.</span>
-          </label>
-          <label className="field">
-            <span>Lineup (one act per line, optional)</span>
-            <textarea rows={4} placeholder={"DJ …\nLive band …"} value={f.lineup}
-              onChange={(e) => set("lineup", e.target.value)} />
-          </label>
-          <label className="field">
-            <span>Table plan image URL (optional)</span>
-            <input placeholder="https://…" value={f.table_plan_url}
-              onChange={(e) => set("table_plan_url", e.target.value)} />
           </label>
           <div className="row" style={{ gap: 8 }}>
             <label className="field" style={{ flex: 1 }}>

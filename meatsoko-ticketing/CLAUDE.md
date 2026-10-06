@@ -64,7 +64,7 @@ Edge Functions) · Paystack · Resend · Vercel (+ Vercel Analytics).
   required**. `investor-register` never overwrites an existing registration for an email
   (re-sends the confirmation instead). Dashboard: Events & tickets → Investors.
 
-## /events hero (branch `feat/events-hero`, 2026-10-07 — migration applied, site not yet pushed)
+## /events — the events module (2026-10-07)
 
 `EventsHero` (`src/components/event/EventsHero.tsx`) shows the first open event as a
 layered poster, after a festival reference the user picked: giant faded `hero_word` →
@@ -88,10 +88,19 @@ events without a banner borrow stand-in food photos (`STAND_IN_IMAGES` in
 `src/app/events/page.tsx`). Then **the concept** (`ConceptHighlight.tsx`) of the hero
 event: core proposition with its claim highlighted, an overview excerpt with "Read
 more…", the pillars, → the full article at **`/e/<slug>/concept`** (`EventConceptView`).
-The old Up next / Coming soon / Past sections are gone (their `.lineup-*` CSS is now
-unused).
 
-## Celebrations — occasion booking (branch `feat/events-hero`, 2026-10-07; database + function LIVE, site not yet pushed)
+Page order: hero → Featured events → **Program** (`ProgramSection.tsx`, published
+`event_programs` of the hero event, grouped by `category` = the day) → concept → dark
+"take part" band (**Plan a celebration** → `/celebrations`, and **Become a vendor**,
+`VendorSignup`). **`/e/<slug>` is tickets only** (branch `feat/event-page-cleanup`,
+2026-10-07): event name, date · venue, time and the booking panel (GetTicketsPanel /
+ReservationForm / EventCheckout) — no hero, facts, tabs, share bar or countdown, since
+`/events` shows all of it. The NyamaFest program (16 items, Day 1 investor evening 16 Oct,
+Day 2 NyamaFest Day 17 Oct) is migration `20261007140000_nyamafest_program.sql` (applied).
+Event settings no longer has Lineup / Table plan fields (nothing shows them; the columns
+remain).
+
+## Celebrations — occasion booking (2026-10-07; database + function live)
 
 Phase 1 of the plan: **request → the team calls back with a plan and a quote →
 confirmed**. No prices or payments anywhere (the organiser hasn't set packages or a
@@ -107,25 +116,26 @@ deposit rule; Paystack deposits/instalments are phase 2).
 - Site: `/celebrations` (store theme; occasion → date/guests/where/budget band → details),
   `/celebrations/<token>` (private page: progress, the team's reply, cancel),
   Dashboard → Events & tickets → **Celebrations** (`CelebrationsBoard`: status, reply to
-  guest, internal note). Links in the store nav, phone menu and footer, and a "Plan a
-  celebration" band on `/events`.
+  guest, internal note). Reached **only through the events module** — the "Plan a
+  celebration" band on `/events` (not in the store nav, phone menu or footer; user,
+  2026-10-07).
 - Budget bands are the guest's own range (a guide for the quote), not MeatSoko prices.
-- Supersedes the parked sketch in `drafts/` (its security problems don't apply here).
+- Replaced the old Lipa Mdogo Mdogo sketch (deleted with `drafts/` on 2026-10-07; it's in
+  git history before that date if phase 2 needs it).
 - Harness: 23 celebration checks pass (run in isolation on 2026-10-07 — the full suite
   currently stops early on the Paystack kill switch from another session; not touched).
 
-## Event page Program + Concept tabs (2026-10-06 — live)
+## Program + Concept data (2026-10-06 — live)
 
 Migration `20261006100000_event_program_concept.sql`: `event_programs` (running order,
 drafts until published) and `event_concepts` (one per event: core proposition, overview,
 pillars, who it's for, objectives, vision), public read / admin write. NyamaFest Main's
 concept is seeded from the organiser's concept note. Edited on the dashboard event page
-("Event page content"); shown as Program / Concept tabs on `/e/[slug]` only when there is
-content. The concept also has a measure of success and ways to take part. Site copy (event
+("Event page content"); shown on `/events` (Program section, concept highlight) and the
+`/e/<slug>/concept` article, only when there is content. The concept also has a measure of success and ways to take part. Site copy (event
 details, Investors page) follows the organiser's **Nyama Fest Concept Note** (2026-10-05) —
 `20261006120000_nyamafest_concept_details.sql` sets venue, tagline, time note, dress code,
-host and the "what's inside" list. The Celebrations sketch from the same branch is parked in `drafts/` (not built)
-until the organiser sends real packages, prices and payment rules.
+host and the "what's inside" list.
 
 ## Event Orders (LIVE since 2026-10-03)
 

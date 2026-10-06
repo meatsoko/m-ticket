@@ -1,18 +1,12 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import AppShell from "@/components/AppShell";
-import Icon from "@/components/Icon";
 import EventCheckout from "@/components/EventCheckout";
 import ReservationForm from "@/components/ReservationForm";
 import GetTicketsPanel from "@/components/GetTicketsPanel";
-import ShareBar from "@/components/event/ShareBar";
-import EventTabs from "@/components/event/EventTabs";
-import { SUPPORT } from "@/lib/support";
-import VendorSignup from "@/components/VendorSignup";
 import type { UpgradeOption } from "@/components/TableUpgrade";
-import EarlyBirdCountdown from "@/components/EarlyBirdCountdown";
 import { nairobiTimeRange } from "@/lib/event-time";
-import type { Event, TicketType, PreorderItem, ReservationType, EventProgramItem, EventConcept } from "@/lib/types";
+import type { Event, TicketType, PreorderItem, ReservationType } from "@/lib/types";
 
 /** Nairobi, always — the buyer and the venue are both there. */
 const KE = "Africa/Nairobi";
@@ -41,9 +35,6 @@ export default async function EventPage({ params }: { params: { slug: string } }
     ? await supabase.from("preorder_items").select("*")
         .eq("event_id", ev.id).eq("is_active", true).order("position")
     : { data: [] };
-  const earlyBirdEndsAt = (preorderItems ?? []).find(
-    (item: any) => item.early_bird_ends_at && item.compare_at_price_kes
-  )?.early_bird_ends_at;
 
   const { data: reservationTypes } = isReservation
     ? await supabase.from("reservation_types").select("*")
@@ -79,126 +70,45 @@ export default async function EventPage({ params }: { params: { slug: string } }
     }
   }
 
-  // Program + Concept tabs (migration 20261006100000): published program items only.
-  const [{ data: program }, { data: concept }] = await Promise.all([
-    supabase.from("event_programs").select("*").eq("event_id", ev.id).eq("is_published", true).order("position"),
-    supabase.from("event_concepts").select("*").eq("event_id", ev.id).maybeSingle(),
-  ]);
-
-  // A conference/expo sells on what's inside, not on a lineup. Until zones are
-  // first-class data, read them from the description: "Butchery | Grills | Talks".
-  const zones = (ev.description ?? "").includes("|")
-    ? ev.description.split("|").map((z: string) => z.trim()).filter(Boolean)
-    : [];
-  const blurb = zones.length ? "" : (ev.description ?? "");
   // The organiser's wording wins over computed hours (e.g. "From 6:00 AM till late").
   const timeLabel = ev.time_note || nairobiTimeRange(ev.starts_at, ev.ends_at);
-  const pageUrl = `${(process.env.NEXT_PUBLIC_APP_URL ?? "https://event.meatsokogroup.com").replace(/\/$/, "")}/e/${ev.slug}`;
 
+  // Get tickets only (2026-10-07): the hero, facts, program, concept and vendor
+  // sign-up all live on /events now, so this page is just the event's name and
+  // the booking panel — nothing repeated.
   return (
-    <AppShell transparentBar wideEvent>
-      <section className="hero">
-        {ev.banner_url
-          ? <img src={ev.banner_url} alt="" />
-          : <div className="hero-fallback" aria-hidden="true" />}
-        <div className="hero-inner">
-          {earlyBirdEndsAt && <EarlyBirdCountdown endsAt={earlyBirdEndsAt} />}
+    <AppShell title="Get tickets" back="/events" wideEvent>
+      <div className="pad tk-page">
+        <header className="tk-head">
+          <span className="eyebrow">{fmt(ev.starts_at, { weekday: "long", day: "numeric", month: "long" })} · {ev.venue || "Nairobi"}</span>
           <h1>{ev.name}</h1>
-          {ev.tagline && <p className="small" style={{ color: "rgba(255,255,255,.88)" }}>{ev.tagline}</p>}
-          {ev.host && <p className="small hero-host">Hosted by <strong>{ev.host}</strong></p>}
-          <div className="meta">
-            <span className="pill glass">
-              <Icon name="pin" size={13} /> {ev.venue || "Nairobi"}
-            </span>
-            <span className="pill glass">
-              <Icon name="clock" size={13} />
-              {timeLabel}
-            </span>
-          </div>
-          {!notOpenYet && <VendorSignup eventId={ev.id} eventName={ev.name} />}
-        </div>
-      </section>
+          <span className="small">{timeLabel}{ev.dress_code ? ` · Dress code: ${ev.dress_code}` : ""}</span>
+        </header>
 
-      <div className="pad">
-        <div className="event-purchase-layout">
-          <section className="event-overview" aria-label="Event details">
-            <div className="row event-date-summary">
-              <div className="stack tight">
-                <span className="eyebrow">
-                  {fmt(ev.starts_at, { weekday: "long" })}
-                </span>
-                <strong style={{ fontSize: "1.05rem" }}>
-                  {fmt(ev.starts_at, { day: "numeric", month: "long", year: "numeric" })}
-                </strong>
-              </div>
-              <span className="datestamp" aria-hidden="true">
-                <span className="d num">{fmt(ev.starts_at, { day: "numeric" })}</span>
-                <span className="m">{fmt(ev.starts_at, { month: "short" })}</span>
-              </span>
+        <section className="event-booking tk-booking" aria-label={isReservation ? "Reserve your place" : "Buy tickets"}>
+          {notOpenYet ? (
+            <div className="card stack tight">
+              <span className="pill warn" style={{ justifySelf: "start" }}>Coming soon</span>
+              <strong>Registration details coming soon.</strong>
+              <span className="small">Check back here — this is where registration will open.</span>
             </div>
-
-            {/* What, where, how you get in — the questions a buyer has before paying. */}
-            <dl className="event-facts">
-              <div><dt>When</dt><dd>{fmt(ev.starts_at, { weekday: "short", day: "numeric", month: "short" })} · {timeLabel}</dd></div>
-              <div><dt>Where</dt><dd>{ev.venue || "Nairobi"}</dd></div>
-              <div><dt>Entry</dt><dd>QR scan at the gate</dd></div>
-              {ev.dress_code && <div><dt>Dress code</dt><dd>{ev.dress_code}</dd></div>}
-            </dl>
-            <div className="event-trust">
-              {gaType && <span>Free entry</span>}
-              <span>Instant QR</span>
-              <span>M-Pesa &amp; card</span>
-              <a href={SUPPORT.whatsapp} target="_blank" rel="noopener noreferrer">Help: {SUPPORT.display}</a>
-            </div>
-            <ShareBar url={pageUrl} title={ev.name} />
-
-            <EventTabs
-              eventName={ev.name}
-              lineup={ev.lineup}
-              venue={ev.venue}
-              tablePlanUrl={ev.table_plan_url}
-              program={(program ?? []) as EventProgramItem[]}
-              concept={(concept ?? null) as EventConcept | null}
-              overview={<>
-              {zones.length > 0 && (
-                <div className="stack tight event-zones-panel">
-                  <span className="eyebrow">What&apos;s inside</span>
-                  <div className="scroller">
-                    {zones.map((z: string) => <span className="pill" key={z}>{z}</span>)}
-                  </div>
-                </div>
-              )}
-
-              {blurb && <p className="small event-description">{blurb}</p>}
-              </>}
+          ) : isReservation && gaType ? (
+            <GetTicketsPanel event={ev as Event} gaTypeId={gaType.id} options={upgradeOptions} />
+          ) : isReservation ? (
+            <ReservationForm
+              event={ev as Event}
+              items={(preorderItems ?? []) as PreorderItem[]}
+              types={bookingTypes as ReservationType[]}
             />
-          </section>
-
-          <section className="event-booking" aria-label={isReservation ? "Reserve your place" : "Buy tickets"}>
-            {notOpenYet ? (
-              <div className="card stack tight">
-                <span className="pill warn" style={{ justifySelf: "start" }}>Coming soon</span>
-                <strong>Registration details coming soon.</strong>
-                <span className="small">Check back here — this is where registration will open.</span>
-              </div>
-            ) : isReservation && gaType ? (
-              <GetTicketsPanel event={ev as Event} gaTypeId={gaType.id} options={upgradeOptions} />
-            ) : isReservation ? (
-              <ReservationForm
-                event={ev as Event}
-                items={(preorderItems ?? []) as PreorderItem[]}
-                types={bookingTypes as ReservationType[]}
-              />
-            ) : (
-              <EventCheckout
-                event={ev as Event}
-                types={(types ?? []) as TicketType[]}
-                remaining={remaining}
-                sold={sold}
-              />
-            )}
-          </section>
-        </div>
+          ) : (
+            <EventCheckout
+              event={ev as Event}
+              types={(types ?? []) as TicketType[]}
+              remaining={remaining}
+              sold={sold}
+            />
+          )}
+        </section>
         <div className="bottom-gap" />
       </div>
     </AppShell>

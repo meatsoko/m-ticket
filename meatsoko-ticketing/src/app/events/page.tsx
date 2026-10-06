@@ -6,8 +6,10 @@ import EventsHero from "@/components/event/EventsHero";
 import { cheapestTableLabel, type HeroPlatter } from "@/lib/hero-price";
 import FeaturedEvents, { type FeaturedItem } from "@/components/event/FeaturedEvents";
 import ConceptHighlight from "@/components/event/ConceptHighlight";
+import ProgramSection from "@/components/event/ProgramSection";
+import VendorSignup from "@/components/VendorSignup";
 import { displayFont } from "@/lib/fonts";
-import type { EventConcept } from "@/lib/types";
+import type { EventConcept, EventProgramItem } from "@/lib/types";
 
 /** Pictures for events that have no banner of their own. */
 const STAND_IN_IMAGES = [
@@ -24,9 +26,10 @@ const fmt = (iso: string, o: Intl.DateTimeFormatOptions) =>
 type Phase = "past" | "now" | "soon";
 
 /**
- * The line-up: the next open event as the hero, every event in the Featured
- * events rail (open and announced ones link to their page; past ones don't),
- * and the next event's concept with "Read more…" to the full article.
+ * The events module: the next open event as the hero, every event in the
+ * Featured events rail (open and announced ones link to their page; past ones
+ * don't), the next event's program and concept ("Read more…" to the full
+ * article), then Plan a celebration and Become a vendor. /e/<slug> is tickets only.
  */
 export default async function EventsPage() {
   const supabase = createClient();
@@ -95,22 +98,35 @@ export default async function EventsPage() {
     };
   });
 
-  const { data: concept } = hero
-    ? await supabase.from("event_concepts").select("*").eq("event_id", hero.id).maybeSingle()
-    : { data: null };
+  // The hero event's program and concept (the event page itself is tickets only).
+  const [{ data: concept }, { data: program }] = hero
+    ? await Promise.all([
+        supabase.from("event_concepts").select("*").eq("event_id", hero.id).maybeSingle(),
+        supabase.from("event_programs").select("*").eq("event_id", hero.id).eq("is_published", true).order("position"),
+      ])
+    : [{ data: null }, { data: null }];
+  const heroName = hero ? hero.name.replace(/\s*\bmain\b\s*/i, " ").trim() : "";
 
   return (
     <AppShell title="Events" wideEvent fullBleed>
       {hero && <EventsHero event={hero} freeEntry={hasGa.has(hero.id)} priceFrom={priceFrom} />}
       {featured.length > 0 && <FeaturedEvents items={featured} className={displayFont.variable} />}
-      {hero && concept && (
-        <ConceptHighlight concept={concept as EventConcept} slug={hero.slug} eventName={hero.name.replace(/\s*\bmain\b\s*/i, " ").trim()} className={displayFont.variable} />
+      {hero && (program ?? []).length > 0 && (
+        <ProgramSection items={program as EventProgramItem[]} eventName={heroName} slug={hero.slug} className={displayFont.variable} />
       )}
+      {hero && concept && (
+        <ConceptHighlight concept={concept as EventConcept} slug={hero.slug} eventName={heroName} className={displayFont.variable} />
+      )}
+      {/* Take part: occasion booking (Celebrations lives in the events module, not the
+          store navigation) and, for the open event, the vendor sign-up. */}
       <section className={`cel-band ${displayFont.variable}`} aria-labelledby="cel-band-title">
-        <span className="cel-kicker">MeatSoko Celebrations</span>
-        <h2 id="cel-band-title">Got your own occasion?</h2>
-        <p>Birthdays, anniversaries, graduations, family days. Tell us about it and we&apos;ll plan the nyama, the grill and the setup with you.</p>
-        <Link href="/celebrations">Plan a celebration <b aria-hidden="true">→</b></Link>
+        <div className="cel-band-main">
+          <span className="cel-kicker">MeatSoko Celebrations</span>
+          <h2 id="cel-band-title">Got your own occasion?</h2>
+          <p>Birthdays, anniversaries, graduations, family days. Tell us about it and we&apos;ll plan the nyama, the grill and the setup with you.</p>
+          <Link href="/celebrations">Plan a celebration <b aria-hidden="true">→</b></Link>
+        </div>
+        {hero && <div className="cel-band-vendor"><VendorSignup eventId={hero.id} eventName={heroName} /></div>}
       </section>
       {list.length === 0 && (
         <div className="pad">

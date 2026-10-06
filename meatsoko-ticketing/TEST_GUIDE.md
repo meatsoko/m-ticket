@@ -118,7 +118,7 @@ Setup (admin): Dashboard → Event orders → **Menu** → add 2–3 items with 
 
 | # | Do | Expect |
 |---|----|--------|
-| 9.1 | Shop menu / ☰ / footer, and the "Plan a celebration" band on `/events` | All open `/celebrations` |
+| 9.1 | Shop menu / ☰ / footer; then the "Plan a celebration" band at the bottom of `/events` | **No** Celebrations link in the shop navigation; the band opens `/celebrations` |
 | 9.2 | `/celebrations` on phone and desktop | Dark "YOUR DAY, *our grill.*" hero, how-it-works (01–03), the form |
 | 9.3 | Submit empty; then a date tomorrow; then "At our place" with no area | Field errors in place; "at least 2 days' notice"; "Tell us the area" |
 | 9.4 | Send a real request (your own phone + email; a date next month) | Lands on your private page: "Request sent…", Received → We're in touch → Confirmed steps, no prices |
@@ -127,6 +127,16 @@ Setup (admin): Dashboard → Event orders → **Menu** → add 2–3 items with 
 | 9.7 | Dashboard → Events & tickets → **Celebrations** (staff or admin) | The request under New; **Update** → "We're in touch", a reply, an internal note → Save |
 | 9.8 | Refresh your private page | Step 2 lit; the reply shows under "From the MeatSoko team"; the internal note does **not** |
 | 9.9 | Private page → Cancel this request → Yes | Shows Cancelled; the dashboard shows it under Cancelled |
+
+## 10. Events module clean-up (branch `feat/event-page-cleanup`)
+
+| # | Do | Expect |
+|---|----|--------|
+| 10.1 | `/events`, below Featured events | **Program**: "How the 2 days run" — Day 1 · Investor & stakeholder evening (8 items, 4:00 PM → late) and Day 2 · NyamaFest Day (8 items, 7:00 AM → 8:00 PM closing); side by side on desktop, stacked on phones; Get tickets button |
+| 10.2 | Bottom of `/events` | Dark band: "Got your own occasion?" + Plan a celebration, and the **Become a vendor** card beside it (stacked on phones). The vendor button opens the form (shows "Payment coming soon" while Paystack is paused) |
+| 10.3 | Any Get tickets link (hero badge, Don't miss out card, Featured card, Program button) | `/e/nyamafest-main` shows only: "Get tickets" bar with ← back to Events, the date · venue, the name, the time and dress code, and the ticket panel. No hero image, facts box, tabs, share buttons or countdown |
+| 10.4 | Book a free ticket there (phone + desktop) | Works exactly as before |
+| 10.5 | Dashboard → event → Event settings | Lineup and Table plan fields are gone; everything else saves as before |
 
 ## Report back
 

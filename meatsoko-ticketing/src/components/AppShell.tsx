@@ -10,8 +10,6 @@ type Props = {
   children: ReactNode;
   /** Page title in the bar. Omit to show the brand mark instead. */
   title?: string;
-  /** Let a hero image run under a transparent bar (event page, ticket page). */
-  transparentBar?: boolean;
   /** Hide the tab bar for focused, single-purpose screens. */
   hideTabs?: boolean;
   back?: string;
@@ -25,13 +23,13 @@ type Props = {
 };
 
 export default async function AppShell({
-  children, title, transparentBar, hideTabs, back, action, role, wideEvent, fullBleed,
+  children, title, hideTabs, back, action, role, wideEvent, fullBleed,
 }: Props) {
   const resolved: Role = role ?? (await getRole());
 
   return (
     <div className={`app${wideEvent ? " wide-event-shell" : ""}${wideEvent && fullBleed ? " full-bleed" : ""}`}>
-      <header className={`app-bar${transparentBar ? " on-media" : ""}`}>
+      <header className="app-bar">
         {back ? (
           <Link href={back} className="icon-btn" aria-label="Back">
             <Icon name="back" />
