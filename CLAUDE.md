@@ -6,7 +6,7 @@ booking rules, what is live). This file holds the repository layout and the rule
 apply to every change. `HANDOFF.md` covers setting up a new machine.
 
 > The site is **live and taking real bookings and payments**: NyamaFest Main
-> (`nyamafest-main`), 17 October 2026, Thika Greens Golf Course, 6 AM to 6 AM the next day,
+> (`nyamafest-main`), 17 October 2026, Thika Greens Golf Resort, from 6 AM till late,
 > capacity 500. `main` is production and every push deploys.
 
 ---
@@ -107,7 +107,7 @@ functions. Both are applied and verified (anon gets `42501`).
 - **Verification:** `npm run lint`, `npm run build`, `deno check` for Edge Functions (not
   covered by `next build`), and the integration harness
   `meatsoko-ticketing/tests/harness/run.sh` (Docker; real Postgres + PostgREST + the real
-  Edge Functions, Paystack/Resend faked; 326 checks). Then live probes. State the honest
+  Edge Functions, Paystack/Resend faked; 331 checks). Then live probes. State the honest
   scope of what a check proved.
 
 ## 8. Do not

@@ -20,15 +20,17 @@ type Props = {
   role?: Role;
   /** Use a wide editorial layout on desktop while preserving the phone layout. */
   wideEvent?: boolean;
+  /** With wideEvent: run the page edge to edge on desktop (no 1600px column, no side margins). */
+  fullBleed?: boolean;
 };
 
 export default async function AppShell({
-  children, title, transparentBar, hideTabs, back, action, role, wideEvent,
+  children, title, transparentBar, hideTabs, back, action, role, wideEvent, fullBleed,
 }: Props) {
   const resolved: Role = role ?? (await getRole());
 
   return (
-    <div className={`app${wideEvent ? " wide-event-shell" : ""}`}>
+    <div className={`app${wideEvent ? " wide-event-shell" : ""}${wideEvent && fullBleed ? " full-bleed" : ""}`}>
       <header className={`app-bar${transparentBar ? " on-media" : ""}`}>
         {back ? (
           <Link href={back} className="icon-btn" aria-label="Back">

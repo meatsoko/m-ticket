@@ -28,6 +28,8 @@ export type MerchandiseProduct = {
   details: string[];
   partner?: string;
   outOfStock?: boolean;
+  /** "whole": the photo is shown uncropped and unzoomed (wide front-and-back shots). */
+  fit?: "whole";
 };
 
 export type MerchandiseCategory = {
@@ -193,6 +195,11 @@ export const merchandiseCategories: MerchandiseCategory[] = [
         summary: "Front, side, and back views of the Hustle Game 21 hoodie showing the complete ecosystem branding.",
         details: ["Front view with Hustle Game 21 script", "Side sleeve token detail", "Back view with MeatSoko Ecosystem red/green branding"],
       }, "Black · Ecosystem views", "hustle-game-21-views.jpg", 20, { slug: "hustle-game-21-hoodie-views" }),
+      make("partnerships", {
+        style: "Buja Hoodie", name: "Buja × MeatSoko Hoodie", sizes: APPAREL_SIZES, partner: "Buja",
+        summary: "A partnership hoodie with Buja: “BUJA since 1997” up front and the MeatSoko Ecosystem print across the back.",
+        details: ["“BUJA since 1997” print on the chest", "Kenya flag on the right sleeve, “To dare is to do” down the left", "MeatSoko Ecosystem print across the back with “Convenient · Reliable · Sustainable”", "Drawstring hood and front kangaroo pocket"],
+      }, "Green", "buja-hoodie-green.jpg", 78, { slug: "buja-hoodie-green", fit: "whole" }),
     ],
   },
 ];

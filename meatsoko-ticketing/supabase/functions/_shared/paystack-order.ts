@@ -6,6 +6,7 @@
 // The pass token is never put in the callback URL or the metadata — it never
 // leaves our own pages.
 import { returnBase } from "./return-url.ts";
+import { paystackPaused } from "./paystack-switch.ts";
 
 export type OpenedPayment =
   | { ok: true; authorizationUrl: string; accessCode: string; reference: string }
@@ -21,6 +22,7 @@ export async function openOrderPayment(db: any, req: Request, o: {
     await db.from("orders").update({ status: "failed" }).eq("id", o.orderId).eq("status", "pending");
     await o.onFail();
   };
+  if (paystackPaused()) { await giveUp(); return { ok: false, status: 503, error: "payments_paused" }; }
   if (!secret || !appUrl) { await giveUp(); return { ok: false, status: 500, error: "paystack_misconfigured" }; }
 
   const reference = `MT${crypto.randomUUID().replaceAll("-", "")}`;

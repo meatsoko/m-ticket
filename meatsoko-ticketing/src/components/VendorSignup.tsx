@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
 import { openPaystackPopup } from "@/lib/paystack-popup";
+import { PAYMENTS_PAUSED, PAYMENT_PAUSED_MESSAGE } from "@/lib/payments";
 import { normalizePhone, looksLikeEmail, PHONE_HINT } from "@/lib/phone";
 
 // "Become a vendor" (migration 20260930180000): a button on the event page that
@@ -75,7 +76,7 @@ export default function VendorSignup({ eventId, eventName }: { eventId: string; 
           <strong>Selling at {eventName}?</strong>
           <span>Secure a tent for KSh {VENDOR_FEE_KES.toLocaleString("en-KE")}</span>
         </div>
-        <button type="button" className="btn-primary hero-vendor-btn" onClick={() => setOpen(true)}>Become a vendor</button>
+        <button type="button" className={`btn-primary hero-vendor-btn${PAYMENTS_PAUSED ? " is-paused" : ""}`} disabled={PAYMENTS_PAUSED} title={PAYMENTS_PAUSED ? PAYMENT_PAUSED_MESSAGE : undefined} onClick={() => setOpen(true)}>{PAYMENTS_PAUSED ? "Payment coming soon" : "Become a vendor"}</button>
       </div>
 
       {/* Portalled out of the hero (its own stacking context, so a dialog inside
@@ -112,7 +113,7 @@ export default function VendorSignup({ eventId, eventName }: { eventId: string; 
               <span className="small">{about.length}/500</span></label>
 
             {err && <p className="small" style={{ color: "var(--danger)" }}>{err}</p>}
-            <button type="button" className="btn-pay btn-block" disabled={busy} onClick={submit}>
+            <button type="button" className={`btn-pay btn-block${PAYMENTS_PAUSED ? " is-paused" : ""}`} disabled={busy || PAYMENTS_PAUSED} onClick={submit}>
               {busy ? "Opening Paystack…" : `Pay KSh ${VENDOR_FEE_KES.toLocaleString("en-KE")} & secure a tent`}
             </button>
             <p className="small" style={{ textAlign: "center" }}>M-Pesa or card through Paystack.</p>
@@ -132,6 +133,7 @@ function explain(code: string | null, transport: boolean, d: any): string {
     case "event_not_live": return "Vendor registration isn't open for this event.";
     case "invalid_phone": return "That phone number doesn't look right. Use the format 07XX XXX XXX.";
     case "email_required": return "We need a valid email for your receipt.";
+    case "payments_paused": return PAYMENT_PAUSED_MESSAGE;
     case "paystack_init_failed":
     case "paystack_misconfigured": return `Your registration${d?.reference_number ? ` (${d.reference_number})` : ""} is saved as pending, but Paystack couldn't be opened. Please try again.`;
     default: return "Could not register you just now. Please try again.";

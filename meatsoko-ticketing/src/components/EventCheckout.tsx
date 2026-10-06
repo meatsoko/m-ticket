@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
 import { openPaystackPopup } from "@/lib/paystack-popup";
+import { PAYMENTS_PAUSED, PAYMENT_PAUSED_MESSAGE } from "@/lib/payments";
 import { normalizePhone, looksLikeEmail, PHONE_HINT, EMAIL_HINT } from "@/lib/phone";
 import QrImage from "@/components/QrImage";
 import Icon from "@/components/Icon";
@@ -174,6 +175,8 @@ export default function EventCheckout({
         return "We need a valid email — your ticket is sent there.";
       case "stk_failed":
         return "M-Pesa did not accept the request. Check the number and try again.";
+      case "payments_paused":
+        return PAYMENT_PAUSED_MESSAGE;
       case "daraja_misconfigured":
       case "paystack_misconfigured":
         return "Payments are temporarily unavailable. Please try again shortly.";
@@ -319,7 +322,8 @@ export default function EventCheckout({
         {error && <p className="small" style={{ color: "var(--danger)" }}>{error}</p>}
 
         {fieldErr.items && <p className="small" style={{ color: "var(--danger)" }}>{fieldErr.items}</p>}
-        <button className="btn-pay btn-block" onClick={pay}>
+        {PAYMENTS_PAUSED && provider === "paystack" && <p className="pay-paused-note" role="status">{PAYMENT_PAUSED_MESSAGE}</p>}
+        <button className={`btn-pay btn-block${PAYMENTS_PAUSED && provider === "paystack" ? " is-paused" : ""}`} onClick={pay} disabled={PAYMENTS_PAUSED && provider === "paystack"}>
           {items.length === 0
             ? "Choose tickets to pay"
             : `${state === "failed" ? "Retry —" : "Pay"} KSh ${total.toLocaleString()}`}

@@ -13,10 +13,13 @@ Deno.env.set("SUPABASE_URL", "http://supabase.test");
 Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", SERVICE_KEY);
 Deno.env.set("SUPABASE_ANON_KEY", await jwt({ role: "anon", exp: 4102444800 }));
 Deno.env.set("PAYSTACK_SECRET_KEY", "sk_test_fake");
+// _shared/paystack-switch.ts fails closed; the harness exercises the open payment paths.
+Deno.env.set("PAYSTACK_PAYMENTS", "on");
 Deno.env.set("APP_URL", "https://event.meatsokogroup.com");
 Deno.env.set("RESEND_API_KEY", "re_test_fake");
 Deno.env.set("TICKET_EMAIL_FROM", "MeatSoko <tickets@example.test>");
 Deno.env.set("MERCH_NOTIFY_EMAIL", "orders@example.test, owner@example.test");
+Deno.env.set("CELEBRATIONS_NOTIFY_EMAIL", "parties@example.test");
 
 const paystack = new Map<string, { amount: number; currency: string; status: string }>();
 const sentEmails: any[] = [];
@@ -59,7 +62,7 @@ globalThis.fetch = async (input: any, init?: any) => {
 const handlers: Record<string, (r: Request) => Promise<Response>> = {};
 let loading = "";
 (Deno as any).serve = (h: any) => { handlers[loading] = h; return { finished: Promise.resolve() }; };
-for (const [name, path] of [["checkout", "merch-checkout"], ["order", "merch-order"], ["webhook", "paystack-webhook"], ["fx", "merch-fx-refresh"], ["reconcile", "paystack-reconcile"], ["reserve", "reserve"], ["reslookup", "reservation-lookup"], ["lookup", "lookup"], ["verify", "paystack-verify"], ["upgrade", "upgrade-reservation"], ["bytoken", "reservation-by-token"], ["vendor", "vendor-apply"], ["oreg", "online-register"], ["oacc", "online-access"], ["addon", "platter-addon"], ["inv", "investor-register"], ["receipt", "event-order-receipt"], ["cust", "customer-order"]]) {
+for (const [name, path] of [["checkout", "merch-checkout"], ["order", "merch-order"], ["webhook", "paystack-webhook"], ["fx", "merch-fx-refresh"], ["reconcile", "paystack-reconcile"], ["reserve", "reserve"], ["reslookup", "reservation-lookup"], ["lookup", "lookup"], ["verify", "paystack-verify"], ["upgrade", "upgrade-reservation"], ["bytoken", "reservation-by-token"], ["vendor", "vendor-apply"], ["oreg", "online-register"], ["oacc", "online-access"], ["addon", "platter-addon"], ["inv", "investor-register"], ["receipt", "event-order-receipt"], ["cust", "customer-order"], ["cel", "celebration-request"]]) {
   loading = name; await import(`/fns/${path}/index.ts`);
 }
 const call = async (name: string, body: unknown, headers: Record<string, string> = {}) => {
@@ -1198,9 +1201,79 @@ console.log("\n--- program & concept ---");
   check("event: admin sets time note, dress code and host", evUp.data?.dress_code === "All white" && evUp.data?.time_note === "From 6:00 AM till late" && evUp.data?.host === "MEATsoko Group", evUp);
   const evLong = await admin.from("events").update({ dress_code: "x".repeat(61) }).eq("id", ev.id).select("id");
   check("event: over-long dress code refused", !!evLong.error, evLong);
+  // /events hero fields (migration 20261007090000)
+  const hUp = await admin.from("events").update({ hero_word: "NYAMA", hero_headline: "Let's feast, network & celebrate", hero_image_url: "/images/events/x.png" }).eq("id", ev.id).select("id");
+  const hPub = await anonC.from("events").select("hero_word,hero_headline,hero_image_url").eq("id", ev.id).maybeSingle();
+  check("hero: admin sets word, headline and cut-out; the public reads them", !hUp.error && hPub.data?.hero_word === "NYAMA" && hPub.data?.hero_headline === "Let's feast, network & celebrate" && hPub.data?.hero_image_url === "/images/events/x.png", { hUp: hUp.error, hPub });
+  const hLong = await admin.from("events").update({ hero_word: "X".repeat(17) }).eq("id", ev.id).select("id");
+  const hStaff = await staff.from("events").update({ hero_word: "HIJACK" }).eq("id", ev.id).select("id");
+  check("hero: over-long word refused; staff can't change it", !!hLong.error && (hStaff.data ?? []).length === 0 && (await get(`events?select=hero_word&id=eq.${ev.id}`))[0]?.hero_word === "NYAMA", { hLong: hLong.error, hStaff });
   const bad = await admin.from("event_concepts").update({ pillars: { not: "an array" } }).eq("event_id", ev.id).select("id");
   check("concept: list fields must be lists", !!bad.error, bad);
   // (The NyamaFest Main concept seed only applies where that event exists — production.)
+}
+
+// 19. Occasion booking (celebration-request, migration 20261007120000)
+console.log("\n--- celebrations ---");
+{
+  const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2.45.4");
+  const day = (n: number) => new Date(Date.parse(new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Nairobi" }).format(new Date()) + "T00:00:00Z") + n * 86_400_000).toISOString().slice(0, 10);
+  const req = (extra: Record<string, unknown> = {}) => ({ action: "create", occasion: "birthday", honoree: "Grandma Wanjiku", event_date: day(30), guests: 40, setting: "own_venue", area: "Ruiru", budget: "50k_100k", notes: "Goat and chicken", name: "Amina Otieno", phone: "0712 345 678", email: "amina.cel@example.test", ...extra });
+  const before = sentEmails.length;
+  let r = await call("cel", req(), ip());
+  const tok = r.body?.token;
+  const row = (await get(`celebration_requests?select=*&access_token=eq.${tok}`))[0];
+  const mails = sentEmails.slice(before);
+  check("celebration: request saved with a CB- number and a 32-hex private token", r.status === 200 && /^CB-[A-Z2-9]{6}$/.test(r.body?.reference_number ?? "") && /^[a-f0-9]{32}$/.test(tok ?? "") && row?.status === "new" && row?.phone === "254712345678" && row?.guests === 40, { r: r.body, row });
+  check("celebration: guest emailed their private link; team notified", r.body?.emailed === true && mails.some((m: any) => m.to?.[0] === "amina.cel@example.test" && m.html.includes(`/celebrations/${tok}`) && m.html.includes("Grandma Wanjiku")) && mails.some((m: any) => JSON.stringify(m.to).includes("parties@example.test") && m.text.includes("+254712345678")), mails.map((m: any) => m.to));
+  check("celebration: nothing about prices in the guest email", !/quote of|KSh [0-9]{1,3},[0-9]{3}(?! –)/.test(mails[0]?.text ?? ""), mails[0]?.text);
+  r = await call("cel", { action: "get", token: tok }, ip());
+  check("celebration: the private link shows the request (email masked, no internal note, no phone)", r.status === 200 && r.body?.request?.reference_number === row.reference_number && r.body.request.email === "a•••@example.test" && !("staff_note" in r.body.request) && !("phone" in r.body.request) && r.body.request.can_cancel === true, r.body);
+  check("celebration: unknown or malformed token -> 404", (await call("cel", { action: "get", token: "0".repeat(32) }, ip())).status === 404 && (await call("cel", { action: "get", token: "CB-ABCDEF" }, ip())).status === 404);
+  check("celebration: date with less than 2 days' notice refused", (await call("cel", req({ event_date: day(1) }), ip())).body?.error === "date_too_soon");
+  check("celebration: date 2 years ahead refused", (await call("cel", req({ event_date: day(800) }), ip())).body?.error === "date_too_far");
+  check("celebration: unknown occasion refused", (await call("cel", req({ occasion: "funeral-party" }), ip())).body?.error === "invalid_occasion");
+  check("celebration: 'something else' needs a name", (await call("cel", req({ occasion: "other" }), ip())).body?.error === "invalid_occasion_other");
+  check("celebration: own venue needs an area", (await call("cel", req({ area: "" }), ip())).body?.error === "area_required");
+  check("celebration: bad phone / email / guests refused", (await call("cel", req({ phone: "12345" }), ip())).body?.error === "invalid_phone" && (await call("cel", req({ email: "nope" }), ip())).body?.error === "invalid_email" && (await call("cel", req({ guests: 0 }), ip())).body?.error === "invalid_guests");
+  check("celebration: invented budget band refused", (await call("cel", req({ budget: "free" }), ip())).body?.error === "invalid_budget");
+
+  const anonR = await (await fetch("http://supabase.test/rest/v1/celebration_requests?select=id", { headers: { apikey: anonKey, authorization: `Bearer ${anonKey}` } })).json().catch(() => null);
+  check("celebration: anon can't read requests", !Array.isArray(anonR) || anonR.length === 0, anonR);
+  const anonW = await fetch("http://supabase.test/rest/v1/celebration_requests", { method: "POST", headers: { apikey: anonKey, authorization: `Bearer ${anonKey}`, "content-type": "application/json" }, body: JSON.stringify({ reference_number: "CB-AAAAAA", access_token: "a".repeat(32), occasion: "birthday", event_date: day(30), guests: 5, setting: "not_sure", name: "Anon", phone: "254712345678", email: "x@example.test" }) });
+  check("celebration: anon can't insert", anonW.status === 401 || anonW.status === 403, anonW.status);
+
+  const mk = async (role: "admin" | "staff" | null) => {
+    const uid = crypto.randomUUID();
+    await fetch("http://supabase.test/rest/v1/rpc/test_make_user", { method: "POST", headers: svc, body: JSON.stringify({ p_id: uid }) });
+    if (role) await fetch("http://supabase.test/rest/v1/admin_users", { method: "POST", headers: svc, body: JSON.stringify({ user_id: uid, role }) });
+    const k = await jwt({ role: "authenticated", sub: uid, exp: 4102444800 });
+    return { uid, c: createClient("http://supabase.test", k, { auth: { persistSession: false }, global: { headers: { Authorization: `Bearer ${k}` } } }) };
+  };
+  const staffU = await mk("staff"), outsider = await mk(null);
+  const sr = await staffU.c.from("celebration_requests").select("id,reference_number,occasion,occasion_other,honoree,event_date,guests,setting,area,budget,notes,name,phone,email,status,reply,staff_note,created_at,updated_at");
+  check("celebration: staff can read the dashboard query", !sr.error && (sr.data ?? []).some((x: any) => x.id === row.id), sr.error);
+  const or = await outsider.c.from("celebration_requests").select("id");
+  check("celebration: a signed-in non-staff account reads nothing", (or.data ?? []).length === 0, or);
+  const su = await staffU.c.from("celebration_requests").update({ status: "contacted", reply: "We'll call you on Friday with a quote.", staff_note: "Wants goat", handled_by: staffU.uid, updated_at: new Date().toISOString() }).eq("id", row.id).select("id");
+  r = await call("cel", { action: "get", token: tok }, ip());
+  check("celebration: staff move it on and reply; the guest's page shows the reply, not the note", (su.data ?? []).length === 1 && r.body?.request?.status === "contacted" && r.body.request.reply === "We'll call you on Friday with a quote." && !JSON.stringify(r.body).includes("Wants goat"), { su, r: r.body });
+  const sx = await staffU.c.from("celebration_requests").update({ name: "Hijacked", phone: "254700000000" }).eq("id", row.id).select("id");
+  check("celebration: staff can't rewrite the guest's details (column grants)", !!sx.error && (await get(`celebration_requests?select=name&id=eq.${row.id}`))[0].name === "Amina Otieno", sx);
+  const ox = await outsider.c.from("celebration_requests").update({ status: "cancelled" }).eq("id", row.id).select("id");
+  check("celebration: a non-staff account can't change status", (ox.data ?? []).length === 0, ox);
+
+  r = await call("cel", { action: "cancel", token: tok }, ip());
+  check("celebration: the guest can cancel while it's open", r.status === 200 && r.body?.request?.status === "cancelled" && r.body.request.can_cancel === false, r.body);
+  r = await call("cel", { action: "cancel", token: tok }, ip());
+  check("celebration: can't cancel twice", r.status === 409 && r.body?.error === "not_cancellable", r.body);
+  const r2 = await call("cel", req({ email: "b.cel@example.test", phone: "0722000111" }), ip());
+  await fetch(`http://supabase.test/rest/v1/celebration_requests?access_token=eq.${r2.body?.token}`, { method: "PATCH", headers: svc, body: JSON.stringify({ status: "confirmed" }) });
+  check("celebration: a confirmed request can't be cancelled from the link", (await call("cel", { action: "cancel", token: r2.body?.token }, ip())).body?.error === "not_cancellable");
+
+  let limited = false;
+  for (let i = 0; i < 6 && !limited; i++) limited = (await call("cel", req({ phone: "0733000222", email: `p${i}@example.test` }), ip())).status === 429;
+  check("celebration: one phone is rate-limited (5 an hour)", limited);
 }
 
 console.log(failures ? `\n${failures} FAILED` : "\nall passed");

@@ -9,6 +9,7 @@
 import { json, preflight } from "../_shared/cors.ts";
 import { clientIp, normalizePhone, rateLimit, serviceClient } from "../_shared/supabase.ts";
 import { returnBase } from "../_shared/return-url.ts";
+import { paystackPaused } from "../_shared/paystack-switch.ts";
 import { VENDOR_FEE_KES, VENDOR_TYPES } from "../_shared/vendor.ts";
 
 const PER_PHONE = { limit: 5, windowSeconds: 600 };
@@ -19,6 +20,8 @@ const refNumber = () => "VEN-" + Array.from(crypto.getRandomValues(new Uint8Arra
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return preflight();
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+  // The tent fee is paid through Paystack: while it is paused, register nobody.
+  if (paystackPaused()) return json({ error: "payments_paused" }, 503);
   const b = await req.json().catch(() => null);
   if (!b) return json({ error: "bad_json" }, 400);
 

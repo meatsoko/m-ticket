@@ -29,6 +29,10 @@ export type Event = {
   dress_code?: string | null;
   /** "Hosted by …" under the event name. */
   host?: string | null;
+  /** /events hero (migration 20261007090000): faded back word, big headline, transparent cut-out. */
+  hero_word?: string | null;
+  hero_headline?: string | null;
+  hero_image_url?: string | null;
 };
 
 export type TicketType = {

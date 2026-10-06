@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
 import { openPaystackPopup } from "@/lib/paystack-popup";
+import { PAYMENTS_PAUSED, PAYMENT_PAUSED_MESSAGE } from "@/lib/payments";
 import { familyPackageUsdPrices, formatUsd } from "@/lib/family-package-pricing";
 import { PENDING_UPGRADE_KEY, upgradePriceKes, type UpgradePlatter } from "@/components/TableUpgrade";
 
@@ -38,6 +39,7 @@ export default function PlatterAddons({ token, platters }: { token: string; plat
         bad_qty: `You can add up to ${d?.max ?? 5} of ${d?.item ?? "that platter"}.`,
         not_eligible: "Platters can only be added to a valid in-person ticket.",
         payments_unavailable: "Platter orders are paused right now.",
+        payments_paused: PAYMENT_PAUSED_MESSAGE,
         closed: "Bookings for this event have closed.",
         rate_limited: "Too many attempts. Wait a few minutes and try again.",
       } as Record<string, string>)[res.errorCode ?? ""] ?? (res.transportError ? "Could not reach the server. Check your connection." : "Could not start the payment. Your ticket is unchanged — try again."));
@@ -76,10 +78,11 @@ export default function PlatterAddons({ token, platters }: { token: string; plat
         })}
       </div>
       {err && <p className="small" style={{ color: "var(--danger)" }}>{err}</p>}
-      <button type="button" className="btn-pay btn-block" disabled={busy || !lines.length} onClick={pay}>
+      <button type="button" className={`btn-pay btn-block${PAYMENTS_PAUSED ? " is-paused" : ""}`} disabled={busy || !lines.length || PAYMENTS_PAUSED} onClick={pay}>
         {busy ? "Opening Paystack…" : lines.length ? `Add platters · KSh ${Math.round(totalKes).toLocaleString()}` : "Choose platters to add"}
       </button>
-      <p className="small" style={{ textAlign: "center" }}>Pay by M-Pesa or card on Paystack. If you don&apos;t finish paying, nothing changes.</p>
+      {PAYMENTS_PAUSED ? <p className="pay-paused-note" role="status">{PAYMENT_PAUSED_MESSAGE}</p>
+        : <p className="small" style={{ textAlign: "center" }}>Pay by M-Pesa or card on Paystack. If you don&apos;t finish paying, nothing changes.</p>}
     </div>
   );
 }
