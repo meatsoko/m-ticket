@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
 import { openPaystackPopup } from "@/lib/paystack-popup";
+import { PAYMENTS_PAUSED, PAYMENT_PAUSED_MESSAGE } from "@/lib/payments";
 import { familyPackageUsdPrices, formatUsd } from "@/lib/family-package-pricing";
 
 // Upgrade a General Admission ticket to a table (migration 20260929180000).
@@ -132,16 +133,18 @@ export default function TableUpgrade({
         ))}
       </div>
       {error && <p className="small" style={{ color: "var(--danger)" }}>{error}</p>}
-      <button className="btn-pay btn-block" onClick={start} disabled={phase !== "choose"}>
+      <button className={`btn-pay btn-block${PAYMENTS_PAUSED ? " is-paused" : ""}`} onClick={start} disabled={phase !== "choose" || PAYMENTS_PAUSED}>
         {phase === "paying" ? "Opening Paystack…"
           : phase === "checking" ? "Checking payment…"
           : selected ? `Upgrade · KSh ${upgradePriceKes(selected.platter, now).toLocaleString()}`
           : "Upgrade to a Table"}
       </button>
-      <p className="small" style={{ textAlign: "center" }}>
-        Pay by M-Pesa or card through Paystack. If you don&apos;t complete the payment,
-        your General Admission ticket stays exactly as it is.
-      </p>
+      {PAYMENTS_PAUSED ? <p className="pay-paused-note" role="status">{PAYMENT_PAUSED_MESSAGE}</p> : (
+        <p className="small" style={{ textAlign: "center" }}>
+          Pay by M-Pesa or card through Paystack. If you don&apos;t complete the payment,
+          your General Admission ticket stays exactly as it is.
+        </p>
+      )}
     </div>
   );
 }
@@ -157,6 +160,7 @@ function explain(code: string | null, transport: boolean, d: any): string {
     case "payments_unavailable": return "Table upgrades aren't available right now. Please try again later.";
     case "not_upgradable": return "This ticket can't be upgraded (it may already have been used at the gate).";
     case "not_found": return "We couldn't find this ticket.";
+    case "payments_paused": return PAYMENT_PAUSED_MESSAGE;
     case "paystack_init_failed":
     case "paystack_misconfigured": return "Could not open Paystack. Your ticket is unchanged — try again.";
     default: return "Could not start the upgrade. Your ticket is unchanged — try again.";

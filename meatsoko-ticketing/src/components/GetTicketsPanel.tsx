@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
 import { openPaystackPopup } from "@/lib/paystack-popup";
+import { PAYMENTS_PAUSED, PAYMENT_PAUSED_MESSAGE } from "@/lib/payments";
 import { normalizePhone, looksLikeEmail, PHONE_HINT, EMAIL_HINT } from "@/lib/phone";
 import QrImage from "@/components/QrImage";
 import Icon from "@/components/Icon";
@@ -286,12 +287,13 @@ export default function GetTicketsPanel({
           </div>
 
           {options.length > 0 && <span className="ticket-section-label">Tables with a family platter</span>}
+          {options.length > 0 && PAYMENTS_PAUSED && <p className="pay-paused-note" role="status">{PAYMENT_PAUSED_MESSAGE}</p>}
           <div className="ticket-options">
             {options.map((o) => {
               const p = usd(o);
               const eb = earlyBird(o);
               return (
-                <button type="button" key={o.id} className="ticket-option" onClick={() => choose(o.id)}>
+                <button type="button" key={o.id} className={`ticket-option${PAYMENTS_PAUSED ? " is-paused" : ""}`} disabled={PAYMENTS_PAUSED} onClick={() => choose(o.id)}>
                   <span className="ticket-option-main">
                     <strong>{o.name}</strong>
                     <small>{o.party_size} people · includes {o.platter.name}</small>
@@ -371,12 +373,13 @@ export default function GetTicketsPanel({
               <span>Total · 1 {isOnline ? "online pass" : table ? "table" : "ticket"}</span>
               <strong>{total}</strong>
             </div>
-            <button type="button" className={table ? "btn-pay btn-block" : "btn-primary btn-block"} disabled={busy} onClick={() => submit()}>
+            <button type="button" className={table ? `btn-pay btn-block${PAYMENTS_PAUSED ? " is-paused" : ""}` : "btn-primary btn-block"} disabled={busy || (!!table && PAYMENTS_PAUSED)} onClick={() => submit()}>
               {busy ? (isOnline ? "Registering…" : table ? "Opening Paystack…" : "Getting your ticket…")
                 : isOnline ? "Register to watch online"
                 : table ? `Continue to payment · ${total}` : "Get my free ticket"}
             </button>
-            {table && <p className="small ticket-pay-note">Pay by M-Pesa or card on Paystack (charged in KSh). If you don&apos;t finish paying, you keep your free General Admission ticket.</p>}
+            {table && PAYMENTS_PAUSED && <p className="pay-paused-note" role="status">{PAYMENT_PAUSED_MESSAGE}</p>}
+            {table && !PAYMENTS_PAUSED && <p className="small ticket-pay-note">Pay by M-Pesa or card on Paystack (charged in KSh). If you don&apos;t finish paying, you keep your free General Admission ticket.</p>}
           </div>
         </div>
       )}
@@ -394,7 +397,8 @@ function upgradeReason(code: string): string {
   switch (code) {
     case "full": return "there isn't room for a table that size any more";
     case "preorder_sold_out": return "that platter is sold out";
-    case "payments_unavailable": return "table payments are paused";
+    case "payments_unavailable":
+    case "payments_paused": return "table payments are coming soon";
     case "existing_booking": return "you already have a booking";
     default: return "payment couldn't be opened";
   }

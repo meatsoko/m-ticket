@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
 import { openPaystackPopup } from "@/lib/paystack-popup";
+import { PAYMENTS_PAUSED, PAYMENT_PAUSED_MESSAGE } from "@/lib/payments";
 import { normalizePhone, looksLikeEmail, PHONE_HINT, EMAIL_HINT } from "@/lib/phone";
 import QrImage from "@/components/QrImage";
 import Icon from "@/components/Icon";
@@ -141,6 +142,8 @@ export default function ReservationForm({
     ? Number(item.price_kes)
     : Number(item.compare_at_price_kes);
   const total = items.reduce((s, i) => s + chosenQty(i) * currentPrice(i), 0);
+  // A paid booking that would go to Paystack while it is paused.
+  const payPaused = PAYMENTS_PAUSED && total > 0 && provider === "paystack";
   const partySize = fixed ?? 1 + accompanying;
   const maxParty = Math.min(
     event.max_party_size ?? 10,
@@ -328,6 +331,8 @@ export default function ReservationForm({
         return "M-Pesa did not accept the payment request. Your place is held — try paying again.";
       case "paystack_init_failed":
         return "Could not open Paystack checkout. Your place is held — try again.";
+      case "payments_paused":
+        return PAYMENT_PAUSED_MESSAGE;
       case "paystack_misconfigured":
         return "Paystack is temporarily unavailable. Please try again shortly.";
       case "payments_unavailable":
@@ -584,7 +589,7 @@ export default function ReservationForm({
           <button
             className="btn-primary btn-block"
             onClick={() => submit(true)}
-              disabled={phase === "submitting"}
+              disabled={phase === "submitting" || payPaused}
             >
               This is a separate booking — reserve anyway
             </button>
@@ -595,8 +600,9 @@ export default function ReservationForm({
           </div>
         )}
         {error && <p className="small" style={{ color: "var(--danger)" }}>{error}</p>}
-        <button className={total > 0 ? "btn-pay btn-block" : "btn-primary btn-block"}
-          onClick={() => submit()} disabled={phase === "submitting"}>
+        {payPaused && <p className="pay-paused-note" role="status">{PAYMENT_PAUSED_MESSAGE}</p>}
+        <button className={`${total > 0 ? "btn-pay btn-block" : "btn-primary btn-block"}${payPaused ? " is-paused" : ""}`}
+          onClick={() => submit()} disabled={phase === "submitting" || payPaused}>
           {phase === "submitting"
             ? provider === "mpesa" ? "Sending M-Pesa prompt…" : "Opening Paystack…"
             : total > 0

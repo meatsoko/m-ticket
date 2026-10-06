@@ -12,6 +12,7 @@ import { json, preflight } from "../_shared/cors.ts";
 import { initiateStk } from "../_shared/daraja.ts";
 import { clientIp, normalizePhone, rateLimit, serviceClient } from "../_shared/supabase.ts";
 import { returnBase } from "../_shared/return-url.ts";
+import { paystackPaused } from "../_shared/paystack-switch.ts";
 import { notifyOrganizer } from "../_shared/notify.ts";
 import { buildAndSend } from "../_shared/reservation-email.ts";
 import { startTableUpgrade } from "../_shared/table-upgrade.ts";
@@ -275,6 +276,10 @@ Deno.serve(async (req) => {
       stage = "paystack_init";
       const secret = Deno.env.get("PAYSTACK_SECRET_KEY")?.trim();
       const appUrl = Deno.env.get("APP_URL")?.trim()?.replace(/\/$/, "");
+      if (paystackPaused()) {
+        await db.from("orders").update({ status: "failed" }).eq("id", res.order_id);
+        return fail("payments_paused", 503, { reservation_number: res.reservation_number, ...own(res.access_token) });
+      }
       if (!secret || !appUrl) {
         await db.from("orders").update({ status: "failed" }).eq("id", res.order_id);
         return fail("paystack_misconfigured", 500, {

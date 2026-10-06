@@ -17,6 +17,7 @@ import { json, preflight } from "../_shared/cors.ts";
 import { clientIp, normalizePhone, rateLimit, serviceClient } from "../_shared/supabase.ts";
 import { ensureFreshRate } from "../_shared/fx.ts";
 import { returnBase } from "../_shared/return-url.ts";
+import { paystackPaused } from "../_shared/paystack-switch.ts";
 
 const PER_PHONE = { limit: 6, windowSeconds: 600 };
 const PER_IP = { limit: 30, windowSeconds: 600 };
@@ -47,6 +48,8 @@ Deno.serve(async (req) => {
       if (!fx) return fail("fx_unavailable", 503);
       return json({ rate: fx.rate, as_of: fx.as_of });
     }
+    // Before merch_create_order, so a paused checkout never holds stock.
+    if (paystackPaused()) return fail("payments_paused", 503);
     const customer = body.customer ?? {};
     const delivery = body.delivery ?? {};
     const lines = Array.isArray(body.lines) ? body.lines : [];

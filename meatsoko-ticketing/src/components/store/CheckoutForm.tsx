@@ -10,12 +10,13 @@ import { looksLikeEmail, normalizePhone, PHONE_HINT } from "@/lib/phone";
 import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
 import { openPaystackPopup } from "@/lib/paystack-popup";
+import { PAYMENTS_PAUSED, PAYMENT_PAUSED_MESSAGE } from "@/lib/payments";
 
 // Merchandise payment goes live only when NEXT_PUBLIC_MERCH_PAYMENTS is "on" — set
 // it after the merchandise migration is applied and merch-checkout is deployed
 // (see supabase/migrations/20260929120000_merchandise_store.sql). Until then the
 // form works end to end but Pay stays disabled and says why.
-const PAYMENT_CONNECTED = process.env.NEXT_PUBLIC_MERCH_PAYMENTS === "on";
+const PAYMENT_CONNECTED = process.env.NEXT_PUBLIC_MERCH_PAYMENTS === "on" && !PAYMENTS_PAUSED;
 
 // An order opened on Paystack but not yet paid (popup closed). Pressing Pay again with
 // the same bag and details resumes it instead of creating a second order — which
@@ -96,7 +97,7 @@ export default function CheckoutForm() {
   const blocker =
     subtotal == null ? "Prices for these pieces are being finalised — you’ll be able to pay as soon as they’re set."
     : delivery !== "standard" && option.feeUsd == null ? `The ${option.label.toLowerCase()} fee is being finalised. Choose a pickup option, or check back soon.`
-    : !PAYMENT_CONNECTED ? "Online payment for merchandise opens soon."
+    : !PAYMENT_CONNECTED ? PAYMENT_PAUSED_MESSAGE
     : null;
 
   const err = (k: keyof typeof errors) => touched && errors[k] ? <small className="field-error">{errors[k]}</small> : null;
@@ -253,7 +254,7 @@ export default function CheckoutForm() {
           </label>
           {err("agree")}
 
-          <button type="submit" className="store-button summary-cta" disabled={!!blocker || submitting} aria-describedby="checkout-blocker">
+          <button type="submit" className={`store-button summary-cta${PAYMENTS_PAUSED ? " is-paused" : ""}`} disabled={!!blocker || submitting} aria-describedby="checkout-blocker">
             {submitting ? "Opening Paystack…" : total != null ? `Pay ${formatPrice(total)}` : "Pay"} <span>→</span>
           </button>
           {blocker && <p className="summary-blocker" id="checkout-blocker">{blocker}</p>}

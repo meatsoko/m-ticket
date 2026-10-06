@@ -9,6 +9,7 @@ import { json, preflight } from "../_shared/cors.ts";
 import { describeDarajaConfig, initiateStk } from "../_shared/daraja.ts";
 import { clientIp, normalizePhone, rateLimit, serviceClient } from "../_shared/supabase.ts";
 import { returnBase } from "../_shared/return-url.ts";
+import { paystackPaused } from "../_shared/paystack-switch.ts";
 
 // NFR-5. Generous enough for a real buyer retrying a failed PIN, tight enough that the
 // endpoint can't be used to spray PIN prompts at arbitrary numbers with our shortcode.
@@ -70,6 +71,8 @@ Deno.serve(async (req) => {
     if (channel !== "web" && channel !== "gate") return fail("bad_channel", 400);
     if (provider !== "mpesa" && provider !== "paystack") return fail("bad_provider", 400);
     if (provider === "paystack" && channel !== "web") return fail("bad_provider", 400);
+    // Before any order is created, so a paused payment leaves nothing pending.
+    if (provider === "paystack" && paystackPaused()) return fail("payments_paused", 503);
     log("validated", { phone: maskPhone(buyerPhone), channel, item_count: items.length });
 
     const db = serviceClient();
