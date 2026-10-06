@@ -481,9 +481,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   font-family: Arial, Helvetica, sans-serif;
 }
 .storefront a { color: inherit; text-decoration: none; }
-.store-announcement { min-height: 34px; display: grid; place-items: center; padding: 7px 16px; background: var(--store-ink); color: #fff; font-size: 10px; font-weight: 700; letter-spacing: .13em; text-align: center; }
 .store-header { position: sticky; top: 0; z-index: 30; min-height: 82px; padding: 14px max(5.5vw, 24px); display: flex; align-items: center; justify-content: space-between; gap: 28px; background: rgba(246,243,237,.96); border-bottom: 1px solid rgba(23,23,23,.08); backdrop-filter: blur(12px); }
-.store-mobile-menu, .store-mobile-bar { display: none; }
+.store-mobile-menu { display: none; }
 .store-brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 800; font-size: 15px; letter-spacing: .055em; white-space: nowrap; }
 .store-nav, .store-actions { display: flex; align-items: center; gap: clamp(18px, 3vw, 44px); }
 .store-nav a { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; transition: color .15s; }
@@ -708,7 +707,6 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .event-booking .package-card-info input[type="radio"] { width: 18px !important; height: 18px !important; }
 }
 @media (max-width: 760px) {
-  .storefront { padding-bottom: 66px; }
   .store-header { min-height: 62px; padding: 9px 17px; gap: 12px; }
   .store-mobile-menu { display: block; position: static; order: 0; }
   .store-mobile-menu summary { width: 34px; height: 34px; display: flex; flex-direction: column; justify-content: center; gap: 5px; cursor: pointer; list-style: none; }
@@ -764,12 +762,6 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .merch-product-info { padding: 10px; }
   .merch-product-info h3 { font-size: 11px; line-height: 1.35; }
   .merch-product-info span { font-size: 10px; }
-  .store-mobile-bar { position: fixed; z-index: 40; left: 0; right: 0; bottom: 0; min-height: calc(62px + env(safe-area-inset-bottom)); padding: 6px 8px env(safe-area-inset-bottom); display: grid; grid-template-columns: repeat(4,1fr); background: rgba(255,255,255,.97); border-top: 1px solid var(--store-line); box-shadow: 0 -5px 20px #1717170a; }
-  .store-mobile-bar a { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: #6d6964; }
-  .store-mobile-bar a:hover, .store-mobile-bar a:focus-visible { color: var(--store-red); }
-  .store-mobile-bar a > span { height: 25px; display: grid; place-items: center; }
-  .store-mobile-bar svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-  .store-mobile-bar small { font-size: 9px; font-weight: 700; }
 }
 @media (max-width: 390px) {
   .store-header { padding-left: 12px; padding-right: 12px; }
@@ -792,7 +784,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 /* First screen = hero + promises strip, exactly the viewport below the header
    (34px announcement + 82px header), so the strip is visible without scrolling
    and the next section starts straight after it. */
-.store-hero-screen { min-height: calc(100vh - 116px); min-height: calc(100svh - 116px); padding-bottom: 28px; display: flex; flex-direction: column; }
+.store-hero-screen { min-height: calc(100vh - 82px); min-height: calc(100svh - 82px); padding-bottom: 28px; display: flex; flex-direction: column; }
 .store-hero-screen > .store-hero { flex: 1; width: 100%; min-height: 0; margin: 0 auto; padding-top: 18px; padding-bottom: 18px; }
 .store-hero-screen > .store-promises { width: calc(100% - 2 * max(5.5vw, 24px)); max-width: none; margin: 0 auto; padding: 20px 0; text-align: center; }
 .store-hero-screen + .store-section { padding-top: 46px; }
@@ -2065,3 +2057,8 @@ a.login-submit { display: grid; place-items: center; text-decoration: none; }
 .ev-concept-takepart ul { margin: 0; padding-left: 1.2rem; display: grid; gap: 6px; line-height: 1.5; }
 .hero .hero-host { margin: 2px 0 0; color: rgba(255,255,255,.78); }
 .hero .hero-host strong { color: #fff; }
+
+/* Ticketing header: "My tickets" for visitors (they have no bottom bar). */
+.app-bar-link { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; padding: 8px 12px; border-radius: 999px; background: var(--surface-2); color: var(--ink); font-size: .82rem; font-weight: 700; text-decoration: none; }
+.app-bar.on-media .app-bar-link { background: rgba(0,0,0,.35); color: #fff; backdrop-filter: blur(6px); }
+.app-bar .brand { color: inherit; text-decoration: none; }

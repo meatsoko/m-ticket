@@ -39,9 +39,9 @@ export default async function AppShell({
         {title ? (
           <span className="title">{title}</span>
         ) : (
-          <span className="brand">
+          <Link href="/" className="brand" aria-label="MeatSoko shop">
             <img className="brand-logo" src="/images/brand/meatsoko-logo-mark.png" alt="MeatSoko" width={480} height={176} />
-          </span>
+          </Link>
         )}
 
         {!title && !back ? <span className="spacer" /> : null}
@@ -52,6 +52,10 @@ export default async function AppShell({
           <span className="pill ember">{ROLE_LABEL[resolved]}</span>
         ) : null}
         {action}
+        {/* Visitors have no bottom bar (staff only), so "My tickets" lives here. */}
+        {resolved === "public" && !action && !hideTabs ? (
+          <Link href="/lookup" className="app-bar-link"><Icon name="search" size={18} /> My tickets</Link>
+        ) : null}
         {/* Signed-in only. A buyer has no session to end, and the gate phone
             that passes between shifts is exactly why this needs to exist. */}
         {resolved !== "public" ? <SignOutButton /> : null}
@@ -59,7 +63,9 @@ export default async function AppShell({
 
       <main className="app-body">{children}</main>
 
-      {hideTabs ? null : <TabBar role={resolved} />}
+      {/* The bottom bar is for signed-in staff (Scan, Gate, Orders); visitors navigate
+          from the header and the shop's menu. */}
+      {hideTabs || resolved === "public" ? null : <TabBar role={resolved} />}
     </div>
   );
 }

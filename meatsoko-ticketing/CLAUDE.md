@@ -137,6 +137,10 @@ custom SMTP — confirm with the user that both are set.
   tokens. (User, 2026-09-30: "keep the brown theme in mobile ticketing".)
 - Brand: `public/images/brand/meatsoko-logo-mark.png` (bars, headers/footer) and
   `meatsoko-logo.png` (with tagline, login). No "M" mark any more.
+- Navigation (2026-10-06): no announcement bar above the shop header and no shop bottom bar
+  on phones (the ☰ menu is the phone navigation). The ticketing bottom tab bar shows **only
+  for signed-in staff** (Event · Scan · Gate · Orders); visitors get a "My tickets" link in
+  the header instead.
 - Never invent prices, figures or claims. Unpriced merch stays "Price coming soon".
 - Verify every UI change at desktop and 390px widths.
 
