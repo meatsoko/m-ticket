@@ -2067,8 +2067,6 @@ a.login-submit { display: grid; place-items: center; text-decoration: none; }
 .app-bar.on-media .app-bar-link { background: rgba(0,0,0,.35); color: #fff; backdrop-filter: blur(6px); }
 .app-bar .brand { color: inherit; text-decoration: none; }
 
-<<<<<<< HEAD
-=======
 /* ---------- /events hero: the next event as a layered poster ----------
    After the "Odyssey" festival reference (2026-10-06): a giant faded word at the
    back, the cut-out or poster in the middle, the name in red script in front,
@@ -2387,7 +2385,6 @@ a.login-submit { display: grid; place-items: center; text-decoration: none; }
 .cel-band a:hover { background: #c22833; }
 @media (min-width: 900px) { .full-bleed .cel-band { padding: 90px 4vw 100px; } }
 
->>>>>>> fb70b24 (celebrations module)
 /* ---------- Paystack paused (src/lib/payments.ts) ----------
    Every button that would open a Paystack payment is greyed out and disabled, with a
    friendly "Payment coming soon" note beside it. */

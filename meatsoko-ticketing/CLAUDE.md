@@ -196,20 +196,12 @@ custom SMTP — confirm with the user that both are set.
 
 ## Payments, email, money
 
-<<<<<<< HEAD
 - **Paystack is PAUSED (2026-10-06, user's urgent request).** Server: `_shared/paystack-switch.ts`
   — no transaction opens unless the `PAYSTACK_PAYMENTS` secret is `on` (unset = paused);
   `reserve`, `stk-push`, `vendor-apply`, `merch-checkout`, `platter-addon`, `upgrade-reservation`
   return `payments_paused` (503). Site: `src/lib/payments.ts` greys out every pay button with
   "Payment coming soon" unless `NEXT_PUBLIC_PAYSTACK_PAYMENTS=on`. Verify/reconcile still run.
   Re-open: set both to `on` (Supabase secret + Vercel env, then redeploy).
-=======
-- **Paystack is PAUSED (2026-10-06, user's urgent request).** `_shared/paystack-switch.ts`:
-  no new transaction opens unless the `PAYSTACK_PAYMENTS` secret is `on` (unset = paused).
-  Guarded: `reserve`, `stk-push`, `vendor-apply`, `merch-checkout`, `platter-addon`,
-  `upgrade-reservation` (all deployed) — they return `payments_paused` (503). Verify and
-  reconcile still run for earlier references. Re-open: `supabase secrets set PAYSTACK_PAYMENTS=on`.
->>>>>>> fb70b24 (celebrations module)
 
 - Paystack for everything (tickets `MT…`, merch `MS…`, vendors `MV…`). The account is
   shared with the WooCommerce store, which owns the only webhook — **don't move it**.
