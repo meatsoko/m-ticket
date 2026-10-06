@@ -24,6 +24,11 @@ export type Event = {
   online_price_kes?: number | null;
   /** False while M-Pesa provisioning is pending: preorders show but can't be bought. */
   payments_enabled?: boolean;
+  /** Shown instead of the computed hours, e.g. "From 6:00 AM till late" (migration 20261006120000). */
+  time_note?: string | null;
+  dress_code?: string | null;
+  /** "Hosted by …" under the event name. */
+  host?: string | null;
 };
 
 export type TicketType = {
@@ -103,6 +108,8 @@ export type EventConcept = {
   target_participants: string[];
   objectives: string[];
   vision: string | null;
+  success_measure: string | null;
+  take_part: string[];
 };
 
 // ---------- Celebrations ----------

@@ -10,7 +10,7 @@ export type TicketEvent = {
   note: string;      // under GET TICKETS, e.g. "Free entry · tables available"
 };
 
-type EventRow = { slug: string; name: string; venue: string | null; starts_at: string; ends_at: string | null; banner_url: string | null };
+type EventRow = { slug: string; name: string; venue: string | null; starts_at: string; ends_at: string | null; banner_url: string | null; time_note?: string | null };
 
 /** Dates in Nairobi time. `hasGeneralAdmission`: free entry with tables (GA events). */
 export function toTicketEvent(ev: EventRow, hasGeneralAdmission: boolean): TicketEvent {
@@ -23,7 +23,7 @@ export function toTicketEvent(ev: EventRow, hasGeneralAdmission: boolean): Ticke
   return {
     slug: ev.slug, name: ev.name, venue: ev.venue || "Nairobi", image: ev.banner_url,
     dateBig: `${month} ${day}${suffix}`, year, dateShort: `${day} ${month} ${year}`,
-    time: nairobiTimeRange(ev.starts_at, ev.ends_at),
+    time: ev.time_note || nairobiTimeRange(ev.starts_at, ev.ends_at),
     note: hasGeneralAdmission ? "Free entry · tables available" : "Tickets on sale now",
   };
 }

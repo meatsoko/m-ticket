@@ -6,10 +6,11 @@ import type { EventConcept, EventConceptPillar } from "@/lib/types";
 // The event's Concept tab: core proposition, overview, pillars, who it brings
 // together, objectives and vision. Admin only (RLS). Saving with everything
 // empty removes the tab from the event page.
-type Form = { core_proposition: string; overview: string; pillars: EventConceptPillar[]; participants: string; objectives: string; vision: string };
+type Form = { core_proposition: string; overview: string; pillars: EventConceptPillar[]; participants: string; objectives: string; vision: string; success_measure: string; take_part: string };
 const toForm = (c: EventConcept | null): Form => ({
   core_proposition: c?.core_proposition ?? "", overview: c?.overview ?? "", pillars: c?.pillars ?? [],
   participants: (c?.target_participants ?? []).join("\n"), objectives: (c?.objectives ?? []).join("\n"), vision: c?.vision ?? "",
+  success_measure: c?.success_measure ?? "", take_part: (c?.take_part ?? []).join("\n"),
 });
 const lines = (s: string) => s.split("\n").map((l) => l.trim()).filter(Boolean);
 
@@ -20,7 +21,8 @@ export default function EventConceptPanel({ eventId, concept }: { eventId: strin
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const pillars = f.pillars.map((p) => ({ title: p.title.trim(), body: p.body.trim() })).filter((p) => p.title);
-  const empty = !f.core_proposition.trim() && !f.overview.trim() && !pillars.length && !lines(f.participants).length && !lines(f.objectives).length && !f.vision.trim();
+  const empty = !f.core_proposition.trim() && !f.overview.trim() && !pillars.length && !lines(f.participants).length && !lines(f.objectives).length
+    && !f.vision.trim() && !f.success_measure.trim() && !lines(f.take_part).length;
 
   async function save() {
     setMsg(null);
@@ -37,6 +39,7 @@ export default function EventConceptPanel({ eventId, concept }: { eventId: strin
     const row = {
       event_id: eventId, core_proposition: f.core_proposition.trim() || null, overview: f.overview.trim() || null,
       pillars, target_participants: lines(f.participants), objectives: lines(f.objectives), vision: f.vision.trim() || null,
+      success_measure: f.success_measure.trim() || null, take_part: lines(f.take_part),
       updated_at: new Date().toISOString(),
     };
     const { data, error } = await supabase.from("event_concepts").upsert(row, { onConflict: "event_id" }).select().single();
@@ -80,6 +83,12 @@ export default function EventConceptPanel({ eventId, concept }: { eventId: strin
       </div>
       <label className="ep-field"><span>Vision</span>
         <textarea rows={3} maxLength={2000} value={f.vision} onChange={(e) => setF({ ...f, vision: e.target.value })} /></label>
+      <div className="ep-grid two">
+        <label className="ep-field"><span>How success is measured</span>
+          <textarea rows={4} maxLength={600} value={f.success_measure} onChange={(e) => setF({ ...f, success_measure: e.target.value })} /></label>
+        <label className="ep-field"><span>Ways to take part <em>(one per line)</em></span>
+          <textarea rows={4} value={f.take_part} onChange={(e) => setF({ ...f, take_part: e.target.value })} /></label>
+      </div>
 
       {msg && <p className={msg.ok ? "ep-ok" : "dash-error"}>{msg.text}</p>}
       <div className="dash-toolbar-right">

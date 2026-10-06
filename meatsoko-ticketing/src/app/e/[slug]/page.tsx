@@ -91,7 +91,8 @@ export default async function EventPage({ params }: { params: { slug: string } }
     ? ev.description.split("|").map((z: string) => z.trim()).filter(Boolean)
     : [];
   const blurb = zones.length ? "" : (ev.description ?? "");
-  const timeLabel = nairobiTimeRange(ev.starts_at, ev.ends_at);
+  // The organiser's wording wins over computed hours (e.g. "From 6:00 AM till late").
+  const timeLabel = ev.time_note || nairobiTimeRange(ev.starts_at, ev.ends_at);
   const pageUrl = `${(process.env.NEXT_PUBLIC_APP_URL ?? "https://event.meatsokogroup.com").replace(/\/$/, "")}/e/${ev.slug}`;
 
   return (
@@ -104,6 +105,7 @@ export default async function EventPage({ params }: { params: { slug: string } }
           {earlyBirdEndsAt && <EarlyBirdCountdown endsAt={earlyBirdEndsAt} />}
           <h1>{ev.name}</h1>
           {ev.tagline && <p className="small" style={{ color: "rgba(255,255,255,.88)" }}>{ev.tagline}</p>}
+          {ev.host && <p className="small hero-host">Hosted by <strong>{ev.host}</strong></p>}
           <div className="meta">
             <span className="pill glass">
               <Icon name="pin" size={13} /> {ev.venue || "Nairobi"}
@@ -140,6 +142,7 @@ export default async function EventPage({ params }: { params: { slug: string } }
               <div><dt>When</dt><dd>{fmt(ev.starts_at, { weekday: "short", day: "numeric", month: "short" })} · {timeLabel}</dd></div>
               <div><dt>Where</dt><dd>{ev.venue || "Nairobi"}</dd></div>
               <div><dt>Entry</dt><dd>QR scan at the gate</dd></div>
+              {ev.dress_code && <div><dt>Dress code</dt><dd>{ev.dress_code}</dd></div>}
             </dl>
             <div className="event-trust">
               {gaType && <span>Free entry</span>}

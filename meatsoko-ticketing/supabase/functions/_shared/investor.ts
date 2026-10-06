@@ -5,7 +5,7 @@ import { escapeHtml as esc, sendEmail } from "./resend.ts";
 import { SUPPORT } from "./support.ts";
 
 export const INVESTOR_DAY = "Friday 16 October 2026";
-export const INVESTOR_VENUE = "Thika Greens Golf Course";  // the NyamaFest Main venue
+export const INVESTOR_VENUE = "Thika Greens Golf Resort";  // the NyamaFest Main venue (concept note)
 export const SALUTATIONS = ["Mr", "Mrs", "Ms", "Dr", "Prof", "Hon"];
 export const MAX_GUESTS = 10;
 

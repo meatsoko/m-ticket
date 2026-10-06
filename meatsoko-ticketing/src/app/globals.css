@@ -2061,3 +2061,7 @@ a.login-submit { display: grid; place-items: center; text-decoration: none; }
 .ep-pillar { display: grid; grid-template-columns: 180px 1fr auto; gap: 8px; align-items: start; width: 100%; }
 .ep-ok { margin: 0; color: #2f7a4a; font-size: 13px; font-weight: 700; }
 @media (max-width: 760px) { .ep-grid.two, .ep-pillar { grid-template-columns: 1fr; } }
+.ev-concept-takepart { display: grid; gap: var(--s2); padding: var(--s4); border: 1px solid var(--ember); border-radius: var(--r-md); }
+.ev-concept-takepart ul { margin: 0; padding-left: 1.2rem; display: grid; gap: 6px; line-height: 1.5; }
+.hero .hero-host { margin: 2px 0 0; color: rgba(255,255,255,.78); }
+.hero .hero-host strong { color: #fff; }

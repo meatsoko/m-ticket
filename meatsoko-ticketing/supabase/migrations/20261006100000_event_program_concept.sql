@@ -4,7 +4,8 @@
 -- location, description). Items are drafts until published; only published
 -- items are public.
 -- Concept: one structured "about" per event — core proposition, overview,
--- pillars ({title, body}), who it is for, objectives, vision. NyamaFest Main's
+-- pillars ({title, body}), who it is for, objectives, vision, the measure of
+-- success, and the ways partners can take part. NyamaFest Main's
 -- is filled from the organiser's concept note (Nyama Fest Concept Note,
 -- MEATsoko Group, concept by Aaron Greene) at the end of this file.
 --
@@ -39,6 +40,8 @@ create table if not exists public.event_concepts (
   target_participants jsonb not null default '[]' check (jsonb_typeof(target_participants) = 'array'), -- ["Farmers", ...]
   objectives          jsonb not null default '[]' check (jsonb_typeof(objectives) = 'array'),          -- ["...", ...]
   vision              text check (vision is null or length(vision) <= 2000),
+  success_measure     text check (success_measure is null or length(success_measure) <= 600),           -- "how we'll judge it"
+  take_part           jsonb not null default '[]' check (jsonb_typeof(take_part) = 'array'),           -- ways partners take part
   updated_at          timestamptz not null default now()
 );
 
@@ -67,7 +70,7 @@ drop policy if exists event_concepts_admin_delete on public.event_concepts;
 create policy event_concepts_admin_delete on public.event_concepts for delete to authenticated using (public.is_admin());
 
 -- NyamaFest Main's concept, from the organiser's concept note (2026-10-05).
-insert into public.event_concepts (event_id, core_proposition, overview, pillars, target_participants, objectives, vision)
+insert into public.event_concepts (event_id, core_proposition, overview, pillars, target_participants, objectives, vision, success_measure, take_part)
 select e.id,
   'Nyama Fest is where the traditional red-meat economy meets the next generation.',
   'Nyama Fest is a strategic initiative of MEATsoko Group to help shape the next generation of Kenya''s red-meat economy. It goes beyond a food festival: a value-chain ecosystem platform where celebration becomes the entry point for collaboration, networking, investment, innovation, policy dialogue, technology exchange, partnerships and deal-making. It builds on the knowledge, relationships and entrepreneurial foundations of earlier generations while tackling informality, fragmentation, limited financing, climate vulnerability, weak traceability and insufficient value addition.',
@@ -88,7 +91,12 @@ select e.id,
     "Create investment and commercial partnership opportunities.",
     "Strengthen regional and global connectivity.",
     "Turn dialogue into practical commitments, partnerships and deals."]'::jsonb,
-  'Culture meets enterprise. Experience meets technology. Informality meets formalisation. Waste meets value. Climate risk meets resilience. Energy transition meets opportunity. Youth meets investment. Kenya meets the region and the world. Nyama Fest should not only showcase what is possible — it should create the space where the people who can make it possible meet, collaborate, invest and sign the deals.'
+  'Culture meets enterprise. Experience meets technology. Informality meets formalisation. Waste meets value. Climate risk meets resilience. Energy transition meets opportunity. Youth meets investment. Kenya meets the region and the world. Nyama Fest should not only showcase what is possible — it should create the space where the people who can make it possible meet, collaborate, invest and sign the deals.',
+  'The central measure of success is not how many people attend, but what relationships were created, what opportunities were unlocked, what investments were mobilised and what deals were signed. A Nyama Fest Action and Investment Tracker records every commitment made at the event — who committed to what, by when, with what resources — and follows up at 3, 6 and 12 months.',
+  '["Showcase technologies, products or circular solutions.",
+    "Take part in investment matchmaking and partnership conversations.",
+    "Join policy and knowledge-exchange sessions.",
+    "Explore MoUs, market linkages and joint programmes."]'::jsonb
 from public.events e
 where e.slug = 'nyamafest-main'
 on conflict (event_id) do nothing;

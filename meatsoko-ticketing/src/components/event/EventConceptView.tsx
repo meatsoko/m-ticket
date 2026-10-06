@@ -6,6 +6,7 @@ export default function EventConceptView({ concept }: { concept: EventConcept })
   const pillars = concept.pillars ?? [];
   const who = concept.target_participants ?? [];
   const objectives = concept.objectives ?? [];
+  const takePart = concept.take_part ?? [];
   return (
     <div className="ev-concept">
       {concept.core_proposition && (
@@ -45,6 +46,18 @@ export default function EventConceptView({ concept }: { concept: EventConcept })
           <span className="eyebrow">Vision</span>
           <p>{concept.vision}</p>
         </div>
+      )}
+      {concept.success_measure && (
+        <section className="stack tight">
+          <span className="eyebrow">How we&apos;ll measure success</span>
+          <p className="ev-concept-overview">{concept.success_measure}</p>
+        </section>
+      )}
+      {takePart.length > 0 && (
+        <section className="ev-concept-takepart">
+          <span className="eyebrow">Take part</span>
+          <ul>{takePart.map((t, i) => <li key={i}>{t}</li>)}</ul>
+        </section>
       )}
     </div>
   );

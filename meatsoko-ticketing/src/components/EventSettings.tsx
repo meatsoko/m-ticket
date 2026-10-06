@@ -46,6 +46,9 @@ export default function EventSettings({ event }: { event: any }) {
   const [f, setF] = useState({
     name: event.name ?? "",
     tagline: event.tagline ?? "",
+    host: event.host ?? "",
+    time_note: event.time_note ?? "",
+    dress_code: event.dress_code ?? "",
     venue: event.venue ?? "",
     description: event.description ?? "",
     banner_url: event.banner_url ?? "",
@@ -76,6 +79,9 @@ export default function EventSettings({ event }: { event: any }) {
     const { error } = await supabase.from("events").update({
       name: f.name.trim(),
       tagline: f.tagline.trim() || null,
+      host: f.host.trim() || null,
+      time_note: f.time_note.trim() || null,
+      dress_code: f.dress_code.trim() || null,
       venue: f.venue.trim(),
       description: f.description,
       banner_url: f.banner_url.trim() || null,
@@ -227,8 +233,24 @@ export default function EventSettings({ event }: { event: any }) {
           </label>
           <label className="field">
             <span>Tagline</span>
-            <input placeholder="Sponsored by MeatSoko"
+            <input placeholder="Building the Next Generation of Kenya's Red-Meat Economy"
               value={f.tagline} onChange={(e) => set("tagline", e.target.value)} />
+          </label>
+          <label className="field">
+            <span>Hosted by (optional)</span>
+            <input placeholder="MEATsoko Group" maxLength={80}
+              value={f.host} onChange={(e) => set("host", e.target.value)} />
+          </label>
+          <label className="field">
+            <span>Time as shown (optional)</span>
+            <input placeholder="From 6:00 AM till late" maxLength={60}
+              value={f.time_note} onChange={(e) => set("time_note", e.target.value)} />
+            <span className="small">Replaces the hours worked out from start/end on the event page and ticket card. Start and end still control countdowns and booking.</span>
+          </label>
+          <label className="field">
+            <span>Dress code (optional)</span>
+            <input placeholder="All white" maxLength={60}
+              value={f.dress_code} onChange={(e) => set("dress_code", e.target.value)} />
           </label>
           <label className="field">
             <span>Venue</span>

@@ -7,7 +7,7 @@ confirmation and reconciliation, refunds, merchandise checkout and FX, vendors, 
 attendance, investors, Event Orders, lookups, and the RLS/permission lock-downs. Only Paystack, the FX
 feed and Resend are faked. **It never touches the live Supabase project.**
 
-Expect `ok: 326   FAIL: 0` (2026-10-06). `KEEP_LOG=1` keeps the full output in
+Expect `ok: 329   FAIL: 0` (2026-10-06). `KEEP_LOG=1` keeps the full output in
 `last-run.log` (gitignored).
 
 | File | What |

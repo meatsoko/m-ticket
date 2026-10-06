@@ -10,9 +10,10 @@ import { INVESTOR_DAY, INVESTOR_VENUE } from "@/lib/investors";
 // drifting around a headline that blurs in word by word, and one white pill
 // action. Every "register" button opens the registration form in a dialog.
 //
-// The copy states only what MeatSoko actually runs today (franchises,
-// NyamaFest, merchandise and partnerships, the booking/payment platform); no
-// figures are claimed that the site cannot stand behind.
+// The copy follows the organiser's Nyama Fest Concept Note (MEATsoko Group,
+// 2026-10-05): the core proposition, the call to investors, matchmaking and
+// deal-making, and the Action and Investment Tracker. No figures are claimed
+// that the note doesn't state.
 
 type Bubble = { x: number; y: number; s: number; d: number; desk?: boolean; m?: [number, number] } & (
   | { kind: "img"; src: string; alt: string }
@@ -35,31 +36,31 @@ const ICONS = {
 // above and below the headline, so nothing sits on the text.
 const BUBBLES: Bubble[] = [
   { kind: "img", src: "/images/table-packages/big-family.webp", alt: "A MeatSoko family platter", x: 15, y: 20, s: 96, d: 0.9, m: [14, 8] },
-  { kind: "icon", icon: "store", label: "Franchises", x: 27, y: 9, s: 60, d: 1.1, desk: true },
+  { kind: "icon", icon: "store", label: "Value chain", x: 27, y: 9, s: 60, d: 1.1, desk: true },
   { kind: "glass", x: 7, y: 42, s: 91, d: 1.0, desk: true },
-  { kind: "stat", big: "500", small: "guests · NyamaFest", x: 9, y: 66, s: 120, d: 1.2, m: [84, 9] },
-  { kind: "icon", icon: "ticket", label: "Events", x: 22, y: 50, s: 60, d: 1.3, desk: true },
+  { kind: "stat", big: "6", small: "pillars · one agenda", x: 9, y: 66, s: 120, d: 1.2, m: [84, 9] },
+  { kind: "icon", icon: "ticket", label: "Deal-making", x: 22, y: 50, s: 60, d: 1.3, desk: true },
   { kind: "img", src: "/images/merchandise/green-hoodie-nyamafest-cutout.png", alt: "NyamaFest hoodie", x: 24, y: 82, s: 83, d: 1.4, m: [16, 92] },
   { kind: "glass", x: 38, y: 95, s: 70, d: 1.5, desk: true },
   { kind: "glass", x: 62, y: 96, s: 62, d: 1.6, desk: true },
-  { kind: "icon", icon: "phone", label: "M-Pesa & card", x: 76, y: 84, s: 60, d: 1.5, desk: true },
+  { kind: "icon", icon: "phone", label: "Technology", x: 76, y: 84, s: 60, d: 1.5, desk: true },
   { kind: "img", src: "/images/campaign/nyamafest-hero.jpg", alt: "NyamaFest on the grill", x: 88, y: 66, s: 109, d: 1.3, m: [50, 95] },
   { kind: "stat", big: "17 Oct", small: "NyamaFest Main", x: 91, y: 39, s: 114, d: 1.2, m: [85, 91] },
   { kind: "icon", icon: "spark", label: "Partnerships", x: 79, y: 21, s: 60, d: 1.0, desk: true },
   { kind: "img", src: "/images/merchandise/red-beanie-nyamafest-cutout.png", alt: "NyamaFest beanie", x: 71, y: 8, s: 73, d: 1.1, desk: true },
   { kind: "glass", x: 93, y: 14, s: 83, d: 0.9, desk: true },
-  { kind: "icon", icon: "leaf", label: "Sustainable", x: 78, y: 52, s: 55, d: 1.4, desk: true },
+  { kind: "icon", icon: "leaf", label: "Circular economy", x: 78, y: 52, s: 55, d: 1.4, desk: true },
   { kind: "img", src: "/images/table-packages/moderate-family.webp", alt: "A MeatSoko platter", x: 85, y: 92, s: 70, d: 1.7, desk: true },
 ];
 
 const PILLARS = [
-  { n: "01", title: "A network, not a shop", body: "MeatSoko runs through franchise outlets that customers already use to buy and collect — the base everything else is built on." },
-  { n: "02", title: "Events that draw a crowd", body: "NyamaFest turns the brand into a day out: a 500-guest flagship at Thika Greens on 17 October, with tables, platters and vendors." },
-  { n: "03", title: "A brand people wear", body: "Merchandise and partnerships — from NyamaFest apparel to collaborations with Brian Munyolo Boxing — carry MeatSoko beyond the counter." },
-  { n: "04", title: "The platform is live", body: "Tickets, reservations, vendor sign-ups and the online store already run on our own platform, taking M-Pesa and card payments today." },
+  { n: "01", title: "The whole value chain, in one place", body: "Farmers and pastoralists, traders, abattoirs, processors, retailers, technology companies, financial institutions, government and development partners — actors who usually work apart, meeting in one space." },
+  { n: "02", title: "Where investment is needed", body: "Infrastructure, technology, value addition, youth enterprise and circular business models — turning by-products and waste into value, with cleaner energy and climate resilience." },
+  { n: "03", title: "Matchmaking, then deals", body: "Investment matchmaking and partnership conversations that move past talk to MoUs, investment commitments, market linkages and joint programmes." },
+  { n: "04", title: "Commitments that are followed up", body: "A Nyama Fest Action and Investment Tracker records who committed to what, by when and with what resources — and follows up at 3, 6 and 12 months." },
 ];
 
-const HEADLINE = ["Invest", "in", "what", "Kenya", "gathers", "around."];
+const HEADLINE = ["Where", "the", "red-meat", "economy", "meets", "the", "next", "generation."];
 
 export default function InvestorsLanding() {
   const [open, setOpen] = useState(false);
@@ -105,11 +106,12 @@ export default function InvestorsLanding() {
             {HEADLINE.map((w, i) => <span key={i} style={{ animationDelay: `${0.15 + i * 0.12}s` }}>{w}{" "}</span>)}
           </h1>
           <p className="inv-lede">
-            MeatSoko is building an ecosystem around meat — franchises, events, merchandise and the
-            platform that connects them. Meet the team at {INVESTOR_VENUE}.
+            Nyama Fest is a strategic initiative of MEATsoko Group: a platform where celebration becomes
+            the entry point for investment, partnerships and deals across Kenya&apos;s red-meat economy.
+            Meet the team at {INVESTOR_VENUE}.
           </p>
           <button type="button" className="inv-cta" onClick={openForm}>Register your attendance</button>
-          <a className="inv-sublink" href="#why">Why MeatSoko</a>
+          <a className="inv-sublink" href="#why">Why invest</a>
         </div>
       </section>
 
@@ -131,9 +133,9 @@ export default function InvestorsLanding() {
       {/* ---------- Why invest ---------- */}
       <section id="why" className="inv-why" aria-labelledby="why-title">
         <div className="inv-why-head">
-          <span className="inv-eyebrow">Why MeatSoko</span>
-          <h2 id="why-title">One brand, four ways in.</h2>
-          <p>Convenient. Reliable. Sustainable. The same promise runs from the counter to the festival ground — and each part feeds the others.</p>
+          <span className="inv-eyebrow">Why invest</span>
+          <h2 id="why-title">Built for deals, not just a day out.</h2>
+          <p>The measure of success isn&apos;t how many people attend, but what relationships were created, what opportunities were unlocked, what investments were mobilised and what deals were signed.</p>
         </div>
         <div className="inv-pillars">
           {PILLARS.map((p) => (

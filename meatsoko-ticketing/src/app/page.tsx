@@ -18,7 +18,7 @@ export default async function Home() {
   const supabase = createClient();
   const now = new Date().toISOString();
   const { data: currentEvent } = await supabase.from("events")
-    .select("id, slug, name, venue, starts_at, ends_at, banner_url")
+    .select("id, slug, name, venue, starts_at, ends_at, banner_url, time_note")
     .eq("status", "live")
     .gte("ends_at", now)
     // Announced but not open yet ("Coming soon" on /events) is not bookable: skip it.
