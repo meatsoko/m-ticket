@@ -8,6 +8,8 @@ export type VendorRow = {
   vendor_type: string; description: string | null; amount_kes: number;
   status: "pending_payment" | "paid" | "flagged" | "cancelled" | "refunded";
   paystack_reference: string | null; created_at: string; updated_at: string; paid_at: string | null;
+  /** M-Pesa through PayHero: the receipt once paid, failed attempts, a prompt still open. */
+  mpesa?: { receipt: string | null; failed: number; waiting: boolean } | null;
   flag_reason: string | null; admin_note: string | null; events: { name: string } | null;
 };
 
@@ -29,7 +31,7 @@ export default function VendorsBoard({ rows }: { rows: VendorRow[] }) {
   const shown = useMemo(() => {
     const term = q.trim().toLowerCase();
     return rows.filter((r) => (status === "all" || r.status === status) && (type === "all" || r.vendor_type === type) &&
-      (!term || [r.reference_number, r.name, r.phone, localPhone(r.phone), r.email, r.description ?? "", r.paystack_reference ?? ""].some((v) => v.toLowerCase().includes(term))));
+      (!term || [r.reference_number, r.name, r.phone, localPhone(r.phone), r.email, r.description ?? "", r.paystack_reference ?? "", r.mpesa?.receipt ?? ""].some((v) => v.toLowerCase().includes(term))));
   }, [rows, status, type, q]);
   const count = (s: VendorRow["status"]) => rows.filter((r) => r.status === s).length;
   const collected = rows.filter((r) => r.status === "paid").reduce((s, r) => s + Number(r.amount_kes), 0);
@@ -53,7 +55,7 @@ export default function VendorsBoard({ rows }: { rows: VendorRow[] }) {
     const cell = (v: unknown) => { const t = String(v ?? ""); return `"${(/^[=+\-@]/.test(t) ? `'${t}` : t).replace(/"/g, '""')}"`; };
     const head = ["Registration", "Event", "Name", "Phone", "Email", "Type", "Description", "Amount KSh", "Status", "Registered", "Paid", "Paystack reference", "Note"];
     const body = shown.map((r) => [r.reference_number, r.events?.name ?? "", r.name, localPhone(r.phone), r.email, TYPE[r.vendor_type] ?? r.vendor_type,
-      r.description ?? "", r.amount_kes, STATUS[r.status], r.created_at, r.paid_at ?? "", r.paystack_reference ?? "", r.admin_note ?? ""].map(cell).join(","));
+      r.description ?? "", r.amount_kes, STATUS[r.status], r.created_at, r.paid_at ?? "", r.mpesa?.receipt ? `M-Pesa ${r.mpesa.receipt}` : r.paystack_reference ?? "", r.admin_note ?? ""].map(cell).join(","));
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([[head.map(cell).join(","), ...body].join("\r\n")], { type: "text/csv;charset=utf-8" }));
     a.download = `meatsoko-vendors-${new Date().toISOString().slice(0, 10)}.csv`;
@@ -63,7 +65,7 @@ export default function VendorsBoard({ rows }: { rows: VendorRow[] }) {
 
   return (
     <div className="dash-stack">
-      <div className="dash-title"><h1>Vendors</h1><p>Vendor registrations from the event page. A registration stays pending until its tent fee is paid on Paystack.</p></div>
+      <div className="dash-title"><h1>Vendors</h1><p>Vendor registrations from the event page. A registration stays pending until its tent fee is paid — on Paystack, or by M-Pesa (PayHero).</p></div>
       <div className="dash-kpis">
         <div className="dash-kpi"><span className="dash-kpi-label">Tents secured</span><div className="dash-kpi-row"><strong>{count("paid")}</strong></div><small>paid vendors</small></div>
         <div className="dash-kpi"><span className="dash-kpi-label">Pending payment</span><div className="dash-kpi-row"><strong>{count("pending_payment")}</strong></div><small>registered, not yet paid</small></div>
@@ -101,7 +103,9 @@ export default function VendorsBoard({ rows }: { rows: VendorRow[] }) {
                     <td><a href={`tel:+${r.phone}`}>{localPhone(r.phone)}</a><small><a href={`mailto:${r.email}`}>{r.email}</a></small></td>
                     <td><span className="dash-kind">{TYPE[r.vendor_type] ?? r.vendor_type}</span></td>
                     <td className="dash-about">{r.description || <span className="dash-muted">—</span>}</td>
-                    <td>{kes(r.amount_kes)}{r.paid_at && <small>Paid {when(r.paid_at)}</small>}{r.paystack_reference && <small className="dash-mono">{r.paystack_reference}</small>}</td>
+                    <td>{kes(r.amount_kes)}{r.paid_at && <small>Paid {when(r.paid_at)}</small>}{r.mpesa?.receipt ? <small className="dash-mono">M-Pesa · {r.mpesa.receipt}</small> : r.paystack_reference && <small className="dash-mono">{r.paystack_reference}</small>}
+                      {r.status === "pending_payment" && r.mpesa?.waiting && <small>M-Pesa prompt open</small>}
+                      {r.status === "pending_payment" && !r.mpesa?.waiting && !!r.mpesa?.failed && <small>{r.mpesa.failed} M-Pesa {r.mpesa.failed === 1 ? "attempt" : "attempts"} not completed</small>}</td>
                     <td><span className={`dash-badge v-${r.status}`}>{STATUS[r.status]}</span>{(r.flag_reason || r.admin_note) && <small>{r.admin_note ?? r.flag_reason}</small>}</td>
                     <td className="dash-row-actions">
                       {acting?.id === r.id ? (

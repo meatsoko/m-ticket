@@ -4,6 +4,9 @@ import type { TicketPass } from "@/components/dashboard/TicketsBoard";
 
 export const dynamic = "force-dynamic";
 
+/** The payment's reference: Paystack's, or the M-Pesa receipt for a PayHero payment. */
+const payRef = (o: any): string | null => o?.paystack_reference ?? (o?.mpesa_receipt ? `M-Pesa ${o.mpesa_receipt}` : null);
+
 // Every pass across events, as one list: bookings (free General Admission,
 // tables, RSVPs — with their preorders) and paid tickets. Read with the admin's
 // session: RLS "staff read" on reservations, orders, order_items and tickets.
@@ -13,16 +16,16 @@ export default async function TicketsPage() {
     supabase.from("reservations")
       .select(`id,event_id,order_id,reservation_number,access_token,guest_name,phone,email,party_size,status,created_at,checked_in_at,arrived_party_size,
                events(name,slug),reservation_types(name,is_general_admission),
-               orders(status,amount_kes,paid_at,paystack_reference,order_items(qty,unit_price_kes,preorder_items(name))),
+               orders(status,amount_kes,paid_at,paystack_reference,mpesa_receipt,order_items(qty,unit_price_kes,preorder_items(name))),
                reservation_addons(order_id,status,orders(order_items(qty,unit_price_kes,preorder_items(name))))`)
       .order("created_at", { ascending: false }).limit(2000),
     supabase.from("tickets")
       .select(`id,qr_token,status,redeemed_at,created_at,
                ticket_types(name,bundle_qty,event_id,events(name,slug)),
-               orders(buyer_phone,buyer_email,amount_kes,status,paid_at,paystack_reference)`)
+               orders(buyer_phone,buyer_email,amount_kes,status,paid_at,paystack_reference,mpesa_receipt)`)
       .order("created_at", { ascending: false }).limit(2000),
     supabase.from("events").select("id,name,starts_at").order("starts_at", { ascending: false }),
-    supabase.from("orders").select("id,event_id,status,amount_kes,created_at,paid_at,refunded_at,refund_reason,reversal_ref,paystack_reference,buyer_phone,buyer_email,events(name)")
+    supabase.from("orders").select("id,event_id,status,amount_kes,created_at,paid_at,refunded_at,refund_reason,reversal_ref,paystack_reference,mpesa_receipt,buyer_phone,buyer_email,events(name)")
       .in("status", ["paid", "flagged", "refunded"]).order("created_at", { ascending: false }).limit(2000),
     supabase.from("reservation_upgrades").select("order_id,reservation_id,status,created_at,applied_at,reservation_types(name)").limit(4000),
     supabase.from("redemptions").select("scanned_at,station,reservation_id,ticket_id").order("scanned_at", { ascending: false }).limit(1000),
@@ -48,7 +51,7 @@ export default async function TicketsPage() {
         people: r.party_size, arrived: r.arrived_party_size,
         status: r.status, createdAt: r.created_at, checkedInAt: r.checked_in_at,
         preorders: [...items, ...addonItems], addons: addonItems.length,
-        payment: o ? { status: o.status, amountKes: Number(o.amount_kes), paidAt: o.paid_at, reference: o.paystack_reference } : null,
+        payment: o ? { status: o.status, amountKes: Number(o.amount_kes), paidAt: o.paid_at, reference: payRef(o) } : null,
       };
     }),
     ...((tix ?? []) as any[]).map((t): TicketPass => {
@@ -60,7 +63,7 @@ export default async function TicketsPage() {
         type: tt?.name ?? "Ticket", kind: "paid", people: tt?.bundle_qty ?? 1, arrived: null,
         status: t.status === "redeemed" ? "checked_in" : t.status === "refunded" ? "cancelled" : "confirmed",
         createdAt: t.created_at, checkedInAt: t.redeemed_at, preorders: [],
-        payment: o ? { status: o.status, amountKes: Number(o.amount_kes), paidAt: o.paid_at, reference: o.paystack_reference } : null,
+        payment: o ? { status: o.status, amountKes: Number(o.amount_kes), paidAt: o.paid_at, reference: payRef(o) } : null,
       };
     }),
     // Online attendance (migration 20261001100000): no phone, no QR, no capacity.
@@ -89,7 +92,7 @@ export default async function TicketsPage() {
     return {
       id: o.id, eventId: o.event_id, eventName: o.events?.name ?? "—", status: o.status, amountKes: Number(o.amount_kes),
       createdAt: o.created_at, paidAt: o.paid_at, refundedAt: o.refunded_at, refundReason: o.refund_reason, reversalRef: o.reversal_ref,
-      reference: o.paystack_reference, phone: o.buyer_phone, email: o.buyer_email,
+      reference: payRef(o), phone: o.buyer_phone, email: o.buyer_email,
       what: up ? `Table upgrade · ${up.reservation_types?.name ?? "table"}` : addonRes ? "Platter add-on" : pass ? pass.type : "Ticket order",
       isUpgrade: !!up && up.status === "applied", upgradeStatus: up?.status ?? null,
       pass: pass ? { number: pass.number, holder: pass.holder, status: pass.status, id: pass.id } : null,
