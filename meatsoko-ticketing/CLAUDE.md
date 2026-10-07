@@ -206,8 +206,9 @@ custom SMTP — confirm with the user that both are set.
 
 ## Payments, email, money
 
-- **PayHero — M-Pesa STK alongside Paystack (branch `feat/payhero`, 2026-10-07; not merged,
-  migrations not applied, functions not deployed).** Paystack's code is untouched (the user's
+- **PayHero — M-Pesa STK alongside Paystack (branch `feat/payhero`, 2026-10-07; backend LIVE:
+  migrations applied, the four functions deployed, secrets set incl. `PAYHERO_PAYMENTS=on`,
+  PayHero accepted the credentials; site not merged, Vercel flag not set, no real payment yet).** Paystack's code is untouched (the user's
   rule): PayHero has its own ledger `payhero_payments` and its own confirmation functions
   (`confirm_payhero_event_payment` / `_vendor_` / `_merch_`, `fail_payhero_payment`) that
   **copy** the rules of `confirm_paystack_payment`, `confirm_vendor_payment` and
