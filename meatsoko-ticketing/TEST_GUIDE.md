@@ -157,6 +157,20 @@ Before testing: apply the two PayHero migrations, deploy `payhero-pay`, `payhero
 | 11.8 | Close the page while the prompt is open, then pay | Within ~2 minutes the reconcile job confirms it; the email still arrives |
 | 11.9 | Dashboard → Tickets | The upgrade / platter orders show as paid (receipt numbers are stored in the database; they aren't shown on the dashboard yet) |
 
+## 12. Daraja M-Pesa Express to the till (branch `feat/daraja-express`)
+
+Before: migration `20261008120000` applied; `payhero-pay`, `payhero-status`, `payhero-callback`,
+`payhero-reconcile`, `stk-result`, `daraja-callback` deployed; Daraja secrets set with
+`DARAJA_PAYMENTS=on`. **Leave `MPESA_PROVIDER` unset until 12.1–12.3 pass** (PayHero stays live).
+
+| # | Do | Expect |
+|---|----|--------|
+| 12.1 | Set `MPESA_PROVIDER=daraja`, then pay a small amount (set `VENDOR_FEE_KES=1` for a vendor test) | The prompt shows the **till's name**; after the PIN, the page confirms |
+| 12.2 | Check the till statement | The money is in the till; the receipt matches Dashboard → Vendors ("M-Pesa · …") |
+| 12.3 | Start another and cancel the prompt | "Wasn't completed… nothing was charged" |
+| 12.4 | Anything wrong | `supabase secrets unset MPESA_PROVIDER` — PayHero sends the prompts again immediately |
+| 12.5 | After testing | Unset `VENDOR_FEE_KES`; cancel the test vendor in the dashboard |
+
 ## Report back
 
 For anything that fails: section number, device and browser, what you expected, what you

@@ -241,7 +241,20 @@ custom SMTP — confirm with the user that both are set.
   shared with the WooCommerce store, which owns the only webhook — **don't move it**.
   Confirmation = buyer's return (`paystack-verify`, `merch-order`) + `paystack-reconcile`
   every 5 min (pg_cron). InlineJS popup when `NEXT_PUBLIC_PAYSTACK_POPUP=on`, else redirect.
-- Daraja/M-Pesa STK is hidden unless `NEXT_PUBLIC_DARAJA_ENABLED=on` (Safaricom hasn't
+- **Daraja M-Pesa Express to MeatSoko's till (branch `feat/daraja-express`, 2026-10-07; not
+  deployed).** A second M-Pesa provider beside PayHero, chosen by the `MPESA_PROVIDER` secret
+  (`daraja` | unset = PayHero) — the user's plan: Daraja becomes the default after one live
+  KSh 1 test, PayHero stays as the instant fallback. Same ledger (`payhero_payments`, new
+  `provider` column, migration `20261008120000`), same `payhero-pay` / `payhero-status`
+  functions (names kept so the site is unchanged), same confirm functions. Client
+  `_shared/daraja-express.ts` (Buy Goods: `DARAJA_SHORTCODE` = store number signs the
+  request, `DARAJA_TILL_NUMBER` receives; token cached; STK Push Query). Safaricom's result
+  arrives at `stk-result` (no "mpesa" in the URL — Safaricom refuses it); the callback is
+  unsigned, so `verifyMpesa()` confirms only on STK Push Query success, and the callback's
+  receipt is stored only after that. `DARAJA_PAYMENTS=on` opens it (fails closed). The legacy
+  `daraja-callback` (paid-ticket checkout) was hardened the same way: it trusted the callback's
+  success and amount; now it confirms only after the query, at the order's own amount.
+- Legacy Daraja/M-Pesa STK (paid-ticket checkout) is hidden unless `NEXT_PUBLIC_DARAJA_ENABLED=on` (Safaricom hasn't
   enabled M-Pesa Express).
 - All email goes through `supabase/functions/_shared/resend.ts`. Money is stored in KSh;
   merch is priced in USD and charged in KES at `merch_fx_rates`.
@@ -265,7 +278,7 @@ user's say-so. Use `supabase db query --linked "<sql>"` for read-only checks.
 - Edge Functions: `deno check <fn>/index.ts` (or `docker run --rm -v
   $PWD/supabase/functions:/f -w /f denoland/deno:2.6.3 deno check <fn>/index.ts`).
 - **Integration harness: `./tests/harness/run.sh`** (Docker) — fresh Postgres from
-  `schema.sql` + migrations, real Edge Functions; expect `ok: 386 FAIL: 0`. Add checks
+  `schema.sql` + migrations, real Edge Functions; expect `ok: 401 FAIL: 0`. Add checks
   for every new function or permission. See `tests/harness/README.md`.
 - **No browser testing of site features** (user, 2026-10-06): don't click through pages in
   Chrome or a local dev server to verify them — use the checks above, then tell the user

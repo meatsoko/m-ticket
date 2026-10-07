@@ -58,6 +58,9 @@ DARAJA_CALLBACK_URL  (+ the SUPABASE_* ones Supabase manages)
 PayHero (M-Pesa alongside Paystack, branch `feat/payhero`): `PAYHERO_API_USERNAME`,
 `PAYHERO_API_PASSWORD` (or one `PAYHERO_BASIC_AUTH`), `PAYHERO_CHANNEL_ID`, and
 `PAYHERO_PAYMENTS=on` to open payments (unset = closed). `PAYSTACK_PAYMENTS=on` re-opens Paystack.
+Daraja M-Pesa Express (branch `feat/daraja-express`): `DARAJA_ENV=production`, `DARAJA_CONSUMER_KEY`,
+`DARAJA_CONSUMER_SECRET`, `DARAJA_PASSKEY`, `DARAJA_SHORTCODE` (store number), `DARAJA_TILL_NUMBER`,
+`DARAJA_PAYMENTS=on`, and `MPESA_PROVIDER=daraja` to make it the default (unset = PayHero).
 
 Optional, unset: `VENDOR_FEE_KES` (overrides the 3,500 tent fee), `MERCH_FX_URL`,
 `WHATSAPP_WEBHOOK_URL`/`_TOKEN`.
