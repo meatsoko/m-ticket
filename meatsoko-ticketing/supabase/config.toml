@@ -106,3 +106,8 @@ verify_jwt = false
 
 [functions.payhero-reconcile]
 verify_jwt = false
+
+# Daraja M-Pesa Express result (MPESA_PROVIDER=daraja). Unsigned callback: it
+# only triggers a Safaricom STK Push Query (see _shared/payhero.ts verifyMpesa).
+[functions.stk-result]
+verify_jwt = false

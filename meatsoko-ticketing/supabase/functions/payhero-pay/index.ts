@@ -1,6 +1,9 @@
-// Start an M-Pesa payment through PayHero (migration 20261008090000), the
-// alternative to Paystack. Creates the order exactly as the Paystack flows do,
-// records a "PH…" reference, and sends an STK prompt to `mpesa_phone`.
+// Start an M-Pesa payment (the alternative to Paystack). Creates the order
+// exactly as the Paystack flows do, records a "PH…" reference, and sends an STK
+// prompt to `mpesa_phone` through the provider chosen by the MPESA_PROVIDER
+// secret: "daraja" = M-Pesa Express to MeatSoko's own till (migration
+// 20261008120000), anything else = PayHero (migration 20261008090000). The
+// function keeps its PayHero-era name so the live site needs no change.
 //
 // Body (every kind also takes `mpesa_phone`, the number to prompt):
 //   { kind: "upgrade", access_token, reservation_type_id }      table upgrade (pass holder)
@@ -11,12 +14,15 @@
 //
 // The pass token is the only authorisation for upgrades and add-ons (same rule
 // as upgrade-reservation / platter-addon). Nothing is confirmed here: only
-// verifyPayhero() (status / callback / reconcile) can mark anything paid.
+// verifyMpesa() (status / callbacks / reconcile) can mark anything paid.
 import { json, preflight } from "../_shared/cors.ts";
 import { clientIp, normalizePhone, rateLimit, serviceClient } from "../_shared/supabase.ts";
 import { ensureFreshRate } from "../_shared/fx.ts";
 import { VENDOR_FEE_KES, VENDOR_TYPES } from "../_shared/vendor.ts";
 import { newPayheroReference, payheroConfigured, payheroOpen, sendStkPush, type PayheroKind } from "../_shared/payhero.ts";
+import { darajaConfigured, darajaOpen, darajaStkPush } from "../_shared/daraja-express.ts";
+
+const provider = () => ((Deno.env.get("MPESA_PROVIDER") ?? "").trim().toLowerCase() === "daraja" ? "daraja" : "payhero");
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -32,6 +38,8 @@ const MERCH_REFUSALS: Record<string, number> = {
 };
 
 type Target = { kind: PayheroKind; amountKes: number; name: string; order_id?: string; vendor_application_id?: string; merch_order_id?: string;
+  /** Shown on the M-Pesa prompt / statement (Daraja: AccountReference ≤ 12, TransactionDesc ≤ 13). */
+  accountRef: string; desc: string;
   release: () => Promise<void>; extra: Record<string, unknown> };
 type Refusal = { error: string; status: number; extra?: Record<string, unknown> };
 
@@ -39,9 +47,10 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return preflight();
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
   // Closed (or not set up): refuse before anything is created or held.
-  if (!payheroOpen()) return json({ error: "mpesa_unavailable" }, 503);
-  const cfg = payheroConfigured();
-  if (!cfg.ok) { console.error(JSON.stringify({ msg: "payhero misconfigured", missing: cfg.missing })); return json({ error: "mpesa_unavailable" }, 503); }
+  const via = provider();
+  if (!(via === "daraja" ? darajaOpen() : payheroOpen())) return json({ error: "mpesa_unavailable" }, 503);
+  const cfg = via === "daraja" ? darajaConfigured() : payheroConfigured();
+  if (!cfg.ok) { console.error(JSON.stringify({ msg: "mpesa misconfigured", provider: via, missing: cfg.missing })); return json({ error: "mpesa_unavailable" }, 503); }
 
   const b = await req.json().catch(() => null);
   if (!b || typeof b !== "object") return json({ error: "bad_json" }, 400);
@@ -71,7 +80,7 @@ Deno.serve(async (req) => {
 
   const reference = newPayheroReference();
   const { error: lErr } = await db.from("payhero_payments").insert({
-    reference, kind: target.kind, order_id: target.order_id ?? null, vendor_application_id: target.vendor_application_id ?? null,
+    reference, kind: target.kind, provider: via, order_id: target.order_id ?? null, vendor_application_id: target.vendor_application_id ?? null,
     merch_order_id: target.merch_order_id ?? null, phone: mpesaPhone, amount_kes: target.amountKes,
   });
   if (lErr) {
@@ -80,16 +89,21 @@ Deno.serve(async (req) => {
     return json({ error: "start_failed" }, 500);
   }
 
-  const stk = await sendStkPush({ reference, amountKes: target.amountKes, phone: mpesaPhone, customerName: target.name });
+  const stk = via === "daraja"
+    ? await darajaStkPush({ amountKes: target.amountKes, phone: mpesaPhone, accountRef: target.accountRef, description: target.desc })
+    : await sendStkPush({ reference, amountKes: target.amountKes, phone: mpesaPhone, customerName: target.name });
   if (!stk.ok) {
     await db.rpc("fail_payhero_payment", { p_reference: reference, p_reason: `stk_not_sent: ${stk.detail}` });
     if (target.kind === "vendor") await target.release();
-    console.error(JSON.stringify({ msg: "payhero stk failed", kind: target.kind, detail: stk.detail }));
+    console.error(JSON.stringify({ msg: "mpesa stk failed", provider: via, kind: target.kind, detail: stk.detail }));
     return json({ error: "stk_failed" }, 502);
   }
-  await db.from("payhero_payments").update({ payhero_reference: stk.payheroReference, checkout_request_id: stk.checkoutRequestId, updated_at: new Date().toISOString() })
-    .eq("reference", reference);
-  console.log(JSON.stringify({ msg: "payhero stk sent", kind: target.kind, ref: reference.slice(0, 10), amount: target.amountKes, phone: `***${mpesaPhone.slice(-3)}` }));
+  await db.from("payhero_payments").update({
+    payhero_reference: "payheroReference" in stk ? stk.payheroReference : null,
+    checkout_request_id: stk.checkoutRequestId, merchant_request_id: "merchantRequestId" in stk ? stk.merchantRequestId : null,
+    updated_at: new Date().toISOString(),
+  }).eq("reference", reference);
+  console.log(JSON.stringify({ msg: "mpesa stk sent", provider: via, kind: target.kind, ref: reference.slice(0, 10), amount: target.amountKes, phone: `***${mpesaPhone.slice(-3)}` }));
   return json({ reference, amount_kes: target.amountKes, ...target.extra });
 });
 
@@ -106,6 +120,7 @@ async function startUpgrade(db: any, b: any): Promise<Target | Refusal> {
   if (r?.result !== "created") return refusal(r);
   return {
     kind: "event", amountKes: Number(r.amount_kes), name: `Table upgrade ${r.reservation_number}`, order_id: r.order_id,
+    accountRef: r.reservation_number, desc: "Table upgrade",
     release: () => releaseOrder(db, r.order_id),
     extra: { reservation_number: r.reservation_number, type_name: r.type_name, party_size: r.party_size },
   };
@@ -129,6 +144,7 @@ async function startAddon(db: any, b: any): Promise<Target | Refusal> {
   if (r?.result !== "created") return refusal(r);
   return {
     kind: "event", amountKes: Number(r.amount_kes), name: `Platters ${r.reservation_number}`, order_id: r.order_id,
+    accountRef: r.reservation_number, desc: "Platters",
     release: () => releaseOrder(db, r.order_id),
     extra: { reservation_number: r.reservation_number },
   };
@@ -177,6 +193,7 @@ async function startVendor(db: any, b: any): Promise<Target | Refusal> {
   }
   return {
     kind: "vendor", amountKes: VENDOR_FEE_KES, name, vendor_application_id: app.id,
+    accountRef: app.reference_number, desc: "Vendor tent",
     release: async () => {},   // stays pending_payment: they can try again
     extra: { reference_number: app.reference_number },
   };
@@ -230,6 +247,7 @@ async function startMerch(db: any, b: any): Promise<Target | Refusal> {
   if (clrErr) throw clrErr;
   return {
     kind: "merch", amountKes: Number(order.total_kes), name: `${firstName} ${lastName}`, merch_order_id: order.order_id,
+    accountRef: order.order_number, desc: "Merchandise",
     release: async () => { await db.from("merch_orders").update({ payment_status: "failed" }).eq("id", order.order_id).eq("payment_status", "pending"); },
     extra: { order_number: order.order_number, total_usd: order.total_usd, fx_rate: order.fx_rate },
   };

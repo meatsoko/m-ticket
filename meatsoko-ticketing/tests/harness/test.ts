@@ -32,6 +32,10 @@ let feedCalls = 0;
 const payhero = new Map<string, { status: string; amount: number; ext: string; receipt: string | null }>();
 const payheroSent: any[] = [];
 let payheroRefuse = false;
+// Fake Safaricom Daraja (M-Pesa Express): STK pushes recorded; the query answers from this map.
+const daraja = new Map<string, { state: "pending" | "success" | "failed"; code?: string }>();
+const darajaSent: any[] = [];
+let darajaRefuse = false;
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (input: any, init?: any) => {
   const req = new Request(input, init);
@@ -79,13 +83,36 @@ globalThis.fetch = async (input: any, init?: any) => {
       return Response.json({ status: t.status, amount: t.amount, provider_reference: t.receipt, reference: url.searchParams.get("reference") });
     }
   }
+  if (url.host === "sandbox.safaricom.co.ke") {
+    if (url.pathname === "/oauth/v1/generate") {
+      if (req.headers.get("authorization") !== `Basic ${btoa("dk_test:ds_test")}`) return Response.json({ errorMessage: "Invalid credentials" }, { status: 400 });
+      return Response.json({ access_token: "daraja-token-1", expires_in: "3599" });
+    }
+    if (req.headers.get("authorization") !== "Bearer daraja-token-1") return Response.json({ errorCode: "404.001.03", errorMessage: "Invalid Access Token" }, { status: 401 });
+    const b = await req.json();
+    const pwOk = atob(b.Password ?? "") === `600100pk_test${b.Timestamp}`;
+    if (url.pathname === "/mpesa/stkpush/v1/processrequest") {
+      darajaSent.push({ ...b, pwOk });
+      if (darajaRefuse || !pwOk) return Response.json({ errorCode: "400.002.02", errorMessage: "Bad Request - Invalid PhoneNumber" }, { status: 400 });
+      const id = `ws_CO_${darajaSent.length}`;
+      daraja.set(id, { state: "pending" });
+      return Response.json({ MerchantRequestID: `m-${darajaSent.length}`, CheckoutRequestID: id, ResponseCode: "0", ResponseDescription: "Success. Request accepted for processing" });
+    }
+    if (url.pathname === "/mpesa/stkpushquery/v1/query") {
+      const t = daraja.get(b.CheckoutRequestID);
+      if (!t || !pwOk) return Response.json({ errorCode: "400.002.02", errorMessage: "Bad Request - Invalid CheckoutRequestID" }, { status: 400 });
+      if (t.state === "pending") return Response.json({ requestId: "r", errorCode: "500.001.1001", errorMessage: "The transaction is being processed" }, { status: 500 });
+      return Response.json({ ResponseCode: "0", MerchantRequestID: "m", CheckoutRequestID: b.CheckoutRequestID,
+        ResultCode: t.state === "success" ? "0" : (t.code ?? "1032"), ResultDesc: t.state === "success" ? "The service request is processed successfully." : "Request cancelled by user" });
+    }
+  }
   throw new Error(`unexpected fetch in test: ${req.url}`);
 };
 
 const handlers: Record<string, (r: Request) => Promise<Response>> = {};
 let loading = "";
 (Deno as any).serve = (h: any) => { handlers[loading] = h; return { finished: Promise.resolve() }; };
-for (const [name, path] of [["checkout", "merch-checkout"], ["order", "merch-order"], ["webhook", "paystack-webhook"], ["fx", "merch-fx-refresh"], ["reconcile", "paystack-reconcile"], ["reserve", "reserve"], ["reslookup", "reservation-lookup"], ["lookup", "lookup"], ["verify", "paystack-verify"], ["upgrade", "upgrade-reservation"], ["bytoken", "reservation-by-token"], ["vendor", "vendor-apply"], ["oreg", "online-register"], ["oacc", "online-access"], ["addon", "platter-addon"], ["inv", "investor-register"], ["receipt", "event-order-receipt"], ["cust", "customer-order"], ["cel", "celebration-request"], ["phpay", "payhero-pay"], ["phcb", "payhero-callback"], ["phst", "payhero-status"], ["phrec", "payhero-reconcile"]]) {
+for (const [name, path] of [["checkout", "merch-checkout"], ["order", "merch-order"], ["webhook", "paystack-webhook"], ["fx", "merch-fx-refresh"], ["reconcile", "paystack-reconcile"], ["reserve", "reserve"], ["reslookup", "reservation-lookup"], ["lookup", "lookup"], ["verify", "paystack-verify"], ["upgrade", "upgrade-reservation"], ["bytoken", "reservation-by-token"], ["vendor", "vendor-apply"], ["oreg", "online-register"], ["oacc", "online-access"], ["addon", "platter-addon"], ["inv", "investor-register"], ["receipt", "event-order-receipt"], ["cust", "customer-order"], ["cel", "celebration-request"], ["phpay", "payhero-pay"], ["phcb", "payhero-callback"], ["phst", "payhero-status"], ["phrec", "payhero-reconcile"], ["stkres", "stk-result"], ["darcb", "daraja-callback"]]) {
   loading = name; await import(`/fns/${path}/index.ts`);
 }
 const call = async (name: string, body: unknown, headers: Record<string, string> = {}) => {
@@ -1432,6 +1459,95 @@ console.log("\n--- 01 phone numbers ---");
   const day = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
   const c = await call("cel", { action: "create", occasion: "birthday", event_date: day, guests: 10, setting: "not_sure", name: "Zero One", phone: "0111 000 082", email: "zero.one@example.test" }, ip());
   check("phone: celebration request with an 01 number (database allows 2541…)", c.status === 200, c.body);
+}
+
+// 22. Daraja M-Pesa Express to MeatSoko's till (migration 20261008120000)
+console.log("\n--- daraja m-pesa express ---");
+{
+  for (const [k, v] of Object.entries({ MPESA_PROVIDER: "daraja", DARAJA_PAYMENTS: "on", DARAJA_ENV: "sandbox", DARAJA_CONSUMER_KEY: "dk_test",
+    DARAJA_CONSUMER_SECRET: "ds_test", DARAJA_PASSKEY: "pk_test", DARAJA_SHORTCODE: "600100", DARAJA_TILL_NUMBER: "600200" })) Deno.env.set(k, v);
+  const phRow = async (ref: string) => (await get(`payhero_payments?select=*&reference=eq.${ref}`))[0];
+  const backdate = (ref: string, ms: number) => patch(`payhero_payments?reference=eq.${ref}`, { created_at: new Date(Date.now() - ms).toISOString() });
+  const stkCb = (id: string, ok: boolean, receipt?: string, amount?: number) => ({ Body: { stkCallback: { MerchantRequestID: "m", CheckoutRequestID: id, ResultCode: ok ? 0 : 1032, ResultDesc: ok ? "ok" : "cancelled",
+    ...(ok ? { CallbackMetadata: { Item: [{ Name: "Amount", Value: amount ?? 1 }, { Name: "MpesaReceiptNumber", Value: receipt ?? "TJ7AAAA111" }, { Name: "PhoneNumber", Value: 254700000000 }] } } : {}) } } });
+
+  // --- table upgrade, Buy Goods to the till ---
+  const g = (await call("reserve", guestN(90), ip())).body;
+  const phBefore = payheroSent.length;
+  let r = await call("phpay", { kind: "upgrade", access_token: g.access_token, reservation_type_id: basicT.id, mpesa_phone: "0110 000 090" }, ip());
+  const ref1: string = r.body?.reference;
+  const s1 = darajaSent.at(-1);
+  check("daraja: STK is Buy Goods — store 600100 signs, till 600200 receives, KSh 1,945, our callback, booking number as reference",
+    r.status === 200 && s1?.TransactionType === "CustomerBuyGoodsOnline" && s1?.BusinessShortCode === "600100" && s1?.PartyB === "600200" && s1?.pwOk === true &&
+    s1?.Amount === 1945 && s1?.PartyA === "254110000090" && s1?.PhoneNumber === "254110000090" && /\/functions\/v1\/stk-result$/.test(s1?.CallBackURL ?? "") &&
+    s1?.AccountReference === (await booking(g.access_token)).reservation_number && s1?.TransactionDesc === "Table upgrade" && payheroSent.length === phBefore, { r: r.body, s1 });
+  let row = await phRow(ref1);
+  check("daraja: ledger records provider daraja with Safaricom's CheckoutRequestID", row?.provider === "daraja" && row?.checkout_request_id === "ws_CO_1" && row?.payhero_reference === null && row?.status === "queued", row);
+  r = await call("stkres", stkCb("ws_CO_1", true, "FORGED0001", 1945));
+  row = await phRow(ref1);
+  check("daraja: a forged success callback changes nothing (and labels nothing) while Safaricom says processing", row?.status === "queued" && row?.mpesa_receipt === null && (await booking(g.access_token)).party_size === 1 && r.body?.ResultCode === 0, row);
+  daraja.set("ws_CO_1", { state: "success" });
+  sentEmails.length = 0;
+  r = await call("stkres", stkCb("ws_CO_1", true, "TJ7REAL001"));
+  row = await phRow(ref1);
+  const bk = await booking(g.access_token);
+  const o1 = (await get(`orders?select=status,mpesa_receipt&id=eq.${row?.order_id}`))[0];
+  check("daraja paid: Safaricom's query says success -> table applied, order paid with the callback's receipt", row?.status === "success" && row?.outcome === "confirmed" && row?.mpesa_receipt === "TJ7REAL001" && bk?.party_size === 3 && o1?.status === "paid" && o1?.mpesa_receipt === "TJ7REAL001", { row, bk, o1 });
+  check("daraja paid: updated pass emailed once", sentEmails.filter((m: any) => m.to?.[0] === "guest90@example.test").length === 1, sentEmails.map((m: any) => m.to));
+  await call("stkres", stkCb("ws_CO_1", true, "TJ7REAL001"));
+  check("daraja: a repeat callback is a no-op", sentEmails.filter((m: any) => m.to?.[0] === "guest90@example.test").length === 1);
+
+  // --- cancelled PIN, found by the waiting page ---
+  const g2 = (await call("reserve", guestN(91), ip())).body;
+  r = await call("phpay", { kind: "addon", access_token: g2.access_token, items: [{ preorder_item_id: basicP.id, qty: 1 }], mpesa_phone: "0712000091" }, ip());
+  const ref2: string = r.body?.reference;
+  daraja.set((await phRow(ref2)).checkout_request_id, { state: "failed", code: "1032" });
+  await backdate(ref2, 20_000);
+  r = await call("phst", { reference: ref2 }, ip());
+  row = await phRow(ref2);
+  check("daraja: cancelled PIN (1032) -> failed, add-on released", r.body?.status === "failed" && row?.status === "failed" && (await get(`reservation_addons?select=status&order_id=eq.${row?.order_id}`))[0]?.status === "failed", { r: r.body, row });
+
+  // --- vendor paid with the callback lost: reconcile finds it, the late callback only adds the receipt ---
+  r = await call("phpay", { kind: "vendor", event_id: gaEv.id, name: "Till Grills", phone: "0733000092", email: "tillgrills@example.test", vendor_type: "food", mpesa_phone: "0733000092" }, ip());
+  const ref3: string = r.body?.reference;
+  const id3 = (await phRow(ref3)).checkout_request_id;
+  check("daraja vendor: TransactionDesc and the VEN- reference on the prompt", darajaSent.at(-1)?.TransactionDesc === "Vendor tent" && /^VEN-/.test(darajaSent.at(-1)?.AccountReference ?? ""), darajaSent.at(-1));
+  daraja.set(id3, { state: "success" });
+  await backdate(ref3, 2 * 60_000);
+  r = await call("phrec", {});
+  row = await phRow(ref3);
+  check("daraja vendor: reconcile confirms without a callback (receipt not known yet)", row?.status === "success" && row?.outcome === "confirmed" && row?.mpesa_receipt === null, { r: r.body, row });
+  await call("stkres", stkCb(id3, true, "TJ7LATE003"));
+  check("daraja vendor: the late callback adds the receipt label", (await phRow(ref3))?.mpesa_receipt === "TJ7LATE003");
+
+  // --- refusals and switches ---
+  const g4 = (await call("reserve", guestN(93), ip())).body;
+  darajaRefuse = true;
+  r = await call("phpay", { kind: "upgrade", access_token: g4.access_token, reservation_type_id: basicT.id, mpesa_phone: "0712000093" }, ip());
+  darajaRefuse = false;
+  check("daraja: STK refused by Safaricom -> 502, upgrade released", r.status === 502 && r.body?.error === "stk_failed" && (await booking(g4.access_token)).party_size === 1, r.body);
+  Deno.env.set("DARAJA_PAYMENTS", "off");
+  r = await call("phpay", { kind: "upgrade", access_token: g4.access_token, reservation_type_id: basicT.id, mpesa_phone: "0712000093" }, ip());
+  check("daraja: DARAJA_PAYMENTS off -> 503, even though PayHero is on", r.status === 503 && r.body?.error === "mpesa_unavailable", r.body);
+  Deno.env.set("DARAJA_PAYMENTS", "on");
+  Deno.env.delete("MPESA_PROVIDER");
+  const ph0 = payheroSent.length, dj0 = darajaSent.length;
+  r = await call("phpay", { kind: "upgrade", access_token: g4.access_token, reservation_type_id: basicT.id, mpesa_phone: "0712000093" }, ip());
+  check("daraja: MPESA_PROVIDER unset -> PayHero sends the prompt (fallback)", r.status === 200 && payheroSent.length === ph0 + 1 && darajaSent.length === dj0 && (await phRow(r.body?.reference))?.provider === "payhero", r.body);
+  Deno.env.set("MPESA_PROVIDER", "daraja");
+
+  // --- the legacy callback (paid-ticket checkout) no longer trusts what it's told ---
+  const lo = (await post("orders", { event_id: gaEv.id, buyer_phone: "254712000094", buyer_email: "legacy@example.test", channel: "web", amount_kes: 500, status: "pending", mpesa_checkout_request_id: "ws_CO_legacy1" }))[0];
+  daraja.set("ws_CO_legacy1", { state: "pending" });
+  await call("darcb", stkCb("ws_CO_legacy1", true, "FAKE000001", 500));
+  await call("darcb", stkCb("ws_CO_legacy1", false));
+  let lrow = (await get(`orders?select=status,mpesa_receipt&id=eq.${lo?.id}`))[0];
+  check("legacy daraja-callback: forged success and forged failure both ignored while Safaricom says processing", lrow?.status === "pending", lrow);
+  daraja.set("ws_CO_legacy1", { state: "success" });
+  await call("darcb", stkCb("ws_CO_legacy1", true, "TJ7LEG0001", 1));
+  lrow = (await get(`orders?select=status,mpesa_receipt&id=eq.${lo?.id}`))[0];
+  check("legacy daraja-callback: confirmed only once Safaricom says paid, at the order's own amount (callback said KSh 1)", lrow?.status === "paid" && lrow?.mpesa_receipt === "TJ7LEG0001", lrow);
+  for (const k of ["MPESA_PROVIDER", "DARAJA_PAYMENTS"]) Deno.env.delete(k);
 }
 
 console.log(failures ? `\n${failures} FAILED` : "\nall passed");

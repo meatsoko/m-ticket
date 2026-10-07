@@ -1,11 +1,11 @@
-// Asks PayHero about PayHero payments nobody has settled yet (callback lost, page
-// closed). Run by Supabase Cron every 2 minutes (migration
+// Asks the provider (PayHero or Daraja) about M-Pesa payments nobody has
+// settled yet (callback lost, page closed). Run by Supabase Cron every 2 minutes (migration
 // 20261008091000_payhero_reconcile_cron.sql). Same idea as paystack-reconcile:
-// no key needed — all it can do is run verifyPayhero(), which only confirms what
+// no key needed — all it can do is run verifyMpesa(), which only confirms what
 // PayHero itself reports — and a global rate limit keeps it from being a hammer.
 import { json } from "../_shared/cors.ts";
 import { rateLimit, serviceClient } from "../_shared/supabase.ts";
-import { verifyPayhero } from "../_shared/payhero.ts";
+import { verifyMpesa } from "../_shared/payhero.ts";
 
 const MIN_AGE_MS = 60 * 1000;            // give the payer time to enter the PIN
 const MAX_AGE_MS = 3 * 60 * 60 * 1000;   // stop asking about long-dead prompts
@@ -18,7 +18,7 @@ Deno.serve(async (req) => {
   if (!gate.allowed) return json({ error: "rate_limited", retry_after: gate.retryAfter }, 429);
 
   const { data, error } = await db.from("payhero_payments").select("reference")
-    .eq("status", "queued").not("payhero_reference", "is", null)
+    .eq("status", "queued").or("payhero_reference.not.is.null,checkout_request_id.not.is.null")
     .gte("created_at", new Date(Date.now() - MAX_AGE_MS).toISOString())
     .lte("created_at", new Date(Date.now() - MIN_AGE_MS).toISOString())
     .order("created_at", { ascending: true }).limit(MAX_PER_RUN);
@@ -27,7 +27,7 @@ Deno.serve(async (req) => {
   const outcome: Record<string, number> = {};
   for (const { reference } of data ?? []) {
     try {
-      const r = await verifyPayhero(db, reference);
+      const r = await verifyMpesa(db, reference);
       const k = `${r.status}${r.result ? `:${r.result}` : ""}`;
       outcome[k] = (outcome[k] ?? 0) + 1;
     } catch (e) {

@@ -6,7 +6,7 @@
 // so a lost callback doesn't leave the payer staring at a spinner.
 import { json, preflight } from "../_shared/cors.ts";
 import { clientIp, rateLimit, serviceClient } from "../_shared/supabase.ts";
-import { PAYHERO_REFERENCE, loadLedger, verifyPayhero } from "../_shared/payhero.ts";
+import { PAYHERO_REFERENCE, loadLedger, verifyMpesa } from "../_shared/payhero.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return preflight();
@@ -20,9 +20,10 @@ Deno.serve(async (req) => {
   let row = await loadLedger(db, reference);
   if (!row) return json({ error: "not_found" }, 404);
   if (row.status === "queued" && Date.now() - Date.parse(row.created_at) > 8_000) {
-    const ask = await rateLimit(db, `payhero-status:ref:${reference}`, 1, 4);
+    // Safaricom throttles STK Push Query: ask about a Daraja payment at most every 6 s.
+    const ask = await rateLimit(db, `payhero-status:ref:${reference}`, 1, row.provider === "daraja" ? 6 : 4);
     if (ask.allowed) {
-      try { await verifyPayhero(db, reference); }
+      try { await verifyMpesa(db, reference); }
       catch (e) { console.error(JSON.stringify({ msg: "payhero status check failed", ref: reference.slice(0, 10), detail: String(e).slice(0, 160) })); }
       row = (await loadLedger(db, reference)) ?? row;
     }

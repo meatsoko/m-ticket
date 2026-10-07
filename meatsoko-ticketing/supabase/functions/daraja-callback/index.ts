@@ -1,6 +1,13 @@
-// Daraja asynchronous result callback. Must be publicly reachable HTTPS (SRS A2).
+// Daraja asynchronous result callback for the legacy paid-ticket checkout
+// (stk-push). Must be publicly reachable HTTPS (SRS A2).
 // Idempotency lives in confirm_payment() (unique checkout_request_id + state check).
-import { serviceClient } from "../_shared/supabase.ts";
+//
+// The callback is NOT signed, and the buyer's browser is told its
+// CheckoutRequestID, so its contents are never believed (2026-10-07): before
+// anything changes we ask Safaricom's STK Push Query, and the amount confirmed
+// is the order's own, never the callback's.
+import { rateLimit, serviceClient } from "../_shared/supabase.ts";
+import { queryStk } from "../_shared/daraja-express.ts";
 import { sendTicketEmail } from "../_shared/email.ts";
 import { buildAndSend } from "../_shared/reservation-email.ts";
 
@@ -22,13 +29,33 @@ Deno.serve(async (req) => {
   const resultCode: number = Number(cb.ResultCode);
   if (!checkoutId) return accept();
 
-  if (resultCode === 0) {
+  // Each callback costs a Safaricom query: cap how often anyone can trigger one.
+  const gate = await rateLimit(db, "daraja-callback:global", 300, 60);
+  if (!gate.allowed) return accept();
+
+  // Safaricom's own answer, not the callback's.
+  const verified = await queryStk(checkoutId).catch((e) => {
+    console.error("stk query failed", checkoutId, String(e).slice(0, 120));
+    return null;
+  });
+  if (!verified || verified.state === "pending") {
+    console.log("callback not acted on: Safaricom says", verified?.state ?? "unavailable", checkoutId);
+    return accept();
+  }
+  if (resultCode === 0 && verified.state !== "success") {
+    console.error("callback claims success but Safaricom says", verified.state, checkoutId);
+    return accept();
+  }
+
+  if (verified.state === "success") {
     const items: any[] = cb.CallbackMetadata?.Item ?? [];
     const get = (n: string) => items.find((i) => i.Name === n)?.Value;
-    const amount = Number(get("Amount"));
     const receipt = String(get("MpesaReceiptNumber") ?? "");
 
     for (let attempt = 0; attempt < LOOKUP_RETRIES; attempt++) {
+      // The order's own amount: we asked Safaricom for exactly this.
+      const { data: ord } = await db.from("orders").select("amount_kes").eq("mpesa_checkout_request_id", checkoutId).maybeSingle();
+      const amount = ord ? Number(ord.amount_kes) : NaN;
       const { data, error } = await db.rpc("confirm_payment", {
         p_checkout_request_id: checkoutId,
         p_receipt: receipt,
@@ -58,7 +85,7 @@ Deno.serve(async (req) => {
       if (attempt < LOOKUP_RETRIES - 1) await sleep(LOOKUP_BACKOFF_MS);
     }
     // Paid money we cannot attach to an order — must be loud, not silent (SRS §5.4).
-    console.error("UNRECONCILED PAYMENT", JSON.stringify({ checkoutId, receipt, amount }));
+    console.error("UNRECONCILED PAYMENT", JSON.stringify({ checkoutId, receipt }));
   } else {
     // Cancelled / timeout / insufficient funds (FR-P6)
     const { error } = await db.from("orders")

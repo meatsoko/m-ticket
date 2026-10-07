@@ -1,8 +1,12 @@
-// PayHero M-Pesa STK payments (migration 20261008090000), alongside Paystack.
-// Shared by payhero-pay, payhero-callback, payhero-status and payhero-reconcile.
+// M-Pesa STK payments alongside Paystack: PayHero (migration 20261008090000) and
+// Daraja M-Pesa Express to MeatSoko's own till (migration 20261008120000). Both
+// share the ledger (payhero_payments) and the confirm_payhero_* functions; only
+// verification differs (verifyMpesa below). Shared by payhero-pay, payhero-status,
+// payhero-callback, stk-result and payhero-reconcile. The PayHero client is here;
+// the Daraja client is _shared/daraja-express.ts.
 //
 // Trust model: PayHero's callback is not signed, so nothing here ever believes a
-// caller. The only thing that confirms money is verifyPayhero(), which asks
+// caller. The only thing that confirms money is verifyMpesa(), which asks
 // PayHero's own transaction-status API about a payment we started, and then
 // runs one of the confirm_payhero_* functions (idempotent, under row locks).
 //
@@ -14,6 +18,7 @@ import { buildAndSend } from "./reservation-email.ts";
 import { notifyMerchOrder, sendMerchOrderEmail } from "./merch.ts";
 import { sendVendorEmail, VENDOR_TYPES } from "./vendor.ts";
 import { escapeHtml as esc, sendEmail } from "./resend.ts";
+import { queryStk } from "./daraja-express.ts";
 
 type Db = ReturnType<typeof serviceClient>;
 export type PayheroKind = "event" | "vendor" | "merch";
@@ -87,11 +92,11 @@ async function fetchStatus(payheroReference: string): Promise<{ status: string; 
 }
 
 export type Ledger = {
-  id: string; reference: string; kind: PayheroKind; status: "queued" | "success" | "failed"; outcome: string | null;
+  id: string; reference: string; kind: PayheroKind; provider: "payhero" | "daraja"; status: "queued" | "success" | "failed"; outcome: string | null;
   order_id: string | null; vendor_application_id: string | null; merch_order_id: string | null;
-  amount_kes: number; payhero_reference: string | null; created_at: string;
+  amount_kes: number; payhero_reference: string | null; checkout_request_id: string | null; mpesa_receipt: string | null; created_at: string;
 };
-const LEDGER = "id,reference,kind,status,outcome,order_id,vendor_application_id,merch_order_id,amount_kes,payhero_reference,created_at";
+const LEDGER = "id,reference,kind,provider,status,outcome,order_id,vendor_application_id,merch_order_id,amount_kes,payhero_reference,checkout_request_id,mpesa_receipt,created_at";
 
 export async function loadLedger(db: Db, reference: string): Promise<Ledger | null> {
   const { data } = await db.from("payhero_payments").select(LEDGER).eq("reference", reference).maybeSingle();
@@ -99,27 +104,39 @@ export async function loadLedger(db: Db, reference: string): Promise<Ledger | nu
 }
 
 /**
- * Ask PayHero about one of our payments and act on the answer. Idempotent:
+ * Ask the provider about one of our payments and act on the answer. Idempotent:
  * success runs confirm_payhero_<kind> (a second call returns "already"); a
- * failure releases the order; queued changes nothing.
+ * failure releases the order; still pending changes nothing.
+ *   PayHero: its transaction-status API (by PayHero's reference).
+ *   Daraja:  Safaricom's STK Push Query (by CheckoutRequestID). It returns no
+ *            receipt or amount: the receipt is the one the callback stored (it
+ *            is only a label), the amount is what we asked Safaricom to charge.
  */
-export async function verifyPayhero(db: Db, reference: string): Promise<{ status: string; result?: string; detail?: Record<string, unknown> }> {
+export async function verifyMpesa(db: Db, reference: string): Promise<{ status: string; result?: string; detail?: Record<string, unknown> }> {
   if (!PAYHERO_REFERENCE.test(reference)) throw new Error("invalid_reference");
   const row = await loadLedger(db, reference);
   if (!row) throw new Error("unknown_reference");
   if (row.status !== "queued") return { status: row.status, result: row.outcome ?? undefined };
-  if (!row.payhero_reference) return { status: "queued" };   // STK not accepted yet
 
-  const s = await fetchStatus(row.payhero_reference);
+  let s: { status: string; receipt: string | null; amount: number | null; desc: string | null };
+  if (row.provider === "daraja") {
+    if (!row.checkout_request_id) return { status: "queued" };   // STK not accepted yet
+    const q = await queryStk(row.checkout_request_id);
+    s = { status: q.state === "success" ? "SUCCESS" : q.state === "failed" ? "FAILED" : "QUEUED",
+          receipt: row.mpesa_receipt, amount: null, desc: q.desc ?? q.code };
+  } else {
+    if (!row.payhero_reference) return { status: "queued" };   // STK not accepted yet
+    s = await fetchStatus(row.payhero_reference);
+  }
   if (s.status === "QUEUED" || s.status === "PENDING" || s.status === "") return { status: "queued" };
   if (s.status !== "SUCCESS") {
     await db.rpc("fail_payhero_payment", { p_reference: reference, p_reason: s.desc ?? s.status });
-    console.log(JSON.stringify({ msg: "payhero payment failed", ref: reference.slice(0, 10), kind: row.kind, status: s.status }));
+    console.log(JSON.stringify({ msg: "mpesa payment failed", provider: row.provider, ref: reference.slice(0, 10), kind: row.kind, status: s.status }));
     return { status: "failed" };
   }
 
-  // The amount PayHero reports if it gives one; otherwise the amount we asked
-  // for (we set it server-side when starting the STK push).
+  // The amount the provider reports if it gives one; otherwise the amount we
+  // asked for (we set it server-side when starting the STK push).
   const amount = s.amount ?? Number(row.amount_kes);
   const fn = row.kind === "event" ? "confirm_payhero_event_payment"
     : row.kind === "vendor" ? "confirm_payhero_vendor_payment" : "confirm_payhero_merch_payment";
@@ -127,7 +144,7 @@ export async function verifyPayhero(db: Db, reference: string): Promise<{ status
   if (error) throw new Error(`confirmation_failed:${error.message}`);
   const r: any = data;
   if (r?.result === "confirmed") await afterConfirmed(db, row.kind, r);
-  else console.error(JSON.stringify({ msg: "payhero paid but not applied — needs a human", ref: reference.slice(0, 10), kind: row.kind, result: r?.result }));
+  else console.error(JSON.stringify({ msg: "mpesa paid but not applied — needs a human", provider: row.provider, ref: reference.slice(0, 10), kind: row.kind, result: r?.result }));
   return { status: "success", result: r?.result, detail: r };
 }
 
