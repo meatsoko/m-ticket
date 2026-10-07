@@ -169,13 +169,13 @@ async function startVendor(db: any, b: any): Promise<Target | Refusal> {
   if (!ev || ev.status !== "live") return { error: "event_not_live", status: 409 };
   if (ev.reservations_open_at && new Date(ev.reservations_open_at).getTime() > Date.now()) return { error: "event_not_live", status: 409 };
 
+  // No limit per phone (migration 20261008130000): a number that has already paid
+  // can register another tent. Only an UNPAID registration from the same number is
+  // reused, so retries don't pile up duplicates (its Paystack reference, if any, is
+  // left alone).
   const { data: existing } = await db.from("vendor_applications")
     .select("id,status,reference_number").eq("event_id", eventId).eq("phone", phone)
-    .in("status", ["pending_payment", "paid", "flagged"]).maybeSingle();
-  if (existing && existing.status !== "pending_payment") {
-    return { error: "already_registered", status: 409, extra: { reference_number: existing.reference_number } };
-  }
-  // A pending registration is reused (its Paystack reference, if any, is left alone).
+    .eq("status", "pending_payment").order("created_at", { ascending: false }).limit(1).maybeSingle();
   const fields = { name, email, vendor_type: vendorType, description, amount_kes: VENDOR_FEE_KES, updated_at: new Date().toISOString() };
   let app: { id: string; reference_number: string } | null = null;
   if (existing) {

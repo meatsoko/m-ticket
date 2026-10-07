@@ -1412,7 +1412,9 @@ console.log("\n--- payhero ---");
   const ven2 = (await get(`vendor_applications?select=status&id=eq.${ven?.id}`))[0];
   check("payhero vendor: reconcile finds it -> paid, vendor emailed", r.status === 200 && (r.body?.checked ?? 0) >= 1 && ven2?.status === "paid" && sentEmails.some((m: any) => m.to?.[0] === "mgrills@example.test"), { r: r.body, ven2 });
   r = await call("phpay", { kind: "vendor", event_id: gaEv.id, name: "Mpesa Grills", phone: "0733000099", email: "mgrills@example.test", vendor_type: "food", mpesa_phone: "0733000099" }, ip());
-  check("payhero vendor: a paid registration can't pay again", r.status === 409 && r.body?.error === "already_registered", r.body);
+  check("payhero vendor: a number that has paid can register another tent (new VEN- number)", r.status === 200 && /^VEN-/.test(r.body?.reference_number ?? "") && r.body?.reference_number !== (await get(`vendor_applications?select=reference_number&id=eq.${ven?.id}`))[0]?.reference_number, r.body);
+  const retry = await call("phpay", { kind: "vendor", event_id: gaEv.id, name: "Mpesa Grills", phone: "0733000099", email: "mgrills@example.test", vendor_type: "drinks", mpesa_phone: "0733000099" }, ip());
+  check("payhero vendor: retrying while that one is unpaid reuses it (no duplicate)", retry.status === 200 && retry.body?.reference_number === r.body?.reference_number && (await get(`vendor_applications?select=id&event_id=eq.${gaEv.id}&phone=eq.254733000099`)).length === 2, retry.body);
 
   // --- merchandise ---
   r = await call("phpay", { kind: "merch", customer: { ...customer, email: "mpesa.buyer@example.test" }, delivery: { code: "event" }, lines: [{ slug: "red-t-shirt", size: "L", qty: 1 }], mpesa_phone: "0712345678" }, ip());
