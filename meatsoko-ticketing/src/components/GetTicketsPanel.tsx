@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
 import { openPaystackPopup } from "@/lib/paystack-popup";
 import { PAYMENTS_PAUSED, PAYMENT_PAUSED_MESSAGE } from "@/lib/payments";
+import { MPESA_ENABLED } from "@/lib/payhero";
+import MpesaPay from "@/components/payments/MpesaPay";
 import { normalizePhone, looksLikeEmail, PHONE_HINT, EMAIL_HINT } from "@/lib/phone";
 import QrImage from "@/components/QrImage";
 import Icon from "@/components/Icon";
@@ -52,6 +54,9 @@ export default function GetTicketsPanel({
   const [now, setNow] = useState(() => Date.now());
   const [country, setCountry] = useState("");
   const [onlineDone, setOnlineDone] = useState<OnlineDone | null>(null);
+  // Table by M-Pesa (PayHero): the free ticket is issued first, then this step pays for the table.
+  const [mpesaFor, setMpesaFor] = useState<{ token: string; number: string } | null>(null);
+  const lastViaMpesa = useRef(false);
   const isOnline = pick === ONLINE;
   // Preselect the visitor's country from their browser locale (they can change it).
   useEffect(() => {
@@ -98,7 +103,8 @@ export default function GetTicketsPanel({
     return !first;
   }
 
-  async function submit(allowDuplicate = false) {
+  async function submit(allowDuplicate = false, viaMpesa = false) {
+    lastViaMpesa.current = viaMpesa;
     setError("");
     if (!allowDuplicate) setDup(null);
     if (!validate()) return;
@@ -112,7 +118,8 @@ export default function GetTicketsPanel({
       accompanying_guests: 0,
       preorders: [],
       reservation_type_id: gaTypeId,
-      ...(table ? { table_type_id: table.id } : {}),
+      // By M-Pesa the table is paid in a second step (payhero-pay), so only the free ticket here.
+      ...(table && !viaMpesa ? { table_type_id: table.id } : {}),
       provider: "paystack",
       ...(allowDuplicate ? { allow_duplicate_email: true } : {}),
     });
@@ -129,6 +136,13 @@ export default function GetTicketsPanel({
     }
     const token: string | undefined = res.data.access_token;
     const up = res.data.upgrade;
+    if (table && viaMpesa) {
+      setBusy(false);
+      if (token) { setMpesaFor({ token, number: String(res.data.reservation_number) }); return; }
+      // An existing booking (same phone + email) never gets its token here.
+      setDone({ reservation_number: res.data.reservation_number, unchanged: !!res.data.unchanged, emailed: !!res.data.emailed, upgradeError: "existing_booking" });
+      return;
+    }
     // Table chosen and the payment opened: go and pay. The free ticket already exists.
     if (token && up?.authorizationUrl) {
       try { window.sessionStorage.setItem(PENDING_UPGRADE_KEY, JSON.stringify({ token, reference: up.reference })); } catch { /* private mode */ }
@@ -183,6 +197,22 @@ export default function GetTicketsPanel({
         </p>
         {watch && <a className="btn-primary btn-block" href={watch}>Open my watch page</a>}
         <p className="small">Please keep the link to yourself — it&apos;s personal to you.</p>
+      </div>
+    );
+  }
+
+  // ---------- Free ticket issued; now the table by M-Pesa ----------
+  if (mpesaFor && table) {
+    return (
+      <div className="card stack">
+        <span className="pill ok" style={{ justifySelf: "start" }}>Free ticket booked · {mpesaFor.number}</span>
+        <h2>Now pay for your {table.name}</h2>
+        <p className="small">{table.party_size} people · includes {table.platter.name}. Your booking number and QR stay the same — it will admit your whole table.</p>
+        <MpesaPay amountKes={upgradePriceKes(table.platter, now)} defaultPhone={phone}
+          body={() => ({ kind: "upgrade", access_token: mpesaFor.token, reservation_type_id: table.id })}
+          explain={(code) => (code ? `The table couldn't be booked (${upgradeReason(code)}). Your free ticket is still valid.` : null)}
+          onPaid={() => window.location.assign(`/r/${mpesaFor.token}`)} />
+        <a className="btn-ghost btn-block" href={`/r/${mpesaFor.token}`}>Skip — keep my free ticket</a>
       </div>
     );
   }
@@ -287,13 +317,13 @@ export default function GetTicketsPanel({
           </div>
 
           {options.length > 0 && <span className="ticket-section-label">Tables with a family platter</span>}
-          {options.length > 0 && PAYMENTS_PAUSED && <p className="pay-paused-note" role="status">{PAYMENT_PAUSED_MESSAGE}</p>}
+          {options.length > 0 && PAYMENTS_PAUSED && !MPESA_ENABLED && <p className="pay-paused-note" role="status">{PAYMENT_PAUSED_MESSAGE}</p>}
           <div className="ticket-options">
             {options.map((o) => {
               const p = usd(o);
               const eb = earlyBird(o);
               return (
-                <button type="button" key={o.id} className={`ticket-option${PAYMENTS_PAUSED ? " is-paused" : ""}`} disabled={PAYMENTS_PAUSED} onClick={() => choose(o.id)}>
+                <button type="button" key={o.id} className={`ticket-option${PAYMENTS_PAUSED && !MPESA_ENABLED ? " is-paused" : ""}`} disabled={PAYMENTS_PAUSED && !MPESA_ENABLED} onClick={() => choose(o.id)}>
                   <span className="ticket-option-main">
                     <strong>{o.name}</strong>
                     <small>{o.party_size} people · includes {o.platter.name}</small>
@@ -362,7 +392,7 @@ export default function GetTicketsPanel({
                 <strong style={{ fontSize: ".95rem" }}>You may already have a ticket</strong>
                 <p className="small">{email.trim()} already has booking <strong>{dup}</strong> at this event. If that is yours, there is no need to book again.</p>
                 <a className="btn-ghost btn-block" href="/lookup">Find my existing pass</a>
-                <button className="btn-primary btn-block" onClick={() => submit(true)} disabled={busy}>This is a separate person — continue</button>
+                <button className="btn-primary btn-block" onClick={() => submit(true, lastViaMpesa.current)} disabled={busy}>This is a separate person — continue</button>
               </div>
             )}
             {error && <p className="small" style={{ color: "var(--danger)" }}>{error}</p>}
@@ -373,13 +403,25 @@ export default function GetTicketsPanel({
               <span>Total · 1 {isOnline ? "online pass" : table ? "table" : "ticket"}</span>
               <strong>{total}</strong>
             </div>
+            {/* Paystack paused but M-Pesa (PayHero) open: a table goes straight to M-Pesa. */}
+            {!(table && PAYMENTS_PAUSED && MPESA_ENABLED) && (
             <button type="button" className={table ? `btn-pay btn-block${PAYMENTS_PAUSED ? " is-paused" : ""}` : "btn-primary btn-block"} disabled={busy || (!!table && PAYMENTS_PAUSED)} onClick={() => submit()}>
               {busy ? (isOnline ? "Registering…" : table ? "Opening Paystack…" : "Getting your ticket…")
                 : isOnline ? "Register to watch online"
                 : table ? `Continue to payment · ${total}` : "Get my free ticket"}
             </button>
-            {table && PAYMENTS_PAUSED && <p className="pay-paused-note" role="status">{PAYMENT_PAUSED_MESSAGE}</p>}
-            {table && !PAYMENTS_PAUSED && <p className="small ticket-pay-note">Pay by M-Pesa or card on Paystack (charged in KSh). If you don&apos;t finish paying, you keep your free General Admission ticket.</p>}
+            )}
+            {table && MPESA_ENABLED && (
+              <>
+                {!PAYMENTS_PAUSED && <div className="pay-or">or</div>}
+                <button type="button" className="mpesa-btn" disabled={busy} onClick={() => submit(false, true)}>
+                  {busy ? "Booking your ticket…" : `Pay with M-Pesa · KSh ${upgradePriceKes(table.platter, now).toLocaleString("en-KE")}`}
+                </button>
+              </>
+            )}
+            {table && PAYMENTS_PAUSED && !MPESA_ENABLED && <p className="pay-paused-note" role="status">{PAYMENT_PAUSED_MESSAGE}</p>}
+            {table && !PAYMENTS_PAUSED && <p className="small ticket-pay-note">Pay by M-Pesa or card on Paystack (charged in KSh){MPESA_ENABLED ? ", or straight from your phone with M-Pesa" : ""}. If you don&apos;t finish paying, you keep your free General Admission ticket.</p>}
+            {table && PAYMENTS_PAUSED && MPESA_ENABLED && <p className="small ticket-pay-note">We book your free ticket, then send an M-Pesa prompt for the table. If you don&apos;t finish paying, you keep your free General Admission ticket.</p>}
           </div>
         </div>
       )}

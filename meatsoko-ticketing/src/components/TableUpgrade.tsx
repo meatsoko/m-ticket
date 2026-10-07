@@ -5,6 +5,8 @@ import { invokeFn } from "@/lib/invoke";
 import { openPaystackPopup } from "@/lib/paystack-popup";
 import { PAYMENTS_PAUSED, PAYMENT_PAUSED_MESSAGE } from "@/lib/payments";
 import { familyPackageUsdPrices, formatUsd } from "@/lib/family-package-pricing";
+import { MPESA_ENABLED } from "@/lib/payhero";
+import MpesaPay from "@/components/payments/MpesaPay";
 
 // Upgrade a General Admission ticket to a table (migration 20260929180000).
 // Authorised by the pass token alone — the same token as the QR. Nothing about
@@ -133,6 +135,8 @@ export default function TableUpgrade({
         ))}
       </div>
       {error && <p className="small" style={{ color: "var(--danger)" }}>{error}</p>}
+      {/* Paystack paused but M-Pesa (PayHero) open: show only the option that works. */}
+      {!(PAYMENTS_PAUSED && MPESA_ENABLED) && <>
       <button className={`btn-pay btn-block${PAYMENTS_PAUSED ? " is-paused" : ""}`} onClick={start} disabled={phase !== "choose" || PAYMENTS_PAUSED}>
         {phase === "paying" ? "Opening Paystack…"
           : phase === "checking" ? "Checking payment…"
@@ -145,6 +149,17 @@ export default function TableUpgrade({
           your General Admission ticket stays exactly as it is.
         </p>
       )}
+      </>}
+      {MPESA_ENABLED && selected && (
+        <>
+          {!PAYMENTS_PAUSED && <div className="pay-or">or</div>}
+          <MpesaPay amountKes={upgradePriceKes(selected.platter, now)}
+            body={() => ({ kind: "upgrade", access_token: token, reservation_type_id: selected.id })}
+            explain={(code, d) => (code ? explain(code, false, d) : null)}
+            onPaid={() => { setPhase("done"); onUpgraded?.(); }} />
+        </>
+      )}
+      {MPESA_ENABLED && !selected && PAYMENTS_PAUSED && <p className="small" style={{ textAlign: "center" }}>Choose a table to pay with M-Pesa.</p>}
     </div>
   );
 }

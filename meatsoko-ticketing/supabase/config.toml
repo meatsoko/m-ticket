@@ -91,3 +91,18 @@ verify_jwt = false
 # order's receipt token) in the body is the authorisation. Rate-limited.
 [functions.customer-order]
 verify_jwt = false
+
+# PayHero M-Pesa (alongside Paystack): public start / status / callback /
+# reconcile. None of them trusts its caller: only PayHero's transaction-status
+# API confirms money (see _shared/payhero.ts). Rate-limited.
+[functions.payhero-pay]
+verify_jwt = false
+
+[functions.payhero-status]
+verify_jwt = false
+
+[functions.payhero-callback]
+verify_jwt = false
+
+[functions.payhero-reconcile]
+verify_jwt = false

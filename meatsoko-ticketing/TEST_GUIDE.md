@@ -138,6 +138,25 @@ Setup (admin): Dashboard → Event orders → **Menu** → add 2–3 items with 
 | 10.4 | Book a free ticket there (phone + desktop) | Works exactly as before |
 | 10.5 | Dashboard → event → Event settings | Lineup and Table plan fields are gone; everything else saves as before |
 
+## 11. PayHero — Pay with M-Pesa (branch `feat/payhero`)
+
+Before testing: apply the two PayHero migrations, deploy `payhero-pay`, `payhero-callback`,
+`payhero-status`, `payhero-reconcile`, set the Supabase secrets (`PAYHERO_API_USERNAME`,
+`PAYHERO_API_PASSWORD`, `PAYHERO_CHANNEL_ID`, `PAYHERO_PAYMENTS=on`) and
+`NEXT_PUBLIC_PAYHERO_PAYMENTS=on` in Vercel. Use small real amounts (e.g. a test platter).
+
+| # | Do | Expect |
+|---|----|--------|
+| 11.1 | Your pass `/r/…` → Upgrade to a Table → pick one | A green **Pay KSh … with M-Pesa** block with your number (while Paystack is paused, it's the only option) |
+| 11.2 | Pay → enter PIN on the phone | "Check your phone" → then **Your table is booked**; the pass shows the table; updated pass emailed |
+| 11.3 | Start again and cancel the prompt on the phone | "The M-Pesa payment wasn't completed… Nothing was charged"; ticket unchanged |
+| 11.4 | Pass → Add platters → pay with M-Pesa | Page reloads with the platters on the pass |
+| 11.5 | `/e/nyamafest-main` → choose a table → fill details → **Pay with M-Pesa** | "Free ticket booked · NF-…" then the M-Pesa step; after paying you land on your pass with the table |
+| 11.6 | `/events` → Become a vendor → fill the form → Pay with M-Pesa | "Your tent is secured — VEN-…"; vendor email arrives |
+| 11.7 | Shop → bag → checkout → Pay with M-Pesa (in KSh) | Prompt shows the KSh amount; after paying you land on `/order/…` as paid; bag emptied; emails sent |
+| 11.8 | Close the page while the prompt is open, then pay | Within ~2 minutes the reconcile job confirms it; the email still arrives |
+| 11.9 | Dashboard → Tickets | The upgrade / platter orders show as paid (receipt numbers are stored in the database; they aren't shown on the dashboard yet) |
+
 ## Report back
 
 For anything that fails: section number, device and browser, what you expected, what you

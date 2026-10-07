@@ -11,12 +11,16 @@ import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
 import { openPaystackPopup } from "@/lib/paystack-popup";
 import { PAYMENTS_PAUSED, PAYMENT_PAUSED_MESSAGE } from "@/lib/payments";
+import { MPESA_ENABLED } from "@/lib/payhero";
+import MpesaPay from "@/components/payments/MpesaPay";
 
 // Merchandise payment goes live only when NEXT_PUBLIC_MERCH_PAYMENTS is "on" — set
 // it after the merchandise migration is applied and merch-checkout is deployed
 // (see supabase/migrations/20260929120000_merchandise_store.sql). Until then the
 // form works end to end but Pay stays disabled and says why.
 const PAYMENT_CONNECTED = process.env.NEXT_PUBLIC_MERCH_PAYMENTS === "on" && !PAYMENTS_PAUSED;
+// M-Pesa through PayHero, alongside Paystack (needs merch payments switched on too).
+const MPESA_CONNECTED = process.env.NEXT_PUBLIC_MERCH_PAYMENTS === "on" && MPESA_ENABLED;
 
 // An order opened on Paystack but not yet paid (popup closed). Pressing Pay again with
 // the same bag and details resumes it instead of creating a second order — which
@@ -59,7 +63,7 @@ type Fields = {
 const EMPTY: Fields = { firstName: "", lastName: "", phone: "", email: "", zone: "", street: "", town: "", sacco: "", notes: "" };
 
 export default function CheckoutForm() {
-  const { lines, subtotal, ready } = useBag();
+  const { lines, subtotal, ready, clear } = useBag();
   const [f, setF] = useState<Fields>(EMPTY);
   const [delivery, setDelivery] = useState<DeliveryOption["id"]>("event");
   const [agree, setAgree] = useState(false);
@@ -97,7 +101,7 @@ export default function CheckoutForm() {
   const blocker =
     subtotal == null ? "Prices for these pieces are being finalised — you’ll be able to pay as soon as they’re set."
     : delivery !== "standard" && option.feeUsd == null ? `The ${option.label.toLowerCase()} fee is being finalised. Choose a pickup option, or check back soon.`
-    : !PAYMENT_CONNECTED ? PAYMENT_PAUSED_MESSAGE
+    : !PAYMENT_CONNECTED && !MPESA_CONNECTED ? PAYMENT_PAUSED_MESSAGE
     : null;
 
   const err = (k: keyof typeof errors) => touched && errors[k] ? <small className="field-error">{errors[k]}</small> : null;
@@ -245,7 +249,7 @@ export default function CheckoutForm() {
 
           <div className="summary-payment">
             <strong>Pay with M-Pesa or card</strong>
-            <small>You’ll complete payment securely on Paystack.</small>
+            <small>{PAYMENT_CONNECTED ? "Card or M-Pesa securely on Paystack" : "M-Pesa"}{PAYMENT_CONNECTED && MPESA_CONNECTED ? ", or straight from your phone with M-Pesa." : PAYMENT_CONNECTED ? "." : " — you’ll get a prompt on your phone."}</small>
           </div>
 
           <label className="summary-agree">
@@ -254,12 +258,34 @@ export default function CheckoutForm() {
           </label>
           {err("agree")}
 
+          {/* Paystack paused but M-Pesa (PayHero) open: show only the option that works. */}
+          {!(PAYMENTS_PAUSED && MPESA_CONNECTED) && (
           <button type="submit" className={`store-button summary-cta${PAYMENTS_PAUSED ? " is-paused" : ""}`} disabled={!!blocker || submitting} aria-describedby="checkout-blocker">
             {submitting ? "Opening Paystack…" : total != null ? `Pay ${formatPrice(total)}` : "Pay"} <span>→</span>
           </button>
+          )}
+          {MPESA_CONNECTED && !blocker && (
+            <>
+              {PAYMENT_CONNECTED && <div className="pay-or">or</div>}
+              <MpesaPay amountKes={null} defaultPhone={f.phone}
+                cta={total != null ? `Pay ${formatPrice(total)} with M-Pesa (in KSh)` : "Pay with M-Pesa"}
+                body={() => {
+                  setTouched(true);
+                  if (Object.keys(errors).length) return null;
+                  return {
+                    kind: "merch",
+                    customer: { first_name: f.firstName.trim(), last_name: f.lastName.trim(), phone: f.phone, email: f.email.trim(), notes: f.notes.trim() || null },
+                    delivery: { code: delivery, zone: f.zone || null, address: f.street.trim() || null, town: f.town.trim() || null, sacco: f.sacco.trim() || null },
+                    lines: lines.map((l) => ({ slug: l.slug, size: l.size, qty: l.qty })),
+                  };
+                }}
+                explain={(code) => CHECKOUT_ERRORS[code ?? ""] ?? null}
+                onPaid={(r) => { clear(); if (r.access_token) router.push(`/order/${r.access_token}`); }} />
+            </>
+          )}
           {blocker && <p className="summary-blocker" id="checkout-blocker">{blocker}</p>}
           {submitError && <p className="summary-blocker error" role="alert">{submitError}</p>}
-          {!blocker && <p className="summary-rate">Prices are in US dollars. Paystack charges the equivalent in Kenya shillings at today’s rate.</p>}
+          {!blocker && <p className="summary-rate">Prices are in US dollars. {PAYMENT_CONNECTED ? "Paystack charges" : "M-Pesa is charged"} the equivalent in Kenya shillings at today’s rate.</p>}
           <Link href="/cart" className="store-back-link">← Back to your bag</Link>
         </aside>
       </form>

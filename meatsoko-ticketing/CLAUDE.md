@@ -206,6 +206,29 @@ custom SMTP — confirm with the user that both are set.
 
 ## Payments, email, money
 
+- **PayHero — M-Pesa STK alongside Paystack (branch `feat/payhero`, 2026-10-07; not merged,
+  migrations not applied, functions not deployed).** Paystack's code is untouched (the user's
+  rule): PayHero has its own ledger `payhero_payments` and its own confirmation functions
+  (`confirm_payhero_event_payment` / `_vendor_` / `_merch_`, `fail_payhero_payment`) that
+  **copy** the rules of `confirm_paystack_payment`, `confirm_vendor_payment` and
+  `merch_confirm_payment` — change a rule in one, check the other. Migration
+  `20261008090000_payhero_payments.sql` (+ `20261008091000_payhero_reconcile_cron.sql`).
+  - Edge Functions: `payhero-pay` (kinds: `upgrade`, `addon`, `vendor`, `merch`; creates the
+    order the usual way, `PH`+32-hex reference, STK to `mpesa_phone`), `payhero-callback`
+    (PayHero's callback is **not signed** — only a nudge), `payhero-status` (the waiting page),
+    `payhero-reconcile` (cron, every 2 min). Only `verifyPayhero()` in `_shared/payhero.ts`
+    confirms money, by asking PayHero's `transaction-status` API.
+  - PayHero orders never carry a Paystack reference (event orders stay `payment_provider
+    'mpesa'`; merch orders have their MS reference cleared), so the Paystack paths ignore them.
+  - Site: `src/components/payments/MpesaPay.tsx` on the table upgrade, platter add-ons, the
+    Get tickets panel (free ticket first, then the table by M-Pesa), vendor sign-up and merch
+    checkout. When Paystack is paused and M-Pesa is on, only M-Pesa shows.
+  - Switches: Supabase secret `PAYHERO_PAYMENTS=on` (fails closed) + Vercel
+    `NEXT_PUBLIC_PAYHERO_PAYMENTS=on`. Secrets `PAYHERO_API_USERNAME`, `PAYHERO_API_PASSWORD`
+    (or `PAYHERO_BASIC_AUTH`), `PAYHERO_CHANNEL_ID`. Not covered yet: paid-ticket checkout
+    (`EventCheckout`/`stk-push`) and booking pre-orders (`ReservationForm`/`reserve`) — no live
+    event uses them.
+
 - **Paystack is PAUSED (2026-10-06, user's urgent request).** Server: `_shared/paystack-switch.ts`
   — no transaction opens unless the `PAYSTACK_PAYMENTS` secret is `on` (unset = paused);
   `reserve`, `stk-push`, `vendor-apply`, `merch-checkout`, `platter-addon`, `upgrade-reservation`
@@ -241,7 +264,7 @@ user's say-so. Use `supabase db query --linked "<sql>"` for read-only checks.
 - Edge Functions: `deno check <fn>/index.ts` (or `docker run --rm -v
   $PWD/supabase/functions:/f -w /f denoland/deno:2.6.3 deno check <fn>/index.ts`).
 - **Integration harness: `./tests/harness/run.sh`** (Docker) — fresh Postgres from
-  `schema.sql` + migrations, real Edge Functions; expect `ok: 331 FAIL: 0`. Add checks
+  `schema.sql` + migrations, real Edge Functions; expect `ok: 381 FAIL: 0`. Add checks
   for every new function or permission. See `tests/harness/README.md`.
 - **No browser testing of site features** (user, 2026-10-06): don't click through pages in
   Chrome or a local dev server to verify them — use the checks above, then tell the user

@@ -2207,3 +2207,23 @@ a.login-submit { display: grid; place-items: center; text-decoration: none; }
 .is-paused, .is-paused:hover, .is-paused:disabled { filter: grayscale(1); opacity: .5; cursor: not-allowed; box-shadow: none; transform: none; }
 .ticket-option.is-paused:hover { border-color: var(--line); }
 .pay-paused-note { margin: 0; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, currentColor 7%, transparent); color: inherit; font-size: 13.5px; font-weight: 600; line-height: 1.4; text-align: center; }
+
+/* ---------- Pay with M-Pesa (PayHero), alongside Paystack (src/components/payments/MpesaPay.tsx) ----------
+   Works on the ticketing and store themes: colours fall back when a token is missing. */
+.mpesa-pay { display: grid; gap: 10px; padding: 14px; border: 1.5px solid #1b7a4b; border-radius: 14px; background: color-mix(in srgb, #1b7a4b 6%, transparent); }
+.mpesa-field { display: grid; gap: 6px; }
+.mpesa-field span { font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted, #77736e); }
+.mpesa-field input { width: 100%; min-height: 48px; padding: 0 14px; border: 1px solid var(--line, #dedbd4); border-radius: 10px; background: var(--surface, #fff); color: var(--ink, #171717); font: inherit; font-size: 16px; }
+.mpesa-btn { min-height: 50px; width: 100%; padding: 0 18px; border: 0; border-radius: 999px; background: #1b7a4b; color: #fff; font: inherit; font-size: 15px; font-weight: 800; cursor: pointer; }
+.mpesa-btn:hover:not(:disabled) { background: #156540; }
+.mpesa-btn:disabled { opacity: .55; cursor: not-allowed; }
+.mpesa-note { margin: 0; font-size: 12.5px; color: var(--muted, #77736e); text-align: center; }
+.mpesa-error { margin: 0; font-size: 13.5px; font-weight: 700; color: var(--danger, #b23222); }
+.mpesa-pay.waiting { justify-items: center; text-align: center; padding: 20px 16px; }
+.mpesa-pay.waiting strong { font-size: 18px; }
+.mpesa-pay.waiting p { margin: 0; font-size: 14px; }
+.mpesa-spinner { width: 34px; height: 34px; border-radius: 50%; border: 3px solid color-mix(in srgb, #1b7a4b 25%, transparent); border-top-color: #1b7a4b; animation: mpesa-spin .9s linear infinite; }
+@keyframes mpesa-spin { to { rotate: 360deg; } }
+@media (prefers-reduced-motion: reduce) { .mpesa-spinner { animation-duration: 3s; } }
+.pay-or { display: flex; align-items: center; gap: 10px; margin: 2px 0; font-size: 12px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--muted, #77736e); }
+.pay-or::before, .pay-or::after { content: ""; flex: 1; height: 1px; background: var(--line, #dedbd4); }

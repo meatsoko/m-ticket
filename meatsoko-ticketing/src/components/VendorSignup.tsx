@@ -6,6 +6,8 @@ import { invokeFn } from "@/lib/invoke";
 import { openPaystackPopup } from "@/lib/paystack-popup";
 import { PAYMENTS_PAUSED, PAYMENT_PAUSED_MESSAGE } from "@/lib/payments";
 import { normalizePhone, looksLikeEmail, PHONE_HINT } from "@/lib/phone";
+import { MPESA_ENABLED } from "@/lib/payhero";
+import MpesaPay from "@/components/payments/MpesaPay";
 
 // "Become a vendor" (migration 20260930180000): a button on /events that
 // opens a form, registers the vendor as pending, and sends them to Paystack for
@@ -29,6 +31,11 @@ export default function VendorSignup({ eventId, eventName }: { eventId: string; 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [fieldErr, setFieldErr] = useState<Record<string, string>>({});
+  // Paid by M-Pesa (PayHero): the registration number, shown in the dialog.
+  const [paidNumber, setPaidNumber] = useState<string | null>(null);
+  // Paystack paused but M-Pesa open: the M-Pesa option is the way in.
+  const onlyMpesa = PAYMENTS_PAUSED && MPESA_ENABLED;
+  const blocked = PAYMENTS_PAUSED && !MPESA_ENABLED;
 
   useEffect(() => {
     if (!open) return;
@@ -42,7 +49,7 @@ export default function VendorSignup({ eventId, eventName }: { eventId: string; 
     const e: Record<string, string> = {};
     if (name.trim().length < 2) e.name = "Enter your name or business name.";
     if (!normalizePhone(phone)) e.phone = `${PHONE_HINT}.`;
-    if (!looksLikeEmail(email)) e.email = "We need your email — Paystack sends your receipt there.";
+    if (!looksLikeEmail(email)) e.email = "We need your email — your receipt and confirmation go there.";
     if (!type) e.type = "Choose what you'll sell.";
     setFieldErr(e);
     return !Object.keys(e).length;
@@ -75,7 +82,7 @@ export default function VendorSignup({ eventId, eventName }: { eventId: string; 
           <strong>Selling at {eventName}?</strong>
           <span>Secure a tent for KSh {VENDOR_FEE_KES.toLocaleString("en-KE")}</span>
         </div>
-        <button type="button" className={`btn-primary hero-vendor-btn${PAYMENTS_PAUSED ? " is-paused" : ""}`} disabled={PAYMENTS_PAUSED} title={PAYMENTS_PAUSED ? PAYMENT_PAUSED_MESSAGE : undefined} onClick={() => setOpen(true)}>{PAYMENTS_PAUSED ? "Payment coming soon" : "Become a vendor"}</button>
+        <button type="button" className={`btn-primary hero-vendor-btn${blocked ? " is-paused" : ""}`} disabled={blocked} title={blocked ? PAYMENT_PAUSED_MESSAGE : undefined} onClick={() => setOpen(true)}>{blocked ? "Payment coming soon" : "Become a vendor"}</button>
       </div>
 
       {/* Portalled out of the band into the app shell, which keeps the ticketing
@@ -98,7 +105,7 @@ export default function VendorSignup({ eventId, eventName }: { eventId: string; 
               {fieldErr.phone && <span className="field-error">{fieldErr.phone}</span>}</label>
             <label className="field"><span>Email</span>
               <input type="email" inputMode="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} aria-invalid={!!fieldErr.email} placeholder="you@example.com" />
-              {fieldErr.email ? <span className="field-error">{fieldErr.email}</span> : <span className="small">Your Paystack receipt and confirmation come here.</span>}</label>
+              {fieldErr.email ? <span className="field-error">{fieldErr.email}</span> : <span className="small">Your receipt and confirmation come here.</span>}</label>
             <div className="field"><span>What will you sell?</span>
               <div className="vendor-types" role="radiogroup" aria-label="Vendor type">
                 {TYPES.map((t) => (
@@ -110,11 +117,29 @@ export default function VendorSignup({ eventId, eventName }: { eventId: string; 
               <textarea rows={3} maxLength={500} value={about} onChange={(e) => setAbout(e.target.value)} placeholder="e.g. Grilled chicken and chips, one gas grill" />
               <span className="small">{about.length}/500</span></label>
 
+            {paidNumber ? (
+              <div className="card quiet" role="status" style={{ textAlign: "center" }}>
+                <span className="pill ok" style={{ justifySelf: "center" }}>Paid</span>
+                <strong>Your tent is secured — {paidNumber}.</strong>
+                <span className="small">We&apos;ve emailed your confirmation and will contact you with your tent location and setup time.</span>
+              </div>
+            ) : <>
             {err && <p className="small" style={{ color: "var(--danger)" }}>{err}</p>}
+            {!onlyMpesa && <>
             <button type="button" className={`btn-pay btn-block${PAYMENTS_PAUSED ? " is-paused" : ""}`} disabled={busy || PAYMENTS_PAUSED} onClick={submit}>
               {busy ? "Opening Paystack…" : `Pay KSh ${VENDOR_FEE_KES.toLocaleString("en-KE")} & secure a tent`}
             </button>
             <p className="small" style={{ textAlign: "center" }}>M-Pesa or card through Paystack.</p>
+            </>}
+            {MPESA_ENABLED && <>
+              {!onlyMpesa && <div className="pay-or">or</div>}
+              <MpesaPay amountKes={VENDOR_FEE_KES} defaultPhone={phone}
+                body={() => (validate() ? { kind: "vendor", event_id: eventId, name: name.trim(), phone, email: email.trim(), vendor_type: type, description: about.trim() || null } : null)}
+                explain={(code, d) => explain(code, false, d)}
+                cta={`Pay KSh ${VENDOR_FEE_KES.toLocaleString("en-KE")} with M-Pesa & secure a tent`}
+                onPaid={(r) => setPaidNumber(r.reference_number ?? "registered")} />
+            </>}
+            </>}
           </div>
         </div>,
         document.querySelector(".app") ?? document.body,

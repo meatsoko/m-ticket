@@ -6,6 +6,8 @@ import { openPaystackPopup } from "@/lib/paystack-popup";
 import { PAYMENTS_PAUSED, PAYMENT_PAUSED_MESSAGE } from "@/lib/payments";
 import { familyPackageUsdPrices, formatUsd } from "@/lib/family-package-pricing";
 import { PENDING_UPGRADE_KEY, upgradePriceKes, type UpgradePlatter } from "@/components/TableUpgrade";
+import { MPESA_ENABLED } from "@/lib/payhero";
+import MpesaPay from "@/components/payments/MpesaPay";
 
 // Platter add-ons (migration 20261001120000): an in-person attendee pre-orders
 // family platters from their pass, to collect at the event. Authorised by the
@@ -78,11 +80,29 @@ export default function PlatterAddons({ token, platters }: { token: string; plat
         })}
       </div>
       {err && <p className="small" style={{ color: "var(--danger)" }}>{err}</p>}
+      {/* Paystack paused but M-Pesa (PayHero) open: show only the option that works. */}
+      {!(PAYMENTS_PAUSED && MPESA_ENABLED) && <>
       <button type="button" className={`btn-pay btn-block${PAYMENTS_PAUSED ? " is-paused" : ""}`} disabled={busy || !lines.length || PAYMENTS_PAUSED} onClick={pay}>
         {busy ? "Opening Paystack…" : lines.length ? `Add platters · KSh ${Math.round(totalKes).toLocaleString()}` : "Choose platters to add"}
       </button>
       {PAYMENTS_PAUSED ? <p className="pay-paused-note" role="status">{PAYMENT_PAUSED_MESSAGE}</p>
         : <p className="small" style={{ textAlign: "center" }}>Pay by M-Pesa or card on Paystack. If you don&apos;t finish paying, nothing changes.</p>}
+      </>}
+      {MPESA_ENABLED && (lines.length ? (
+        <>
+          {!PAYMENTS_PAUSED && <div className="pay-or">or</div>}
+          <MpesaPay amountKes={totalKes}
+            body={() => ({ kind: "addon", access_token: token, items: lines.map((p) => ({ preorder_item_id: p.id, qty: qty[p.id] })) })}
+            explain={(code, d) => ({
+              preorder_sold_out: `${d?.item ?? "That platter"} is sold out.`,
+              bad_qty: `You can add up to ${d?.max ?? 5} of ${d?.item ?? "that platter"}.`,
+              not_eligible: "Platters can only be added to a valid in-person ticket.",
+              payments_unavailable: "Platter orders are paused right now.",
+              closed: "Bookings for this event have closed.",
+            } as Record<string, string>)[code ?? ""] ?? null}
+            onPaid={() => window.location.reload()} />
+        </>
+      ) : PAYMENTS_PAUSED ? <p className="small" style={{ textAlign: "center" }}>Choose platters to pay with M-Pesa.</p> : null)}
     </div>
   );
 }

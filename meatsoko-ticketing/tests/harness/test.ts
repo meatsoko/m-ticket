@@ -20,10 +20,18 @@ Deno.env.set("RESEND_API_KEY", "re_test_fake");
 Deno.env.set("TICKET_EMAIL_FROM", "MeatSoko <tickets@example.test>");
 Deno.env.set("MERCH_NOTIFY_EMAIL", "orders@example.test, owner@example.test");
 Deno.env.set("CELEBRATIONS_NOTIFY_EMAIL", "parties@example.test");
+Deno.env.set("PAYHERO_PAYMENTS", "on");
+Deno.env.set("PAYHERO_API_USERNAME", "ph_user_test");
+Deno.env.set("PAYHERO_API_PASSWORD", "ph_pass_test");
+Deno.env.set("PAYHERO_CHANNEL_ID", "13719");
 
 const paystack = new Map<string, { amount: number; currency: string; status: string }>();
 const sentEmails: any[] = [];
 let feedCalls = 0;
+// Fake PayHero: STK requests are recorded; transaction-status answers from this map.
+const payhero = new Map<string, { status: string; amount: number; ext: string; receipt: string | null }>();
+const payheroSent: any[] = [];
+let payheroRefuse = false;
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (input: any, init?: any) => {
   const req = new Request(input, init);
@@ -56,13 +64,28 @@ globalThis.fetch = async (input: any, init?: any) => {
   }
   if (url.host === "open.er-api.com") { feedCalls++; return Response.json({ rates: { KES: 129.5 }, time_last_update_unix: Math.floor(Date.now() / 1000) - 20 * 3600 }); }
   if (url.host === "api.resend.com") { sentEmails.push(await req.json()); return Response.json({ id: "email_1" }); }
+  if (url.host === "backend.payhero.co.ke") {
+    if (req.headers.get("authorization") !== `Basic ${btoa("ph_user_test:ph_pass_test")}`) return Response.json({ error_message: "unauthorised" }, { status: 401 });
+    if (url.pathname === "/api/v2/payments" && req.method === "POST") {
+      const b = await req.json(); payheroSent.push(b);
+      if (payheroRefuse) return Response.json({ success: false, error_message: "Invalid phone number" }, { status: 400 });
+      const ref = `PHREF${payhero.size + 1}`;
+      payhero.set(ref, { status: "QUEUED", amount: b.amount, ext: b.external_reference, receipt: null });
+      return Response.json({ success: true, status: "QUEUED", reference: ref, CheckoutRequestID: `ws_CO_${ref}` }, { status: 201 });
+    }
+    if (url.pathname === "/api/v2/transaction-status") {
+      const t = payhero.get(url.searchParams.get("reference") ?? "");
+      if (!t) return Response.json({ error_message: "not found" }, { status: 404 });
+      return Response.json({ status: t.status, amount: t.amount, provider_reference: t.receipt, reference: url.searchParams.get("reference") });
+    }
+  }
   throw new Error(`unexpected fetch in test: ${req.url}`);
 };
 
 const handlers: Record<string, (r: Request) => Promise<Response>> = {};
 let loading = "";
 (Deno as any).serve = (h: any) => { handlers[loading] = h; return { finished: Promise.resolve() }; };
-for (const [name, path] of [["checkout", "merch-checkout"], ["order", "merch-order"], ["webhook", "paystack-webhook"], ["fx", "merch-fx-refresh"], ["reconcile", "paystack-reconcile"], ["reserve", "reserve"], ["reslookup", "reservation-lookup"], ["lookup", "lookup"], ["verify", "paystack-verify"], ["upgrade", "upgrade-reservation"], ["bytoken", "reservation-by-token"], ["vendor", "vendor-apply"], ["oreg", "online-register"], ["oacc", "online-access"], ["addon", "platter-addon"], ["inv", "investor-register"], ["receipt", "event-order-receipt"], ["cust", "customer-order"], ["cel", "celebration-request"]]) {
+for (const [name, path] of [["checkout", "merch-checkout"], ["order", "merch-order"], ["webhook", "paystack-webhook"], ["fx", "merch-fx-refresh"], ["reconcile", "paystack-reconcile"], ["reserve", "reserve"], ["reslookup", "reservation-lookup"], ["lookup", "lookup"], ["verify", "paystack-verify"], ["upgrade", "upgrade-reservation"], ["bytoken", "reservation-by-token"], ["vendor", "vendor-apply"], ["oreg", "online-register"], ["oacc", "online-access"], ["addon", "platter-addon"], ["inv", "investor-register"], ["receipt", "event-order-receipt"], ["cust", "customer-order"], ["cel", "celebration-request"], ["phpay", "payhero-pay"], ["phcb", "payhero-callback"], ["phst", "payhero-status"], ["phrec", "payhero-reconcile"]]) {
   loading = name; await import(`/fns/${path}/index.ts`);
 }
 const call = async (name: string, body: unknown, headers: Record<string, string> = {}) => {
@@ -1274,6 +1297,121 @@ console.log("\n--- celebrations ---");
   let limited = false;
   for (let i = 0; i < 6 && !limited; i++) limited = (await call("cel", req({ phone: "0733000222", email: `p${i}@example.test` }), ip())).status === 429;
   check("celebration: one phone is rate-limited (5 an hour)", limited);
+}
+
+// 20. PayHero M-Pesa, alongside Paystack (migration 20261008090000)
+console.log("\n--- payhero ---");
+{
+  const phRow = async (ref: string) => (await get(`payhero_payments?select=*&reference=eq.${ref}`))[0];
+  const phOf = (ref: string) => [...payhero.entries()].find(([, t]) => t.ext === ref);
+  const settle = (ref: string, status: string, receipt: string | null = null, amount?: number) => {
+    const e = phOf(ref)!; e[1].status = status; e[1].receipt = receipt; if (amount !== undefined) e[1].amount = amount;
+  };
+  const backdate = (ref: string, ms: number) => patch(`payhero_payments?reference=eq.${ref}`, { created_at: new Date(Date.now() - ms).toISOString() });
+  const mp = "0712 000 777";
+
+  // --- table upgrade by M-Pesa ---
+  const g = (await call("reserve", guestN(70), ip())).body;
+  let r = await call("phpay", { kind: "upgrade", access_token: g.access_token, reservation_type_id: basicT.id, mpesa_phone: mp }, ip());
+  const ref1: string = r.body?.reference;
+  const sent1 = payheroSent.at(-1);
+  check("payhero upgrade: STK sent for KSh 1,945 to the M-Pesa number, our PH reference, channel, callback", r.status === 200 && /^PH[a-f0-9]{32}$/.test(ref1 ?? "") && r.body?.amount_kes === 1945 && sent1?.amount === 1945 && sent1?.phone_number === "254712000777" && sent1?.external_reference === ref1 && sent1?.channel_id === 13719 && sent1?.provider === "m-pesa" && /\/functions\/v1\/payhero-callback$/.test(sent1?.callback_url ?? ""), { r: r.body, sent1 });
+  let row = await phRow(ref1);
+  let bk = await booking(g.access_token);
+  const ord = (await get(`orders?select=status,payment_provider,paystack_reference,mpesa_receipt,amount_kes&id=eq.${row?.order_id}`))[0];
+  check("payhero upgrade: ledger queued with PayHero's reference; order pending, no Paystack reference; booking untouched", row?.status === "queued" && row?.payhero_reference === "PHREF1" && ord?.status === "pending" && ord?.paystack_reference === null && ord?.payment_provider === "mpesa" && bk?.party_size === 1, { row, ord, bk });
+  r = await call("phcb", { status: true, response: { ExternalReference: ref1, ResultCode: 0, Status: "Success", MpesaReceiptNumber: "FAKE123", Amount: 1945 } });
+  row = await phRow(ref1); bk = await booking(g.access_token);
+  check("payhero: a forged 'success' callback changes nothing while PayHero says QUEUED", r.status === 200 && row?.status === "queued" && bk?.party_size === 1, { row, bk });
+  r = await call("phst", { reference: ref1 }, ip());
+  check("payhero status: queued while waiting for the PIN", r.status === 200 && r.body?.status === "queued", r.body);
+  sentEmails.length = 0;
+  settle(ref1, "SUCCESS", "SKR1ABC");
+  r = await call("phcb", { status: true, response: { ExternalReference: ref1, ResultCode: 0 } });
+  row = await phRow(ref1); bk = await booking(g.access_token);
+  const ord1 = (await get(`orders?select=status,mpesa_receipt&id=eq.${row?.order_id}`))[0];
+  check("payhero upgrade paid: callback -> PayHero says SUCCESS -> booking is a Basic table (3), order paid with the M-Pesa receipt", row?.status === "success" && row?.outcome === "confirmed" && row?.mpesa_receipt === "SKR1ABC" && bk?.party_size === 3 && bk?.reservation_type_id === basicT.id && ord1?.status === "paid" && ord1?.mpesa_receipt === "SKR1ABC", { row, bk, ord1 });
+  check("payhero upgrade paid: updated pass emailed", sentEmails.some((m: any) => m.to?.[0] === "guest70@example.test"), sentEmails.map((m: any) => m.to));
+  const mails = sentEmails.length;
+  await call("phcb", { response: { ExternalReference: ref1 } });
+  r = await call("phst", { reference: ref1 }, ip());
+  check("payhero: repeat callback / status is idempotent (no second email)", r.body?.status === "success" && sentEmails.length === mails, r.body);
+  r = await call("verify", { reference: ref1 });
+  check("payhero: the Paystack verify path doesn't know PayHero references", r.status === 404 || !!r.body?.error, r.body);
+
+  // --- refused STK, closed switch, bad input ---
+  const g2 = (await call("reserve", guestN(71), ip())).body;
+  payheroRefuse = true;
+  r = await call("phpay", { kind: "upgrade", access_token: g2.access_token, reservation_type_id: basicT.id, mpesa_phone: "0712000778" }, ip());
+  payheroRefuse = false;
+  const up2 = (await get(`reservation_upgrades?select=status,order_id&reservation_id=eq.${(await booking(g2.access_token)).id}`))[0];
+  check("payhero: STK refused -> 502, upgrade released, booking still GA", r.status === 502 && r.body?.error === "stk_failed" && up2?.status === "failed" && (await booking(g2.access_token))?.party_size === 1, { r: r.body, up2 });
+  Deno.env.set("PAYHERO_PAYMENTS", "off");
+  r = await call("phpay", { kind: "upgrade", access_token: g2.access_token, reservation_type_id: basicT.id, mpesa_phone: "0712000778" }, ip());
+  Deno.env.set("PAYHERO_PAYMENTS", "on");
+  check("payhero: switch off -> 503 mpesa_unavailable, nothing created", r.status === 503 && r.body?.error === "mpesa_unavailable", r.body);
+  check("payhero: bad M-Pesa number refused", (await call("phpay", { kind: "upgrade", access_token: g2.access_token, reservation_type_id: basicT.id, mpesa_phone: "12345" }, ip())).body?.error === "invalid_mpesa_phone");
+  check("payhero: unknown pass token -> 404", (await call("phpay", { kind: "upgrade", access_token: "0".repeat(32), reservation_type_id: basicT.id, mpesa_phone: "0712000778" }, ip())).status === 404);
+
+  // --- platter add-on: failed, then a new one with a wrong amount ---
+  r = await call("phpay", { kind: "addon", access_token: g2.access_token, items: [{ preorder_item_id: basicP.id, qty: 2 }], mpesa_phone: "0712000778" }, ip());
+  const ref2: string = r.body?.reference;
+  check("payhero add-on: STK sent for KSh 3,890", r.status === 200 && r.body?.amount_kes === 3890 && payheroSent.at(-1)?.amount === 3890, r.body);
+  settle(ref2, "FAILED");
+  await backdate(ref2, 20_000);
+  r = await call("phst", { reference: ref2 }, ip());
+  row = await phRow(ref2);
+  const ad2 = (await get(`reservation_addons?select=status&order_id=eq.${row?.order_id}`))[0];
+  const o2 = (await get(`orders?select=status&id=eq.${row?.order_id}`))[0];
+  check("payhero add-on failed (cancelled PIN): status asks PayHero -> failed; add-on and order released", r.body?.status === "failed" && ad2?.status === "failed" && o2?.status === "failed", { r: r.body, ad2, o2 });
+  r = await call("phpay", { kind: "addon", access_token: g2.access_token, items: [{ preorder_item_id: basicP.id, qty: 1 }], mpesa_phone: "0712000778" }, ip());
+  const ref3: string = r.body?.reference;
+  settle(ref3, "SUCCESS", "SKR3", 1);
+  await backdate(ref3, 20_000);
+  r = await call("phst", { reference: ref3 }, ip());
+  row = await phRow(ref3);
+  const o3 = (await get(`orders?select=status,paid_at&id=eq.${row?.order_id}`))[0];
+  check("payhero add-on: PayHero reports a different amount -> order flagged (paid_at set), not applied", row?.outcome === "amount_mismatch" && o3?.status === "flagged" && !!o3?.paid_at, { row, o3 });
+
+  // --- vendor tent fee, settled by the reconcile job ---
+  r = await call("phpay", { kind: "vendor", event_id: gaEv.id, name: "Mpesa Grills", phone: "0733000099", email: "mgrills@example.test", vendor_type: "food", mpesa_phone: "0733000099" }, ip());
+  const ref4: string = r.body?.reference;
+  const ven = (await get(`vendor_applications?select=id,status,paystack_reference&event_id=eq.${gaEv.id}&phone=eq.254733000099`))[0];
+  check("payhero vendor: registration pending, STK for KSh 3,500, no Paystack reference", r.status === 200 && r.body?.amount_kes === 3500 && /^VEN-/.test(r.body?.reference_number ?? "") && ven?.status === "pending_payment" && ven?.paystack_reference === null, { r: r.body, ven });
+  settle(ref4, "SUCCESS", "SKR4");
+  await backdate(ref4, 2 * 60_000);
+  sentEmails.length = 0;
+  r = await call("phrec", {});
+  const ven2 = (await get(`vendor_applications?select=status&id=eq.${ven?.id}`))[0];
+  check("payhero vendor: reconcile finds it -> paid, vendor emailed", r.status === 200 && (r.body?.checked ?? 0) >= 1 && ven2?.status === "paid" && sentEmails.some((m: any) => m.to?.[0] === "mgrills@example.test"), { r: r.body, ven2 });
+  r = await call("phpay", { kind: "vendor", event_id: gaEv.id, name: "Mpesa Grills", phone: "0733000099", email: "mgrills@example.test", vendor_type: "food", mpesa_phone: "0733000099" }, ip());
+  check("payhero vendor: a paid registration can't pay again", r.status === 409 && r.body?.error === "already_registered", r.body);
+
+  // --- merchandise ---
+  r = await call("phpay", { kind: "merch", customer: { ...customer, email: "mpesa.buyer@example.test" }, delivery: { code: "event" }, lines: [{ slug: "red-t-shirt", size: "L", qty: 1 }], mpesa_phone: "0712345678" }, ip());
+  const ref5: string = r.body?.reference;
+  row = await phRow(ref5);
+  const mo = (await get(`merch_orders?select=payment_status,paystack_reference,total_kes,access_token&id=eq.${row?.merch_order_id}`))[0];
+  check("payhero merch: order created, its Paystack reference cleared, STK for the KES total", r.status === 200 && mo?.paystack_reference === null && mo?.payment_status === "pending" && Number(mo?.total_kes) === r.body?.amount_kes && payheroSent.at(-1)?.amount === Math.round(Number(mo?.total_kes)), { r: r.body, mo });
+  settle(ref5, "SUCCESS", "SKR5");
+  sentEmails.length = 0;
+  await call("phcb", { response: { ExternalReference: ref5 } });
+  await backdate(ref5, 20_000);
+  r = await call("phst", { reference: ref5 }, ip());
+  const mo2 = (await get(`merch_orders?select=payment_status&id=eq.${row?.merch_order_id}`))[0];
+  check("payhero merch paid: order paid; the page gets the order link; buyer + organiser emailed", mo2?.payment_status === "paid" && r.body?.status === "success" && r.body?.access_token === mo?.access_token && sentEmails.some((m: any) => m.to?.[0] === "mpesa.buyer@example.test") && sentEmails.some((m: any) => m.to?.includes("orders@example.test")), { mo2, r: r.body });
+
+  // --- lock-down ---
+  const anonLedger = await (await fetch("http://supabase.test/rest/v1/payhero_payments?select=id", { headers: { apikey: anonKey, authorization: `Bearer ${anonKey}` } })).json().catch(() => null);
+  check("payhero: anon can't read the ledger", !Array.isArray(anonLedger) || anonLedger.length === 0, anonLedger);
+  for (const fn of ["confirm_payhero_event_payment", "confirm_payhero_vendor_payment", "confirm_payhero_merch_payment"]) {
+    const a = await rpc(fn, { p_reference: ref1, p_amount_kes: 1945, p_receipt: "X" });
+    const u = await rpc(fn, { p_reference: ref1, p_amount_kes: 1945, p_receipt: "X" }, authedKey);
+    check(`payhero: anon and signed-in users can't call ${fn}`, a.body?.code === "42501" && u.body?.code === "42501", { a: a.body, u: u.body });
+  }
+  check("payhero: fail_payhero_payment is not callable by anon", (await rpc("fail_payhero_payment", { p_reference: ref1, p_reason: "x" })).body?.code === "42501");
+  check("payhero: status for an unknown reference -> 404", (await call("phst", { reference: "PH" + "0".repeat(32) }, ip())).status === 404);
+  check("payhero: callback with a foreign reference is ignored", (await call("phcb", { response: { ExternalReference: "MT" + "0".repeat(32) } })).body?.ignored === "reference");
 }
 
 console.log(failures ? `\n${failures} FAILED` : "\nall passed");

@@ -107,7 +107,7 @@ functions. Both are applied and verified (anon gets `42501`).
 - **Verification:** `npm run lint`, `npm run build`, `deno check` for Edge Functions (not
   covered by `next build`), and the integration harness
   `meatsoko-ticketing/tests/harness/run.sh` (Docker; real Postgres + PostgREST + the real
-  Edge Functions, Paystack/Resend faked; 331 checks). Then live probes. State the honest
+  Edge Functions, Paystack/Resend faked; 381 checks). Then live probes. State the honest
   scope of what a check proved.
 
 ## 8. Do not
