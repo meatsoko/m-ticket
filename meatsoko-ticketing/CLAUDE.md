@@ -278,7 +278,7 @@ user's say-so. Use `supabase db query --linked "<sql>"` for read-only checks.
 - Edge Functions: `deno check <fn>/index.ts` (or `docker run --rm -v
   $PWD/supabase/functions:/f -w /f denoland/deno:2.6.3 deno check <fn>/index.ts`).
 - **Integration harness: `./tests/harness/run.sh`** (Docker) — fresh Postgres from
-  `schema.sql` + migrations, real Edge Functions; expect `ok: 402 FAIL: 0`. Add checks
+  `schema.sql` + migrations, real Edge Functions; expect `ok: 406 FAIL: 0`. Add checks
   for every new function or permission. See `tests/harness/README.md`.
 - **No browser testing of site features** (user, 2026-10-06): don't click through pages in
   Chrome or a local dev server to verify them — use the checks above, then tell the user

@@ -24,6 +24,7 @@ type Db = ReturnType<typeof serviceClient>;
 export type PayheroKind = "event" | "vendor" | "merch";
 
 export const PAYHERO_REFERENCE = /^PH[a-f0-9]{32}$/;
+const DARAJA_GIVE_UP_MS = 30 * 60 * 1000;
 export const newPayheroReference = () => `PH${crypto.randomUUID().replaceAll("-", "")}`;
 
 const api = () => (Deno.env.get("PAYHERO_API_URL") ?? "https://backend.payhero.co.ke/api/v2").trim().replace(/\/+$/, "");
@@ -122,8 +123,10 @@ export async function verifyMpesa(db: Db, reference: string): Promise<{ status: 
   if (row.provider === "daraja") {
     if (!row.checkout_request_id) return { status: "queued" };   // STK not accepted yet
     const q = await queryStk(row.checkout_request_id);
-    s = { status: q.state === "success" ? "SUCCESS" : q.state === "failed" ? "FAILED" : "QUEUED",
-          receipt: row.mpesa_receipt, amount: null, desc: q.desc ?? q.code };
+    // An STK prompt expires within minutes: still "pending" after 30 is a dead prompt.
+    const expired = q.state === "pending" && Date.now() - Date.parse(row.created_at) > DARAJA_GIVE_UP_MS;
+    s = { status: q.state === "success" ? "SUCCESS" : q.state === "failed" || expired ? "FAILED" : "QUEUED",
+          receipt: row.mpesa_receipt, amount: null, desc: expired ? `expired: ${q.desc ?? q.code ?? "no answer"}` : q.desc ?? q.code };
   } else {
     if (!row.payhero_reference) return { status: "queued" };   // STK not accepted yet
     s = await fetchStatus(row.payhero_reference);

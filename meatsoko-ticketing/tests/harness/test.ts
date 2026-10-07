@@ -33,7 +33,7 @@ const payhero = new Map<string, { status: string; amount: number; ext: string; r
 const payheroSent: any[] = [];
 let payheroRefuse = false;
 // Fake Safaricom Daraja (M-Pesa Express): STK pushes recorded; the query answers from this map.
-const daraja = new Map<string, { state: "pending" | "success" | "failed"; code?: string }>();
+const daraja = new Map<string, { state: "pending" | "success" | "failed" | "processing"; code?: string }>();
 const darajaSent: any[] = [];
 let darajaRefuse = false;
 const realFetch = globalThis.fetch;
@@ -102,6 +102,8 @@ globalThis.fetch = async (input: any, init?: any) => {
       const t = daraja.get(b.CheckoutRequestID);
       if (!t || !pwOk) return Response.json({ errorCode: "400.002.02", errorMessage: "Bad Request - Invalid CheckoutRequestID" }, { status: 400 });
       if (t.state === "pending") return Response.json({ requestId: "r", errorCode: "500.001.1001", errorMessage: "The transaction is being processed" }, { status: 500 });
+      // What production actually answers while the payer is entering the PIN.
+      if (t.state === "processing") return Response.json({ ResponseCode: "0", MerchantRequestID: "m", CheckoutRequestID: b.CheckoutRequestID, ResultCode: t.code ?? "4999", ResultDesc: "The transaction is still under processing" });
       return Response.json({ ResponseCode: "0", MerchantRequestID: "m", CheckoutRequestID: b.CheckoutRequestID,
         ResultCode: t.state === "success" ? "0" : (t.code ?? "1032"), ResultDesc: t.state === "success" ? "The service request is processed successfully." : "Request cancelled by user" });
     }
@@ -1498,6 +1500,30 @@ console.log("\n--- daraja m-pesa express ---");
   check("daraja paid: updated pass emailed once", sentEmails.filter((m: any) => m.to?.[0] === "guest90@example.test").length === 1, sentEmails.map((m: any) => m.to));
   await call("stkres", stkCb("ws_CO_1", true, "TJ7REAL001"));
   check("daraja: a repeat callback is a no-op", sentEmails.filter((m: any) => m.to?.[0] === "guest90@example.test").length === 1);
+
+  // --- "still under processing" (4999) is NOT a failure (the live KSh 1 test, 2026-10-07) ---
+  const gp = (await call("reserve", guestN(95), ip())).body;
+  r = await call("phpay", { kind: "addon", access_token: gp.access_token, items: [{ preorder_item_id: basicP.id, qty: 1 }], mpesa_phone: "0712000095" }, ip());
+  const refP: string = r.body?.reference;
+  const idP = (await phRow(refP)).checkout_request_id;
+  daraja.set(idP, { state: "processing", code: "4999" });
+  await backdate(refP, 20_000);
+  r = await call("phst", { reference: refP }, ip());
+  check("daraja: ResultCode 4999 'still under processing' keeps the payment pending", r.body?.status === "queued" && (await phRow(refP))?.status === "queued", r.body);
+  daraja.set(idP, { state: "processing", code: "8888" });
+  await backdate(refP, 60_000);
+  r = await call("phst", { reference: refP }, ip());
+  check("daraja: an unknown ResultCode also stays pending (never a guessed failure)", r.body?.status === "queued", r.body);
+  daraja.set(idP, { state: "success" });
+  await call("stkres", stkCb(idP, true, "TJ7PROC001"));
+  check("daraja: ...and the PIN entered after that is confirmed (by the callback's check)", (await phRow(refP))?.outcome === "confirmed" && (await phRow(refP))?.mpesa_receipt === "TJ7PROC001", await phRow(refP));
+  const gq = (await call("reserve", guestN(96), ip())).body;
+  r = await call("phpay", { kind: "addon", access_token: gq.access_token, items: [{ preorder_item_id: basicP.id, qty: 1 }], mpesa_phone: "0712000096" }, ip());
+  const refQ: string = r.body?.reference;
+  daraja.set((await phRow(refQ)).checkout_request_id, { state: "processing", code: "4999" });
+  await backdate(refQ, 31 * 60_000);
+  r = await call("phrec", {});
+  check("daraja: still 'processing' after 30 minutes -> expired, released", (await phRow(refQ))?.status === "failed" && /expired/.test((await phRow(refQ))?.result_desc ?? ""), await phRow(refQ));
 
   // --- cancelled PIN, found by the waiting page ---
   const g2 = (await call("reserve", guestN(91), ip())).body;

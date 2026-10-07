@@ -79,9 +79,26 @@ export async function darajaStkPush(o: { amountKes: number; phone: string; accou
 }
 
 /**
- * Safaricom's answer for one STK push: success (ResultCode 0), failed (any
- * other ResultCode — 1032 cancelled, 1037 no response, 1 insufficient funds,
- * 2001 wrong PIN…), or pending ("The transaction is being processed").
+ * ResultCodes that mean the payment definitely did NOT happen. Anything else
+ * that isn't 0 — notably 4999 "The transaction is still under processing",
+ * which the query returns while the payer is still entering their PIN — is
+ * treated as pending and asked again (2026-10-07: treating every non-zero code
+ * as a failure marked a real, paid KSh 1 test as failed).
+ */
+const FAILED_CODES = new Set([
+  "1",      // insufficient funds
+  "1001",   // subscriber busy / unable to lock
+  "1019",   // transaction expired
+  "1025",   // error sending the push request
+  "1032",   // cancelled by the user
+  "1037",   // no response from the phone (timeout / unreachable)
+  "2001",   // wrong PIN
+  "9999",   // error sending the push request
+]);
+
+/**
+ * Safaricom's answer for one STK push: success (ResultCode 0), failed (one of
+ * FAILED_CODES), or pending (4999 / "being processed" / any code we don't know).
  * Anything else (throttled, misconfigured) throws, so nothing is decided on it.
  */
 export async function queryStk(checkoutRequestId: string): Promise<{ state: "success" | "failed" | "pending"; code: string | null; desc: string | null }> {
@@ -95,7 +112,8 @@ export async function queryStk(checkoutRequestId: string): Promise<{ state: "suc
   const body: any = await res.json().catch(() => null);
   if (body?.ResultCode !== undefined && body?.ResultCode !== null && String(body?.ResponseCode ?? "0") === "0") {
     const code = String(body.ResultCode);
-    return { state: code === "0" ? "success" : "failed", code, desc: body.ResultDesc ?? null };
+    const state = code === "0" ? "success" : FAILED_CODES.has(code) ? "failed" : "pending";
+    return { state, code, desc: body.ResultDesc ?? null };
   }
   if (String(body?.errorCode ?? "") === "500.001.1001" || /being processed/i.test(String(body?.errorMessage ?? ""))) {
     return { state: "pending", code: null, desc: body?.errorMessage ?? null };
