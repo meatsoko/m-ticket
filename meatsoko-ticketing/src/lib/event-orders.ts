@@ -98,7 +98,7 @@ export function orderError(code: string | undefined, extra?: Record<string, unkn
   switch (code) {
     case "event_not_live": return "This event isn't taking orders.";
     case "invalid_name": return "Enter the customer's name.";
-    case "invalid_phone": return "That phone number doesn't look right. Use 07XX XXX XXX.";
+    case "invalid_phone": return "That phone number doesn't look right. Use 07XX XXX XXX or 01XX XXX XXX.";
     case "invalid_email": return "That email doesn't look right.";
     case "no_items": return "Add at least one item.";
     case "unknown_item": return "An item is no longer on the menu. Go back and check the items.";

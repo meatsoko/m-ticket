@@ -154,7 +154,7 @@ function explain(code: string | null, transport: boolean, d: any): string {
     case "already_registered": return `This phone number is already a registered vendor for this event (${d?.reference_number}). Call or WhatsApp us if you need changes.`;
     case "rate_limited": return "Too many attempts. Wait a few minutes and try again.";
     case "event_not_live": return "Vendor registration isn't open for this event.";
-    case "invalid_phone": return "That phone number doesn't look right. Use the format 07XX XXX XXX.";
+    case "invalid_phone": return "That phone number doesn't look right. Use the format 07XX XXX XXX or 01XX XXX XXX.";
     case "email_required": return "We need a valid email for your receipt.";
     case "payments_paused": return PAYMENT_PAUSED_MESSAGE;
     case "paystack_init_failed":

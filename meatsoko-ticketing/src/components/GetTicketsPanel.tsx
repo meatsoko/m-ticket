@@ -453,7 +453,7 @@ function explain(code: string | null, transport: boolean, d: any): string {
     case "full": return "Sorry — the event is full.";
     case "closed": return "Bookings for this event have closed.";
     case "not_open_yet": return "Bookings aren't open yet. Check back soon.";
-    case "invalid_phone": return "That phone number doesn't look right. Use the format 07XX XXX XXX.";
+    case "invalid_phone": return "That phone number doesn't look right. Use the format 07XX XXX XXX or 01XX XXX XXX.";
     case "invalid_name": return "Please enter your full name.";
     case "email_required": return "We need a valid email — your ticket and QR are sent there.";
     default: return `Could not complete your booking${d?.stage ? ` (failed at: ${d.stage})` : ""}. Please try again.`;

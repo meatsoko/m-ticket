@@ -123,7 +123,7 @@ function timestamp(): string {
 }
 
 export async function initiateStk(opts: {
-  phone: string; // 2547XXXXXXXX
+  phone: string; // 2547XXXXXXXX or 2541XXXXXXXX
   amount: number;
   accountRef: string;
   description: string;
@@ -138,7 +138,7 @@ export async function initiateStk(opts: {
   if (!Number.isFinite(amount) || amount < 1) {
     throw new Error(`Daraja rejects non-positive amounts (got ${opts.amount})`);
   }
-  if (!/^2547\d{8}$/.test(opts.phone)) {
+  if (!/^254[17]\d{8}$/.test(opts.phone)) {
     throw new Error(`Daraja rejects malformed MSISDN "${opts.phone}"`);
   }
 

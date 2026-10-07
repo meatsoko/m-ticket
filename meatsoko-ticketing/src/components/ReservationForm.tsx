@@ -319,7 +319,7 @@ export default function ReservationForm({
       case "not_open_yet":
         return "Reservations aren't open yet. Check back soon.";
       case "invalid_phone":
-        return "That phone number doesn't look right. Use the format 07XX XXX XXX.";
+        return "That phone number doesn't look right. Use the format 07XX XXX XXX or 01XX XXX XXX.";
       case "invalid_name":
         return "Please enter your full name.";
       case "email_required":

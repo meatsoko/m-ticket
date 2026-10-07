@@ -10,9 +10,10 @@ export function serviceClient() {
 
 export function normalizePhone(raw: string): string | null {
   const digits = raw.replace(/\D/g, "");
-  if (/^2547\d{8}$/.test(digits)) return digits;
-  if (/^07\d{8}$/.test(digits)) return "254" + digits.slice(1);
-  if (/^7\d{8}$/.test(digits)) return "254" + digits;
+  // Kenyan mobiles: 07XX and 01XX (Safaricom 0110/0111, Airtel 0100–0102), with or without 254.
+  if (/^254[17]\d{8}$/.test(digits)) return digits;
+  if (/^0[17]\d{8}$/.test(digits)) return "254" + digits.slice(1);
+  if (/^[17]\d{8}$/.test(digits)) return "254" + digits;
   return null;
 }
 

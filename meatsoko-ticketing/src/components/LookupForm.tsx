@@ -32,7 +32,7 @@ export default function LookupForm() {
 
   function failureOf(res: any): string | null {
     if (res.errorCode === "rate_limited") return "Too many lookups. Wait a few minutes and try again.";
-    if (res.errorCode === "invalid_phone") return "That number doesn't look right. Use 07XX XXX XXX.";
+    if (res.errorCode === "invalid_phone") return "That number doesn't look right. Use 07XX XXX XXX or 01XX XXX XXX.";
     if (res.errorCode === "invalid_email") return "That email address doesn't look right.";
     if (res.transportError || !res.data) return "Could not reach the ticket service. Check your connection.";
     return null;

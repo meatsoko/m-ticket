@@ -48,7 +48,7 @@ export default function NewOrderFlow({ event, menu, me, names }: {
   const customerOk = () => {
     const e: Record<string, string> = {};
     if (name.trim().length < 2) e.name = "Enter the customer's name.";
-    if (!orderPhone(phone)) e.phone = "Use 07XX XXX XXX.";
+    if (!orderPhone(phone)) e.phone = "Use 07XX XXX XXX or 01XX XXX XXX.";
     if (email.trim() && !looksLikeEmail(email)) e.email = "That email doesn't look right.";
     setFieldErr(e);
     return !Object.keys(e).length;

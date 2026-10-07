@@ -1414,5 +1414,25 @@ console.log("\n--- payhero ---");
   check("payhero: callback with a foreign reference is ignored", (await call("phcb", { response: { ExternalReference: "MT" + "0".repeat(32) } })).body?.ignored === "reference");
 }
 
+// 21. 01XX mobile numbers are accepted like 07XX (migration 20261008100000)
+console.log("\n--- 01 phone numbers ---");
+{
+  const { normalizePhone } = await import("/src/lib/phone.ts");
+  check("phone: site check accepts 0110 / 0100 / 2541… / 1…, keeps 07, rejects others",
+    normalizePhone("0110 123 456") === "254110123456" && normalizePhone("0100123456") === "254100123456" &&
+    normalizePhone("+254 111 222 333") === "254111222333" && normalizePhone("111222333") === "254111222333" &&
+    normalizePhone("0712345678") === "254712345678" && normalizePhone("0212345678") === null && normalizePhone("011012345") === null);
+  const r = await call("reserve", { ...guestN(80), phone: "0110 000 080" }, ip());
+  const bk = r.body?.access_token ? (await get(`reservations?select=phone&access_token=eq.${r.body.access_token}`))[0] : null;
+  check("phone: a free ticket with an 01 number is booked and stored as 2541…", r.status === 200 && bk?.phone === "254110000080", { r: r.body, bk });
+  const p = await call("phpay", { kind: "upgrade", access_token: r.body?.access_token, reservation_type_id: basicT.id, mpesa_phone: "0110000080" }, ip());
+  check("phone: M-Pesa prompt can go to an 01 number", p.status === 200 && payheroSent.at(-1)?.phone_number === "254110000080", p.body);
+  const v = await call("phpay", { kind: "vendor", event_id: gaEv.id, name: "Zero One Grills", phone: "0101 000 081", email: "zeroone@example.test", vendor_type: "food", mpesa_phone: "0101000081" }, ip());
+  check("phone: vendor registration with an 01 number", v.status === 200, v.body);
+  const day = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
+  const c = await call("cel", { action: "create", occasion: "birthday", event_date: day, guests: 10, setting: "not_sure", name: "Zero One", phone: "0111 000 082", email: "zero.one@example.test" }, ip());
+  check("phone: celebration request with an 01 number (database allows 2541…)", c.status === 200, c.body);
+}
+
 console.log(failures ? `\n${failures} FAILED` : "\nall passed");
 Deno.exit(failures ? 1 : 0);
