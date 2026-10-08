@@ -221,7 +221,7 @@ custom SMTP — confirm with the user that both are set.
   pending while a newer prompt is open. Site: `EventCheckout` / `ReservationForm` use the
   shared M-Pesa switch `NEXT_PUBLIC_PAYHERO_PAYMENTS`. The legacy `_shared/daraja.ts` client
   is now used only by `daraja-callback`, for orders from before the switch.
-  `VENDOR_FEE_KES=1` was still set from the Daraja test on 2026-10-08 — see Open items.
+  `VENDOR_FEE_KES` (set to 1 for the Daraja test) was unset on 2026-10-08: the tent fee is 3,500.
 
 - **PayHero — M-Pesa STK alongside Paystack (branch `feat/payhero`, 2026-10-07; backend LIVE:
   migrations applied, the four functions deployed, secrets set incl. `PAYHERO_PAYMENTS=on`,
@@ -302,8 +302,9 @@ user's say-so. Use `supabase db query --linked "<sql>"` for read-only checks.
 
 ## Open items (2026-10-03)
 
-- **`VENDOR_FEE_KES=1` is live** (left from the 2026-10-07 Daraja test): vendors pay KSh 1.
-  `supabase secrets unset VENDOR_FEE_KES` restores 3,500 — needs the user's go-ahead.
+- Test vendor registrations below 3,500 (all the user's tests, 2026-09-30 → 10-07): `VEN-ZAA5M3`,
+  `VEN-MDGX9C` (KSh 10, paid), `VEN-8VH8JJ`, `VEN-7C5GYR` (KSh 1, paid), `VEN-UPGMSN` (KSh 10,
+  unpaid) — cancel in Dashboard → Vendors if they shouldn't count.
 - Delete test reservation `NF-23X5MW` (`0700000000`, still `confirmed`) — approved,
   `scripts/delete-test-reservation.sql`, needs the user's go-ahead to run.
 - Delete the demo admin; identify the `apn…` admin.
