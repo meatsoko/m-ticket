@@ -211,6 +211,16 @@ custom SMTP — confirm with the user that both are set.
   `daraja` both mean Daraja. PayHero would need `MPESA_PROVIDER=payhero` **and**
   `PAYHERO_PAYMENTS=on` — the latter is unset. PayHero's verify/reconcile code stays so its
   earlier payments still confirm. Card support (a new method) is planned by the user.
+- **Paid tickets, gate sales and paid pre-orders also go through Daraja (2026-10-08, LIVE).**
+  `stk-push` and `reserve` create their orders as before, then `_shared/mpesa-order.ts`
+  (`startOrderStk`) opens a `payhero_payments` row (kind `event`) and sends Buy Goods to the
+  till; the order also gets the CheckoutRequestID so `order-status` keeps working.
+  `order-status` / `reservation-status` call `verifyMpesa` while an order waits. Migration
+  `20261008140000`: `confirm_payhero_event_payment` confirms bookings and mints tickets (rules
+  copied from `confirm_paystack_payment`); `fail_payhero_payment` leaves a retried order
+  pending while a newer prompt is open. Site: `EventCheckout` / `ReservationForm` use the
+  shared M-Pesa switch `NEXT_PUBLIC_PAYHERO_PAYMENTS`. The legacy `_shared/daraja.ts` client
+  is now used only by `daraja-callback`, for orders from before the switch.
   `VENDOR_FEE_KES=1` was still set from the Daraja test on 2026-10-08 — see Open items.
 
 - **PayHero — M-Pesa STK alongside Paystack (branch `feat/payhero`, 2026-10-07; backend LIVE:
@@ -233,9 +243,8 @@ custom SMTP — confirm with the user that both are set.
     checkout. When Paystack is paused and M-Pesa is on, only M-Pesa shows.
   - Switches: Supabase secret `PAYHERO_PAYMENTS=on` (fails closed) + Vercel
     `NEXT_PUBLIC_PAYHERO_PAYMENTS=on`. Secrets `PAYHERO_API_USERNAME`, `PAYHERO_API_PASSWORD`
-    (or `PAYHERO_BASIC_AUTH`), `PAYHERO_CHANNEL_ID`. Not covered yet: paid-ticket checkout
-    (`EventCheckout`/`stk-push`) and booking pre-orders (`ReservationForm`/`reserve`) — no live
-    event uses them.
+    (or `PAYHERO_BASIC_AUTH`), `PAYHERO_CHANNEL_ID`. Paid-ticket checkout and booking
+    pre-orders were wired to Daraja on 2026-10-08 (see above).
 
 - **Paystack is PAUSED (2026-10-06, user's urgent request).** Server: `_shared/paystack-switch.ts`
   — no transaction opens unless the `PAYSTACK_PAYMENTS` secret is `on` (unset = paused);
@@ -261,8 +270,8 @@ custom SMTP — confirm with the user that both are set.
   receipt is stored only after that. `DARAJA_PAYMENTS=on` opens it (fails closed). The legacy
   `daraja-callback` (paid-ticket checkout) was hardened the same way: it trusted the callback's
   success and amount; now it confirms only after the query, at the order's own amount.
-- Legacy Daraja/M-Pesa STK (paid-ticket checkout) is hidden unless `NEXT_PUBLIC_DARAJA_ENABLED=on` (Safaricom hasn't
-  enabled M-Pesa Express).
+- `NEXT_PUBLIC_DARAJA_ENABLED` is no longer read (2026-10-08): every M-Pesa button follows
+  `NEXT_PUBLIC_PAYHERO_PAYMENTS`.
 - All email goes through `supabase/functions/_shared/resend.ts`. Money is stored in KSh;
   merch is priced in USD and charged in KES at `merch_fx_rates`.
 
