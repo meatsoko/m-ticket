@@ -65,7 +65,7 @@ export default function VendorsBoard({ rows }: { rows: VendorRow[] }) {
 
   return (
     <div className="dash-stack">
-      <div className="dash-title"><h1>Vendors</h1><p>Vendor registrations from the event page. A registration stays pending until its tent fee is paid — on Paystack, or by M-Pesa (PayHero).</p></div>
+      <div className="dash-title"><h1>Vendors</h1><p>Vendor registrations from the event page. A registration stays pending until its tent fee is paid — on Paystack, or by M-Pesa.</p></div>
       <div className="dash-kpis">
         <div className="dash-kpi"><span className="dash-kpi-label">Tents secured</span><div className="dash-kpi-row"><strong>{count("paid")}</strong></div><small>paid vendors</small></div>
         <div className="dash-kpi"><span className="dash-kpi-label">Pending payment</span><div className="dash-kpi-row"><strong>{count("pending_payment")}</strong></div><small>registered, not yet paid</small></div>

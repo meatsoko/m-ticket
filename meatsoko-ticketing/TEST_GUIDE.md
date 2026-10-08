@@ -168,7 +168,7 @@ Before: migration `20261008120000` applied; `payhero-pay`, `payhero-status`, `pa
 | 12.1 | Set `MPESA_PROVIDER=daraja`, then pay a small amount (set `VENDOR_FEE_KES=1` for a vendor test) | The prompt shows the **till's name**; after the PIN, the page confirms |
 | 12.2 | Check the till statement | The money is in the till; the receipt matches Dashboard → Vendors ("M-Pesa · …") |
 | 12.3 | Start another and cancel the prompt | "Wasn't completed… nothing was charged" |
-| 12.4 | Anything wrong | `supabase secrets unset MPESA_PROVIDER` — PayHero sends the prompts again immediately |
+| 12.4 | Anything wrong | `supabase secrets unset DARAJA_PAYMENTS` closes M-Pesa. PayHero is disabled since 2026-10-08 — there is no automatic fallback any more |
 | 12.5 | After testing | Unset `VENDOR_FEE_KES`; cancel the test vendor in the dashboard |
 
 ## Report back

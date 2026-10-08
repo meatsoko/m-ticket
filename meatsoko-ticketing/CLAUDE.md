@@ -206,6 +206,13 @@ custom SMTP — confirm with the user that both are set.
 
 ## Payments, email, money
 
+- **M-Pesa = Daraja only; PayHero DISABLED (2026-10-08, the user's call).** `payhero-pay` sends
+  every STK prompt through Daraja M-Pesa Express to the till; `MPESA_PROVIDER` unset or
+  `daraja` both mean Daraja. PayHero would need `MPESA_PROVIDER=payhero` **and**
+  `PAYHERO_PAYMENTS=on` — the latter is unset. PayHero's verify/reconcile code stays so its
+  earlier payments still confirm. Card support (a new method) is planned by the user.
+  `VENDOR_FEE_KES=1` was still set from the Daraja test on 2026-10-08 — see Open items.
+
 - **PayHero — M-Pesa STK alongside Paystack (branch `feat/payhero`, 2026-10-07; backend LIVE:
   migrations applied, the four functions deployed, secrets set incl. `PAYHERO_PAYMENTS=on`,
   PayHero accepted the credentials; site not merged, Vercel flag not set, no real payment yet).** Paystack's code is untouched (the user's
@@ -286,6 +293,8 @@ user's say-so. Use `supabase db query --linked "<sql>"` for read-only checks.
 
 ## Open items (2026-10-03)
 
+- **`VENDOR_FEE_KES=1` is live** (left from the 2026-10-07 Daraja test): vendors pay KSh 1.
+  `supabase secrets unset VENDOR_FEE_KES` restores 3,500 — needs the user's go-ahead.
 - Delete test reservation `NF-23X5MW` (`0700000000`, still `confirmed`) — approved,
   `scripts/delete-test-reservation.sql`, needs the user's go-ahead to run.
 - Delete the demo admin; identify the `apn…` admin.

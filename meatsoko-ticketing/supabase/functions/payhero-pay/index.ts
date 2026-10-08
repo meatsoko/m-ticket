@@ -1,9 +1,11 @@
 // Start an M-Pesa payment (the alternative to Paystack). Creates the order
 // exactly as the Paystack flows do, records a "PH…" reference, and sends an STK
-// prompt to `mpesa_phone` through the provider chosen by the MPESA_PROVIDER
-// secret: "daraja" = M-Pesa Express to MeatSoko's own till (migration
-// 20261008120000), anything else = PayHero (migration 20261008090000). The
-// function keeps its PayHero-era name so the live site needs no change.
+// prompt to `mpesa_phone` through Daraja M-Pesa Express to MeatSoko's own till
+// (migration 20261008120000). PayHero is disabled (2026-10-08, the user's call):
+// Daraja is the default, and PayHero would take a payment only if MPESA_PROVIDER is
+// "payhero" AND PAYHERO_PAYMENTS is "on" — the latter is unset in production. Its
+// verify code stays in _shared/payhero.ts so earlier PayHero payments still confirm.
+// The function keeps its PayHero-era name so the live site needs no change.
 //
 // Body (every kind also takes `mpesa_phone`, the number to prompt):
 //   { kind: "upgrade", access_token, reservation_type_id }      table upgrade (pass holder)
@@ -22,7 +24,7 @@ import { VENDOR_FEE_KES, VENDOR_TYPES } from "../_shared/vendor.ts";
 import { newPayheroReference, payheroConfigured, payheroOpen, sendStkPush, type PayheroKind } from "../_shared/payhero.ts";
 import { darajaConfigured, darajaOpen, darajaStkPush } from "../_shared/daraja-express.ts";
 
-const provider = () => ((Deno.env.get("MPESA_PROVIDER") ?? "").trim().toLowerCase() === "daraja" ? "daraja" : "payhero");
+const provider = () => ((Deno.env.get("MPESA_PROVIDER") ?? "").trim().toLowerCase() === "payhero" ? "payhero" : "daraja");
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";

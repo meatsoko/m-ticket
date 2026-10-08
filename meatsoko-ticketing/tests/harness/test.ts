@@ -21,6 +21,8 @@ Deno.env.set("TICKET_EMAIL_FROM", "MeatSoko <tickets@example.test>");
 Deno.env.set("MERCH_NOTIFY_EMAIL", "orders@example.test, owner@example.test");
 Deno.env.set("CELEBRATIONS_NOTIFY_EMAIL", "parties@example.test");
 Deno.env.set("PAYHERO_PAYMENTS", "on");
+// PayHero is opt-in since 2026-10-08 (Daraja is the default); its own checks choose it explicitly.
+Deno.env.set("MPESA_PROVIDER", "payhero");
 Deno.env.set("PAYHERO_API_USERNAME", "ph_user_test");
 Deno.env.set("PAYHERO_API_PASSWORD", "ph_pass_test");
 Deno.env.set("PAYHERO_CHANNEL_ID", "13719");
@@ -1561,7 +1563,12 @@ console.log("\n--- daraja m-pesa express ---");
   Deno.env.delete("MPESA_PROVIDER");
   const ph0 = payheroSent.length, dj0 = darajaSent.length;
   r = await call("phpay", { kind: "upgrade", access_token: g4.access_token, reservation_type_id: basicT.id, mpesa_phone: "0712000093" }, ip());
-  check("daraja: MPESA_PROVIDER unset -> PayHero sends the prompt (fallback)", r.status === 200 && payheroSent.length === ph0 + 1 && darajaSent.length === dj0 && (await phRow(r.body?.reference))?.provider === "payhero", r.body);
+  check("daraja: MPESA_PROVIDER unset -> Daraja is the default, PayHero sends nothing", r.status === 200 && darajaSent.length === dj0 + 1 && payheroSent.length === ph0 && (await phRow(r.body?.reference))?.provider === "daraja", r.body);
+  Deno.env.set("MPESA_PROVIDER", "payhero");
+  Deno.env.set("PAYHERO_PAYMENTS", "off");
+  r = await call("phpay", { kind: "vendor", event_id: gaEv.id, name: "Off Vendor", phone: "0712000095", email: "off@example.test", vendor_type: "food", mpesa_phone: "0712000095" }, ip());
+  check("payhero disabled: MPESA_PROVIDER=payhero with PAYHERO_PAYMENTS off -> 503, nothing sent", r.status === 503 && r.body?.error === "mpesa_unavailable" && payheroSent.length === ph0, r.body);
+  Deno.env.set("PAYHERO_PAYMENTS", "on");
   Deno.env.set("MPESA_PROVIDER", "daraja");
 
   // --- the legacy callback (paid-ticket checkout) no longer trusts what it's told ---
