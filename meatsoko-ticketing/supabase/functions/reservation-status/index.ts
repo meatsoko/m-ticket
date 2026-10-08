@@ -4,6 +4,7 @@
 // because the checkout id is derivable from a phone number and a timestamp.
 import { json, preflight } from "../_shared/cors.ts";
 import { serviceClient } from "../_shared/supabase.ts";
+import { nudgeOrder } from "../_shared/mpesa-order.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return preflight();
@@ -11,10 +12,16 @@ Deno.serve(async (req) => {
   if (!access_token || !/^[a-f0-9]{32}$/.test(access_token)) return json({ error: "not_found" }, 404);
 
   const db = serviceClient();
-  const { data } = await db.from("reservations")
+  const query = () => db.from("reservations")
     .select("reservation_number,status,party_size,order_id,orders(status,amount_kes)")
     .eq("access_token", access_token).maybeSingle();
+  let { data } = await query();
   if (!data) return json({ error: "not_found" }, 404);
+  // A pre-order still waiting on M-Pesa: ask Safaricom now (its prompt is in the ledger).
+  if (data.order_id && (data as any).orders?.status === "pending") {
+    await nudgeOrder(db, data.order_id);
+    data = (await query()).data ?? data;
+  }
 
   const order: any = (data as any).orders;
   return json({

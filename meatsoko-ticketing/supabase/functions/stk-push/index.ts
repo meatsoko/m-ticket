@@ -6,7 +6,7 @@
 // reading dashboard logs. Nothing secret is ever logged: no consumer key/secret, no
 // passkey, no access token, no Authorization header. Phone numbers are masked.
 import { json, preflight } from "../_shared/cors.ts";
-import { describeDarajaConfig, initiateStk } from "../_shared/daraja.ts";
+import { mpesaReady, startOrderStk } from "../_shared/mpesa-order.ts";
 import { clientIp, normalizePhone, rateLimit, serviceClient } from "../_shared/supabase.ts";
 import { returnBase } from "../_shared/return-url.ts";
 import { paystackPaused } from "../_shared/paystack-switch.ts";
@@ -73,6 +73,10 @@ Deno.serve(async (req) => {
     if (provider === "paystack" && channel !== "web") return fail("bad_provider", 400);
     // Before any order is created, so a paused payment leaves nothing pending.
     if (provider === "paystack" && paystackPaused()) return fail("payments_paused", 503);
+    if (provider === "mpesa") {
+      const ready = mpesaReady();
+      if (!ready.ok) return fail(ready.error, 503, ready.missing ? { missing: ready.missing } : {});
+    }
     log("validated", { phone: maskPhone(buyerPhone), channel, item_count: items.length });
 
     const db = serviceClient();
@@ -236,53 +240,25 @@ Deno.serve(async (req) => {
       return json({ authorizationUrl: response.data.authorization_url, accessCode: response.data.access_code, reference, orderId: order.id, stage: "done", request_id: rid });
     }
 
-    // ---- daraja config (presence only — never the values) ----
-    stage = "daraja_config";
-    const cfg = describeDarajaConfig();
-    log("daraja config", cfg);
-    if (cfg.missing.length) {
-      await db.from("orders").update({ status: "failed" }).eq("id", order.id);
-      return fail("daraja_misconfigured", 500, { missing: cfg.missing, order_id: order.id });
-    }
-
-    // ---- STK ----
+    // ---- STK: Daraja M-Pesa Express to the till (migration 20261008140000) ----
+    // The ledger row, the prompt and the checkout id on the order all come from
+    // startOrderStk; only verifyMpesa (STK Push Query) can mark the order paid.
     stage = "daraja_stk";
-    let stk: { checkoutRequestId: string; merchantRequestId: string };
-    try {
-      stk = await initiateStk({
-        phone: buyerPhone,
-        amount,
-        accountRef: order.id.slice(0, 12).toUpperCase(),
-        description: `${event.name} ticket`.replace(/[^a-zA-Z0-9 ]/g, ""),
-      });
-      log("stk accepted", { checkout_request_id: stk.checkoutRequestId });
-      // A PIN prompt was actually delivered — that is the thing worth rate limiting.
-      if (throttled) {
-        await rateLimit(db, phoneBucket, PER_PHONE.limit, PER_PHONE.windowSeconds);
-        await rateLimit(db, ipBucket, PER_IP.limit, PER_IP.windowSeconds);
-      }
-    } catch (e) {
-      await db.from("orders").update({ status: "failed" }).eq("id", order.id);
-      // safe() carries Daraja's own ResponseCode/errorMessage text, which is what tells
-      // you whether this was bad credentials, a locked subscriber, or a timeout.
-      return fail("stk_failed", 502, { detail: safe(e), order_id: order.id });
-    }
-
-    // ---- correlate ----
-    stage = "correlate";
-    // The callback is correlated solely by checkout id, so an order that never gets one
-    // is unreconcilable money. Flag it rather than leaving it silently pending.
-    const { error: uErr } = await db.from("orders")
-      .update({ mpesa_checkout_request_id: stk.checkoutRequestId })
-      .eq("id", order.id);
-    if (uErr) {
-      await db.from("orders").update({ status: "flagged" }).eq("id", order.id);
-      return fail("order_correlation_failed", 500, { detail: uErr.message, order_id: order.id });
+    const stk = await startOrderStk(db, {
+      orderId: order.id, amountKes: amount, phone: buyerPhone,
+      accountRef: order.id.slice(0, 12), description: "Event ticket",
+    });
+    if (!stk.ok) return fail(stk.error, stk.error === "stk_failed" ? 502 : 500, { detail: stk.detail, order_id: order.id });
+    log("stk accepted", { checkout_request_id: stk.checkoutRequestId, ref: stk.reference.slice(0, 10) });
+    // A PIN prompt was actually delivered — that is the thing worth rate limiting.
+    if (throttled) {
+      await rateLimit(db, phoneBucket, PER_PHONE.limit, PER_PHONE.windowSeconds);
+      await rateLimit(db, ipBucket, PER_IP.limit, PER_IP.windowSeconds);
     }
 
     stage = "done";
     log("success", { order_id: order.id });
-    return json({ checkoutRequestId: stk.checkoutRequestId, orderId: order.id, stage, request_id: rid });
+    return json({ checkoutRequestId: stk.checkoutRequestId, reference: stk.reference, orderId: order.id, stage, request_id: rid });
   } catch (e) {
     // Anything unanticipated still returns a structured, non-sensitive response instead
     // of letting the isolate die with the caller seeing only a network error.

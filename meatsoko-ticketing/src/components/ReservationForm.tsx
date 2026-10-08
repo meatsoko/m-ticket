@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
 import { openPaystackPopup } from "@/lib/paystack-popup";
 import { PAYMENTS_PAUSED, PAYMENT_PAUSED_MESSAGE } from "@/lib/payments";
+import { MPESA_ENABLED } from "@/lib/payhero";
 import { normalizePhone, looksLikeEmail, PHONE_HINT, EMAIL_HINT } from "@/lib/phone";
 import QrImage from "@/components/QrImage";
 import Icon from "@/components/Icon";
@@ -17,7 +18,11 @@ type Phase = "form" | "submitting" | "awaiting_payment" | "done" | "failed";
 // Paystack (M-Pesa or card, in a popup) is the payment path, as for tickets and
 // merchandise. Direct M-Pesa STK via Daraja is kept for when Safaricom enables
 // M-Pesa Express on the shortcode; until then offering it would only fail.
-const DARAJA_ENABLED = process.env.NEXT_PUBLIC_DARAJA_ENABLED === "on";
+// M-Pesa goes through Daraja to the till (stk-push / reserve, migration 20261008140000)
+// and shows under the same switch as every other M-Pesa button on the site.
+const DARAJA_ENABLED = MPESA_ENABLED;
+// A choice only while both providers are open (Paystack is paused).
+const PROVIDER_CHOICE = MPESA_ENABLED && !PAYMENTS_PAUSED;
 type BookingStep = "selection" | "details" | "payment";
 
 type Confirmed = {
@@ -335,6 +340,9 @@ export default function ReservationForm({
         return PAYMENT_PAUSED_MESSAGE;
       case "paystack_misconfigured":
         return "Paystack is temporarily unavailable. Please try again shortly.";
+      case "mpesa_unavailable":
+      case "daraja_misconfigured":
+        return "M-Pesa is temporarily unavailable. Your place is held — please try again shortly.";
       case "payments_unavailable":
         return "Preordering isn't open yet. Your place can still be reserved for free.";
       default:
@@ -558,7 +566,7 @@ export default function ReservationForm({
           </div>
           <strong className="num">KSh {total.toLocaleString()}</strong>
         </div>
-        {total > 0 && !hasTablePackages && DARAJA_ENABLED && (
+        {total > 0 && !hasTablePackages && PROVIDER_CHOICE && (
           <label className="field">
             <span>Payment method</span>
             <select value={provider} onChange={(e) => setProvider(e.target.value as "mpesa" | "paystack")}>

@@ -116,7 +116,7 @@ globalThis.fetch = async (input: any, init?: any) => {
 const handlers: Record<string, (r: Request) => Promise<Response>> = {};
 let loading = "";
 (Deno as any).serve = (h: any) => { handlers[loading] = h; return { finished: Promise.resolve() }; };
-for (const [name, path] of [["checkout", "merch-checkout"], ["order", "merch-order"], ["webhook", "paystack-webhook"], ["fx", "merch-fx-refresh"], ["reconcile", "paystack-reconcile"], ["reserve", "reserve"], ["reslookup", "reservation-lookup"], ["lookup", "lookup"], ["verify", "paystack-verify"], ["upgrade", "upgrade-reservation"], ["bytoken", "reservation-by-token"], ["vendor", "vendor-apply"], ["oreg", "online-register"], ["oacc", "online-access"], ["addon", "platter-addon"], ["inv", "investor-register"], ["receipt", "event-order-receipt"], ["cust", "customer-order"], ["cel", "celebration-request"], ["phpay", "payhero-pay"], ["phcb", "payhero-callback"], ["phst", "payhero-status"], ["phrec", "payhero-reconcile"], ["stkres", "stk-result"], ["darcb", "daraja-callback"]]) {
+for (const [name, path] of [["checkout", "merch-checkout"], ["order", "merch-order"], ["webhook", "paystack-webhook"], ["fx", "merch-fx-refresh"], ["reconcile", "paystack-reconcile"], ["reserve", "reserve"], ["reslookup", "reservation-lookup"], ["lookup", "lookup"], ["verify", "paystack-verify"], ["upgrade", "upgrade-reservation"], ["bytoken", "reservation-by-token"], ["vendor", "vendor-apply"], ["oreg", "online-register"], ["oacc", "online-access"], ["addon", "platter-addon"], ["inv", "investor-register"], ["receipt", "event-order-receipt"], ["cust", "customer-order"], ["cel", "celebration-request"], ["phpay", "payhero-pay"], ["phcb", "payhero-callback"], ["phst", "payhero-status"], ["phrec", "payhero-reconcile"], ["stkres", "stk-result"], ["darcb", "daraja-callback"], ["stkpush", "stk-push"], ["ostatus", "order-status"], ["rstatus", "reservation-status"]]) {
   loading = name; await import(`/fns/${path}/index.ts`);
 }
 const call = async (name: string, body: unknown, headers: Record<string, string> = {}) => {
@@ -1570,6 +1570,75 @@ console.log("\n--- daraja m-pesa express ---");
   check("payhero disabled: MPESA_PROVIDER=payhero with PAYHERO_PAYMENTS off -> 503, nothing sent", r.status === 503 && r.body?.error === "mpesa_unavailable" && payheroSent.length === ph0, r.body);
   Deno.env.set("PAYHERO_PAYMENTS", "on");
   Deno.env.set("MPESA_PROVIDER", "daraja");
+
+  // --- paid tickets and paid pre-orders on the same Daraja path (migration 20261008140000) ---
+  const [dayPass] = await post("ticket_types", [{ event_id: gaEv.id, name: "Day pass", price_kes: 500, quantity_cap: 10, position: 9 }]);
+  const tbuy = { event_id: gaEv.id, phone: "0712000097", email: "tix@example.test", items: [{ ticket_type_id: dayPass.id, qty: 2 }], provider: "mpesa" };
+  r = await call("stkpush", tbuy, ip());
+  const tId: string = r.body?.checkoutRequestId;
+  const tRow = await phRow(r.body?.reference);
+  const tSent = darajaSent.at(-1);
+  let tOrder = (await get(`orders?select=*&mpesa_checkout_request_id=eq.${tId}`))[0];
+  check("tickets by M-Pesa: Buy Goods to the till for KSh 1,000, ledger row on the order, checkout id on the order",
+    r.status === 200 && tSent?.PartyB === "600200" && tSent?.Amount === 1000 && /stk-result$/.test(tSent?.CallBackURL ?? "") &&
+    tRow?.provider === "daraja" && tRow?.kind === "event" && tRow?.order_id === tOrder?.id && tOrder?.status === "pending" && tOrder?.payment_provider === "mpesa", { r: r.body, tRow, tOrder });
+  r = await call("ostatus", { checkoutRequestId: tId });
+  check("tickets by M-Pesa: order-status while the PIN is pending -> pending, no tickets", r.body?.status === "pending", r.body);
+  await call("stkres", stkCb(tId, true, "FORGEDT001", 1000));
+  check("tickets by M-Pesa: a forged success callback mints nothing", (await get(`tickets?select=id&order_id=eq.${tOrder.id}`)).length === 0);
+  daraja.set(tId, { state: "success" });
+  sentEmails.length = 0;
+  r = await call("ostatus", { checkoutRequestId: tId });
+  check("tickets by M-Pesa: order-status asks Safaricom -> paid, two tickets, emailed once",
+    r.body?.status === "paid" && r.body?.tickets?.length === 2 && sentEmails.filter((m: any) => m.to?.[0] === "tix@example.test").length === 1, { r: r.body, mails: sentEmails.map((m: any) => m.to) });
+  await call("ostatus", { checkoutRequestId: tId });
+  await call("phrec", {});
+  check("tickets by M-Pesa: polling again and reconcile mint nothing more", (await get(`tickets?select=id&order_id=eq.${tOrder.id}`)).length === 2 && sentEmails.filter((m: any) => m.to?.[0] === "tix@example.test").length === 1);
+
+  // A retry reuses the order: a cancelled first prompt must not fail it under the second.
+  r = await call("stkpush", { ...tbuy, phone: "0712000098", email: "retry@example.test", items: [{ ticket_type_id: dayPass.id, qty: 1 }] }, ip());
+  const rId1: string = r.body?.checkoutRequestId, rOrder: string = r.body?.orderId;
+  r = await call("stkpush", { ...tbuy, phone: "0712000098", email: "retry@example.test", items: [{ ticket_type_id: dayPass.id, qty: 1 }], order_id: rOrder }, ip());
+  const rId2: string = r.body?.checkoutRequestId;
+  daraja.set(rId1, { state: "failed" });
+  await call("stkres", stkCb(rId1, false));
+  check("tickets retry: the first prompt cancelled -> order still pending for the second", r.body?.orderId === rOrder && rId2 !== rId1 && (await get(`orders?select=status&id=eq.${rOrder}`))[0]?.status === "pending");
+  daraja.set(rId2, { state: "success" });
+  r = await call("ostatus", { checkoutRequestId: rId2 });
+  check("tickets retry: the second prompt paid -> one ticket", r.body?.status === "paid" && r.body?.tickets?.length === 1, r.body);
+
+  // Sold out between the prompt and the PIN: the money is flagged, never dropped.
+  r = await call("stkpush", { ...tbuy, phone: "0712000099", email: "cap@example.test", items: [{ ticket_type_id: dayPass.id, qty: 1 }] }, ip());
+  const cId: string = r.body?.checkoutRequestId, cRef: string = r.body?.reference;
+  await patch(`ticket_types?id=eq.${dayPass.id}`, { quantity_cap: 3 });
+  daraja.set(cId, { state: "success" });
+  await call("ostatus", { checkoutRequestId: cId });
+  const cOrder = (await get(`orders?select=status,paid_at&mpesa_checkout_request_id=eq.${cId}`))[0];
+  check("tickets by M-Pesa: cap reached before the PIN -> order flagged with paid_at, no ticket", cOrder?.status === "flagged" && !!cOrder?.paid_at && (await phRow(cRef))?.outcome === "cap_exceeded", { cOrder, row: await phRow(cRef) });
+
+  // A booking with a paid pre-order (reserve, provider mpesa).
+  sentEmails.length = 0;
+  r = await call("reserve", { event_id: oldEv.id, guest_name: "Mpesa Table", phone: "0733000097", email: "mtable@example.test", reservation_type_id: oldT.id, preorders: [], provider: "mpesa" }, ip());
+  const mTok: string = r.body?.access_token, mNum: string = r.body?.reservation_number;
+  const mSent = darajaSent.at(-1);
+  check("booking by M-Pesa: KSh 1,945 to the till, booking number as the account reference, pending payment",
+    r.status === 200 && r.body?.payment_required === true && r.body?.status === "pending_payment" && mSent?.PartyB === "600200" && mSent?.Amount === 1945 &&
+    mSent?.AccountReference === mNum.replace(/[^A-Za-z0-9]/g, "").slice(0, 12).toUpperCase() && !!r.body?.checkoutRequestId, { r: r.body, mSent });
+  r = await call("rstatus", { access_token: mTok });
+  check("booking by M-Pesa: reservation-status while pending -> pending_payment / pending", r.body?.status === "pending_payment" && r.body?.payment_status === "pending", r.body);
+  const mOrder = (await get(`orders?select=mpesa_checkout_request_id&id=eq.${(await booking(mTok)).order_id}`))[0];
+  daraja.set(mOrder?.mpesa_checkout_request_id, { state: "success" });
+  r = await call("rstatus", { access_token: mTok });
+  check("booking by M-Pesa: reservation-status asks Safaricom -> confirmed, paid, pass emailed",
+    r.body?.status === "confirmed" && r.body?.payment_status === "paid" && sentEmails.some((m: any) => m.to?.[0] === "mtable@example.test"), { r: r.body, mails: sentEmails.map((m: any) => m.to) });
+
+  // Closed: nothing is created.
+  Deno.env.set("DARAJA_PAYMENTS", "off");
+  const ordersBefore = (await get(`orders?select=id&event_id=eq.${gaEv.id}`)).length;
+  r = await call("stkpush", { ...tbuy, phone: "0712000100", email: "closed@example.test" }, ip());
+  check("tickets by M-Pesa: Daraja closed -> 503 mpesa_unavailable, no order created",
+    r.status === 503 && r.body?.error === "mpesa_unavailable" && (await get(`orders?select=id&event_id=eq.${gaEv.id}`)).length === ordersBefore, r.body);
+  Deno.env.set("DARAJA_PAYMENTS", "on");
 
   // --- the legacy callback (paid-ticket checkout) no longer trusts what it's told ---
   const lo = (await post("orders", { event_id: gaEv.id, buyer_phone: "254712000094", buyer_email: "legacy@example.test", channel: "web", amount_kes: 500, status: "pending", mpesa_checkout_request_id: "ws_CO_legacy1" }))[0];

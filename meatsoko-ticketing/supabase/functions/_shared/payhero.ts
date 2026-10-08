@@ -15,6 +15,7 @@
 // to open payments (anything else = closed; verifying earlier payments still runs).
 import { serviceClient } from "./supabase.ts";
 import { buildAndSend } from "./reservation-email.ts";
+import { sendTicketEmail } from "./email.ts";
 import { notifyMerchOrder, sendMerchOrderEmail } from "./merch.ts";
 import { sendVendorEmail, VENDOR_TYPES } from "./vendor.ts";
 import { escapeHtml as esc, sendEmail } from "./resend.ts";
@@ -154,7 +155,9 @@ export async function verifyMpesa(db: Db, reference: string): Promise<{ status: 
 /** The same emails the Paystack path sends once money is confirmed. */
 async function afterConfirmed(db: Db, kind: PayheroKind, r: any) {
   try {
-    if (kind === "event") {
+    if (kind === "event" && r.kind === "ticket") {
+      await sendTicketsFor(db, r.order_id);
+    } else if (kind === "event") {
       const appUrl = (Deno.env.get("APP_URL") ?? "").trim();
       if (appUrl && r.reservation_id) await buildAndSend(db, r.reservation_id, appUrl);
     } else if (kind === "vendor") {
@@ -177,4 +180,20 @@ async function notifyVendorOrganiser(db: Db, id: string) {
     `Phone 0${String(v.phone).slice(3)} · ${v.email}`, v.description ? `About: ${v.description}` : "",
     `Paid KSh ${Math.round(Number(v.amount_kes)).toLocaleString("en-KE")} by M-Pesa (PayHero)`].filter(Boolean).join("\n");
   return sendEmail({ to, subject: `New vendor: ${v.name} — ${v.events?.name ?? ""}`, html: `<pre style="font-family:system-ui,sans-serif;font-size:14px">${esc(text)}</pre>`, text });
+}
+
+/** Paid-ticket order (stk-push): the same ticket email the Paystack path sends. Gate sales get none. */
+async function sendTicketsFor(db: Db, orderId: string) {
+  const { data: order }: any = await db.from("orders")
+    .select("buyer_email,channel,events(name,venue,starts_at)").eq("id", orderId).maybeSingle();
+  if (!order?.buyer_email || order.channel === "gate") return;
+  const { data: tickets } = await db.from("tickets").select("qr_token,ticket_types(name,bundle_qty)").eq("order_id", orderId);
+  if (!tickets?.length) return;
+  await sendTicketEmail({
+    to: order.buyer_email,
+    eventName: order.events?.name ?? "Your event",
+    venue: order.events?.venue ?? null,
+    startsAt: order.events?.starts_at ?? null,
+    tickets: tickets.map((t: any) => ({ token: t.qr_token, typeName: t.ticket_types?.name ?? "Ticket", bundleQty: t.ticket_types?.bundle_qty ?? 1 })),
+  });
 }

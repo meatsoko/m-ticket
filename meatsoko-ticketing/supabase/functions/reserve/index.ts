@@ -5,11 +5,11 @@
 //     no  -> confirmed immediately, no order, payment provider is not contacted
 //     yes -> order created by create_reservation(), then M-Pesa STK or Paystack
 //
-// There is no second payment implementation here: this calls the same
-// initiateStk() the ticket checkout uses, and the same daraja-callback ->
-// confirm_payment() path completes it.
+// There is no second payment implementation here: M-Pesa goes through
+// startOrderStk (Daraja to the till, the payhero_payments ledger), the same path
+// as paid tickets, and verifyMpesa -> confirm_payhero_event_payment completes it.
 import { json, preflight } from "../_shared/cors.ts";
-import { initiateStk } from "../_shared/daraja.ts";
+import { mpesaReady, startOrderStk } from "../_shared/mpesa-order.ts";
 import { clientIp, normalizePhone, rateLimit, serviceClient } from "../_shared/supabase.ts";
 import { returnBase } from "../_shared/return-url.ts";
 import { paystackPaused } from "../_shared/paystack-switch.ts";
@@ -326,48 +326,41 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Existing M-Pesa STK path.
+    // M-Pesa: Daraja M-Pesa Express to the till (migration 20261008140000). The
+    // reservation survives as pending_payment whatever happens here, so the guest
+    // can retry without losing their place or their number.
     stage = "daraja_stk";
-    try {
-      const stk = await initiateStk({
-        phone: guestPhone,
-        amount,
-        accountRef: res.reservation_number.replace(/[^A-Z0-9]/gi, "").slice(0, 12).toUpperCase(),
-        description: `${ev?.name ?? "Event"} preorder`.replace(/[^a-zA-Z0-9 ]/g, ""),
-      });
-
-      stage = "correlate";
-      const { error: uErr } = await db.from("orders")
-        .update({ mpesa_checkout_request_id: stk.checkoutRequestId })
-        .eq("id", res.order_id);
-      if (uErr) {
-        await db.from("orders").update({ status: "flagged" }).eq("id", res.order_id);
-        return fail("order_correlation_failed", 500, { detail: uErr.message });
-      }
-
-      stage = "done";
-      return json({
-        reservation_number: res.reservation_number,
-        ...own(res.access_token),
-        party_size: res.party_size,
-        status: res.status,                       // pending_payment
-        amount_kes: amount,
-        payment_required: true,
-        checkoutRequestId: stk.checkoutRequestId,
-        order_id: res.order_id,
-        request_id: rid,
-      });
-    } catch (e) {
-      // The reservation survives as pending_payment so the guest can retry
-      // without losing their place or their number.
-      await db.from("orders").update({ status: "failed" }).eq("id", res.order_id);
-      return fail("stk_failed", 502, {
-        detail: String(e).slice(0, 300),
-        reservation_number: res.reservation_number,
-        ...own(res.access_token),
-        amount_kes: amount,
+    const ready = mpesaReady();
+    if (!ready.ok) {
+      await db.from("orders").update({ status: "failed" }).eq("id", res.order_id).eq("status", "pending");
+      return fail(ready.error, 503, {
+        ...(ready.missing ? { missing: ready.missing } : {}),
+        reservation_number: res.reservation_number, ...own(res.access_token), amount_kes: amount,
       });
     }
+    const stk = await startOrderStk(db, {
+      orderId: res.order_id, amountKes: amount, phone: guestPhone,
+      accountRef: res.reservation_number, description: "Event booking",
+    });
+    if (!stk.ok) {
+      return fail(stk.error, stk.error === "stk_failed" ? 502 : 500, {
+        detail: stk.detail, reservation_number: res.reservation_number,
+        ...own(res.access_token), amount_kes: amount,
+      });
+    }
+
+    stage = "done";
+    return json({
+      reservation_number: res.reservation_number,
+      ...own(res.access_token),
+      party_size: res.party_size,
+      status: res.status,                       // pending_payment
+      amount_kes: amount,
+      payment_required: true,
+      checkoutRequestId: stk.checkoutRequestId,
+      order_id: res.order_id,
+      request_id: rid,
+    });
   } catch (e) {
     console.error(JSON.stringify({ rid, stage, error: "unhandled", detail: String(e).slice(0, 300) }));
     return json({ error: "server_error", stage, request_id: rid }, 500);

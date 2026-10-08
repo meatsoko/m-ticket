@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
 import { openPaystackPopup } from "@/lib/paystack-popup";
 import { PAYMENTS_PAUSED, PAYMENT_PAUSED_MESSAGE } from "@/lib/payments";
+import { MPESA_ENABLED } from "@/lib/payhero";
 import { normalizePhone, looksLikeEmail, PHONE_HINT, EMAIL_HINT } from "@/lib/phone";
 import QrImage from "@/components/QrImage";
 import Icon from "@/components/Icon";
@@ -14,7 +15,11 @@ const APP_URL = () => process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin;
 // Paystack (M-Pesa or card, in a popup) is the payment path, as for merchandise.
 // Direct M-Pesa STK via Daraja stays in the code for when Safaricom enables M-Pesa
 // Express on the shortcode; until then offering it would only fail.
-const DARAJA_ENABLED = process.env.NEXT_PUBLIC_DARAJA_ENABLED === "on";
+// M-Pesa goes through Daraja to the till (stk-push / reserve, migration 20261008140000)
+// and shows under the same switch as every other M-Pesa button on the site.
+const DARAJA_ENABLED = MPESA_ENABLED;
+// A choice only while both providers are open (Paystack is paused).
+const PROVIDER_CHOICE = MPESA_ENABLED && !PAYMENTS_PAUSED;
 
 type InvokeResult = {
   data: any; status: number | null; errorCode: string | null; transportError: boolean;
@@ -177,6 +182,7 @@ export default function EventCheckout({
         return "M-Pesa did not accept the request. Check the number and try again.";
       case "payments_paused":
         return PAYMENT_PAUSED_MESSAGE;
+      case "mpesa_unavailable":
       case "daraja_misconfigured":
       case "paystack_misconfigured":
         return "Payments are temporarily unavailable. Please try again shortly.";
@@ -287,7 +293,7 @@ export default function EventCheckout({
       </div>
 
       <div className="card">
-        {DARAJA_ENABLED && (
+        {PROVIDER_CHOICE && (
           <label className="field">
             <span>Payment method</span>
             <select value={provider} onChange={(e) => setProvider(e.target.value as "mpesa" | "paystack")}>
