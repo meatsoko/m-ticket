@@ -15,9 +15,10 @@ import MpesaPay from "@/components/payments/MpesaPay";
 
 export const VENDOR_FEE_KES = 3500; // display only — vendor-apply charges the real fee
 export const PENDING_VENDOR_KEY = "pending_vendor_payment";
+// No food or drinks (the user, 2026-10-09). The server refuses them too
+// (OPEN_VENDOR_TYPES in supabase/functions/_shared/vendor.ts).
 const TYPES = [
-  { id: "food", label: "Food" }, { id: "drinks", label: "Drinks" }, { id: "merchandise", label: "Merchandise" },
-  { id: "services", label: "Services" }, { id: "other", label: "Other" },
+  { id: "merchandise", label: "Merchandise" }, { id: "services", label: "Services" }, { id: "other", label: "Other" },
 ];
 
 // Shown on /events in the dark "take part" band, beside Plan a celebration.
@@ -156,6 +157,7 @@ function explain(code: string | null, transport: boolean, d: any): string {
     case "event_not_live": return "Vendor registration isn't open for this event.";
     case "invalid_phone": return "That phone number doesn't look right. Use the format 07XX XXX XXX or 01XX XXX XXX.";
     case "email_required": return "We need a valid email for your receipt.";
+    case "bad_vendor_type": return "Choose what you'll offer: merchandise, services or other. Food and drinks vendors aren't being taken.";
     case "payments_paused": return PAYMENT_PAUSED_MESSAGE;
     case "paystack_init_failed":
     case "paystack_misconfigured": return `Your registration${d?.reference_number ? ` (${d.reference_number})` : ""} is saved as pending, but Paystack couldn't be opened. Please try again.`;

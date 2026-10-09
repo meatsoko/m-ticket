@@ -10,7 +10,7 @@ import { json, preflight } from "../_shared/cors.ts";
 import { clientIp, normalizePhone, rateLimit, serviceClient } from "../_shared/supabase.ts";
 import { returnBase } from "../_shared/return-url.ts";
 import { paystackPaused } from "../_shared/paystack-switch.ts";
-import { VENDOR_FEE_KES, VENDOR_TYPES } from "../_shared/vendor.ts";
+import { OPEN_VENDOR_TYPES, VENDOR_FEE_KES } from "../_shared/vendor.ts";
 
 const PER_PHONE = { limit: 5, windowSeconds: 600 };
 const PER_IP = { limit: 20, windowSeconds: 600 };
@@ -34,7 +34,7 @@ Deno.serve(async (req) => {
   if (name.length < 2 || name.length > 120) return json({ error: "invalid_name" }, 400);
   if (!phone) return json({ error: "invalid_phone" }, 400);
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ error: "email_required" }, 400);
-  if (!VENDOR_TYPES[vendorType]) return json({ error: "bad_vendor_type" }, 400);
+  if (!OPEN_VENDOR_TYPES.has(vendorType)) return json({ error: "bad_vendor_type" }, 400);
   if (!/^[0-9a-f-]{36}$/i.test(eventId)) return json({ error: "missing_event_id" }, 400);
 
   const db = serviceClient();

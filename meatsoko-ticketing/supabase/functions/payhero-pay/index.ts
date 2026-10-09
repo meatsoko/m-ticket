@@ -20,7 +20,7 @@
 import { json, preflight } from "../_shared/cors.ts";
 import { clientIp, normalizePhone, rateLimit, serviceClient } from "../_shared/supabase.ts";
 import { ensureFreshRate } from "../_shared/fx.ts";
-import { VENDOR_FEE_KES, VENDOR_TYPES } from "../_shared/vendor.ts";
+import { OPEN_VENDOR_TYPES, VENDOR_FEE_KES } from "../_shared/vendor.ts";
 import { newPayheroReference, payheroConfigured, payheroOpen, sendStkPush, type PayheroKind } from "../_shared/payhero.ts";
 import { darajaConfigured, darajaOpen, darajaStkPush } from "../_shared/daraja-express.ts";
 
@@ -162,7 +162,7 @@ async function startVendor(db: any, b: any): Promise<Target | Refusal> {
   if (name.length < 2 || name.length > 120) return { error: "invalid_name", status: 400 };
   if (!phone) return { error: "invalid_phone", status: 400 };
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { error: "email_required", status: 400 };
-  if (!VENDOR_TYPES[vendorType]) return { error: "bad_vendor_type", status: 400 };
+  if (!OPEN_VENDOR_TYPES.has(vendorType)) return { error: "bad_vendor_type", status: 400 };
   if (!UUID.test(eventId)) return { error: "missing_event_id", status: 400 };
   const byVendorPhone = await rateLimit(db, `vendor:phone:${phone}`, 5, 600);
   if (!byVendorPhone.allowed) return { error: "rate_limited", status: 429 };

@@ -11,9 +11,13 @@ export const VENDOR_REFERENCE = /^MV[a-f0-9]{32}$/;
 // registration stores the fee it was charged, and confirmation checks against that.
 const feeOverride = Number(Deno.env.get("VENDOR_FEE_KES") ?? "");
 export const VENDOR_FEE_KES = Number.isInteger(feeOverride) && feeOverride > 0 ? feeOverride : 3500;
+/** Labels for every type a registration can hold, including ones no longer offered. */
 export const VENDOR_TYPES: Record<string, string> = {
   food: "Food", drinks: "Drinks", merchandise: "Merchandise", services: "Services", other: "Other",
 };
+/** What a new registration may choose. Food and drinks closed on 2026-10-09 (the user's call);
+ * existing food/drinks registrations keep their label. */
+export const OPEN_VENDOR_TYPES = new Set(["merchandise", "services", "other"]);
 
 type Db = ReturnType<typeof serviceClient>;
 const kes = (n: number) => `KSh ${Math.round(Number(n)).toLocaleString("en-KE")}`;

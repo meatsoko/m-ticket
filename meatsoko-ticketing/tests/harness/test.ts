@@ -654,7 +654,7 @@ console.log("\n--- dashboard overview ---");
 // 13. Vendors (vendor-apply, MV payments)
 console.log("\n--- vendors ---");
 {
-  const vend = (n: number, extra: Record<string, unknown> = {}) => ({ event_id: gaEv.id, name: `Vendor ${n} Grills`, phone: `07330000${String(n).padStart(2, "0")}`, email: `vendor${n}@example.test`, vendor_type: "food", description: "Choma and chips", ...extra });
+  const vend = (n: number, extra: Record<string, unknown> = {}) => ({ event_id: gaEv.id, name: `Vendor ${n} Grills`, phone: `07330000${String(n).padStart(2, "0")}`, email: `vendor${n}@example.test`, vendor_type: "merchandise", description: "Choma and chips", ...extra });
   const vrow = async (phone: string) => (await get(`vendor_applications?select=id,reference_number,status,paystack_reference,prior_references,flag_reason,amount_kes&event_id=eq.${gaEv.id}&phone=eq.254${phone.slice(1)}`));
   sentEmails.length = 0;
   let v = await call("vendor", vend(1), ip());
@@ -665,7 +665,14 @@ console.log("\n--- vendors ---");
   let vv = await call("verify", { reference: ref1 });
   rows = await vrow(vend(1).phone);
   check("vendor: abandoned payment -> not_paid, registration stays pending", vv.body?.result === "not_paid" && rows[0].status === "pending_payment", { vv: vv.body, rows });
-  v = await call("vendor", vend(1, { vendor_type: "drinks" }), ip());
+  for (const closed of ["food", "drinks"]) {
+    const c1 = await call("vendor", vend(9, { vendor_type: closed }), ip());
+    const c2 = await call("phpay", { kind: "vendor", ...vend(9, { vendor_type: closed }), mpesa_phone: "0733000009" }, ip());
+    check(`vendor type '${closed}' is no longer offered: refused on Paystack and M-Pesa, nothing saved`,
+      c1.status === 400 && c1.body?.error === "bad_vendor_type" && c2.status === 400 && c2.body?.error === "bad_vendor_type" &&
+      (await get(`vendor_applications?select=id&phone=eq.254733000009`)).length === 0, { c1: c1.body, c2: c2.body });
+  }
+  v = await call("vendor", vend(1, { vendor_type: "services" }), ip());
   const ref2 = v.body?.reference;
   rows = await vrow(vend(1).phone);
   check("vendor: retry reuses the same registration (same number), new payment, old ref kept", v.status === 200 && v.body?.reference_number === num1 && ref2 !== ref1 && rows.length === 1 && rows[0].paystack_reference === ref2 && rows[0].prior_references.includes(ref1), rows);
@@ -1405,7 +1412,7 @@ console.log("\n--- payhero ---");
   check("payhero add-on: PayHero reports a different amount -> order flagged (paid_at set), not applied", row?.outcome === "amount_mismatch" && o3?.status === "flagged" && !!o3?.paid_at, { row, o3 });
 
   // --- vendor tent fee, settled by the reconcile job ---
-  r = await call("phpay", { kind: "vendor", event_id: gaEv.id, name: "Mpesa Grills", phone: "0733000099", email: "mgrills@example.test", vendor_type: "food", mpesa_phone: "0733000099" }, ip());
+  r = await call("phpay", { kind: "vendor", event_id: gaEv.id, name: "Mpesa Grills", phone: "0733000099", email: "mgrills@example.test", vendor_type: "merchandise", mpesa_phone: "0733000099" }, ip());
   const ref4: string = r.body?.reference;
   const ven = (await get(`vendor_applications?select=id,status,paystack_reference&event_id=eq.${gaEv.id}&phone=eq.254733000099`))[0];
   check("payhero vendor: registration pending, STK for KSh 3,500, no Paystack reference", r.status === 200 && r.body?.amount_kes === 3500 && /^VEN-/.test(r.body?.reference_number ?? "") && ven?.status === "pending_payment" && ven?.paystack_reference === null, { r: r.body, ven });
@@ -1415,9 +1422,9 @@ console.log("\n--- payhero ---");
   r = await call("phrec", {});
   const ven2 = (await get(`vendor_applications?select=status&id=eq.${ven?.id}`))[0];
   check("payhero vendor: reconcile finds it -> paid, vendor emailed", r.status === 200 && (r.body?.checked ?? 0) >= 1 && ven2?.status === "paid" && sentEmails.some((m: any) => m.to?.[0] === "mgrills@example.test"), { r: r.body, ven2 });
-  r = await call("phpay", { kind: "vendor", event_id: gaEv.id, name: "Mpesa Grills", phone: "0733000099", email: "mgrills@example.test", vendor_type: "food", mpesa_phone: "0733000099" }, ip());
+  r = await call("phpay", { kind: "vendor", event_id: gaEv.id, name: "Mpesa Grills", phone: "0733000099", email: "mgrills@example.test", vendor_type: "merchandise", mpesa_phone: "0733000099" }, ip());
   check("payhero vendor: a number that has paid can register another tent (new VEN- number)", r.status === 200 && /^VEN-/.test(r.body?.reference_number ?? "") && r.body?.reference_number !== (await get(`vendor_applications?select=reference_number&id=eq.${ven?.id}`))[0]?.reference_number, r.body);
-  const retry = await call("phpay", { kind: "vendor", event_id: gaEv.id, name: "Mpesa Grills", phone: "0733000099", email: "mgrills@example.test", vendor_type: "drinks", mpesa_phone: "0733000099" }, ip());
+  const retry = await call("phpay", { kind: "vendor", event_id: gaEv.id, name: "Mpesa Grills", phone: "0733000099", email: "mgrills@example.test", vendor_type: "services", mpesa_phone: "0733000099" }, ip());
   check("payhero vendor: retrying while that one is unpaid reuses it (no duplicate)", retry.status === 200 && retry.body?.reference_number === r.body?.reference_number && (await get(`vendor_applications?select=id&event_id=eq.${gaEv.id}&phone=eq.254733000099`)).length === 2, retry.body);
 
   // --- merchandise ---
@@ -1460,7 +1467,7 @@ console.log("\n--- 01 phone numbers ---");
   check("phone: a free ticket with an 01 number is booked and stored as 2541…", r.status === 200 && bk?.phone === "254110000080", { r: r.body, bk });
   const p = await call("phpay", { kind: "upgrade", access_token: r.body?.access_token, reservation_type_id: basicT.id, mpesa_phone: "0110000080" }, ip());
   check("phone: M-Pesa prompt can go to an 01 number", p.status === 200 && payheroSent.at(-1)?.phone_number === "254110000080", p.body);
-  const v = await call("phpay", { kind: "vendor", event_id: gaEv.id, name: "Zero One Grills", phone: "0101 000 081", email: "zeroone@example.test", vendor_type: "food", mpesa_phone: "0101000081" }, ip());
+  const v = await call("phpay", { kind: "vendor", event_id: gaEv.id, name: "Zero One Grills", phone: "0101 000 081", email: "zeroone@example.test", vendor_type: "merchandise", mpesa_phone: "0101000081" }, ip());
   check("phone: vendor registration with an 01 number", v.status === 200, v.body);
   const day = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
   const c = await call("cel", { action: "create", occasion: "birthday", event_date: day, guests: 10, setting: "not_sure", name: "Zero One", phone: "0111 000 082", email: "zero.one@example.test" }, ip());
@@ -1538,7 +1545,7 @@ console.log("\n--- daraja m-pesa express ---");
   check("daraja: cancelled PIN (1032) -> failed, add-on released", r.body?.status === "failed" && row?.status === "failed" && (await get(`reservation_addons?select=status&order_id=eq.${row?.order_id}`))[0]?.status === "failed", { r: r.body, row });
 
   // --- vendor paid with the callback lost: reconcile finds it, the late callback only adds the receipt ---
-  r = await call("phpay", { kind: "vendor", event_id: gaEv.id, name: "Till Grills", phone: "0733000092", email: "tillgrills@example.test", vendor_type: "food", mpesa_phone: "0733000092" }, ip());
+  r = await call("phpay", { kind: "vendor", event_id: gaEv.id, name: "Till Grills", phone: "0733000092", email: "tillgrills@example.test", vendor_type: "merchandise", mpesa_phone: "0733000092" }, ip());
   const ref3: string = r.body?.reference;
   const id3 = (await phRow(ref3)).checkout_request_id;
   check("daraja vendor: TransactionDesc and the VEN- reference on the prompt", darajaSent.at(-1)?.TransactionDesc === "Vendor tent" && /^VEN-/.test(darajaSent.at(-1)?.AccountReference ?? ""), darajaSent.at(-1));
@@ -1566,7 +1573,7 @@ console.log("\n--- daraja m-pesa express ---");
   check("daraja: MPESA_PROVIDER unset -> Daraja is the default, PayHero sends nothing", r.status === 200 && darajaSent.length === dj0 + 1 && payheroSent.length === ph0 && (await phRow(r.body?.reference))?.provider === "daraja", r.body);
   Deno.env.set("MPESA_PROVIDER", "payhero");
   Deno.env.set("PAYHERO_PAYMENTS", "off");
-  r = await call("phpay", { kind: "vendor", event_id: gaEv.id, name: "Off Vendor", phone: "0712000095", email: "off@example.test", vendor_type: "food", mpesa_phone: "0712000095" }, ip());
+  r = await call("phpay", { kind: "vendor", event_id: gaEv.id, name: "Off Vendor", phone: "0712000095", email: "off@example.test", vendor_type: "merchandise", mpesa_phone: "0712000095" }, ip());
   check("payhero disabled: MPESA_PROVIDER=payhero with PAYHERO_PAYMENTS off -> 503, nothing sent", r.status === 503 && r.body?.error === "mpesa_unavailable" && payheroSent.length === ph0, r.body);
   Deno.env.set("PAYHERO_PAYMENTS", "on");
   Deno.env.set("MPESA_PROVIDER", "daraja");
