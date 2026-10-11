@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
+import { normalizePhone, looksLikeEmail, PHONE_HINT, EMAIL_HINT } from "@/lib/phone";
 import QrImage from "@/components/QrImage";
 import Icon from "@/components/Icon";
 import type { Event, TicketType, OrderTicket } from "@/lib/types";
@@ -29,6 +30,7 @@ export default function EventCheckout({
   const [error, setError] = useState("");
   // FR-P6: a retry reuses this order row with a fresh checkout id.
   const [orderId, setOrderId] = useState<string | null>(null);
+  const [fieldErr, setFieldErr] = useState<{ phone?: string; items?: string; email?: string }>({});
 
   const left = (t: TicketType) => remaining[t.id] ?? null;
   const soldOut = (t: TicketType) => left(t) === 0;
@@ -47,11 +49,33 @@ export default function EventCheckout({
     setQty({ ...qty, [t.id]: next });
   };
 
+  // Same rule as the reservation form: never hand the buyer a dead button.
+  function validate(): boolean {
+    const e: { phone?: string; items?: string; email?: string } = {};
+    if (items.length === 0) e.items = "Choose at least one ticket first.";
+    if (!normalizePhone(phone)) {
+      e.phone = phone.trim()
+        ? `That number doesn't look right. ${PHONE_HINT}.`
+        : `We need your M-Pesa number. ${PHONE_HINT}.`;
+    }
+    // Mandatory: the ticket QR is delivered here.
+    if (!looksLikeEmail(email)) {
+      e.email = email.trim()
+        ? "That email doesn't look right."
+        : "We need your email — your ticket is sent there.";
+    }
+    setFieldErr(e);
+    const first = e.phone ? "phone" : e.email ? "email" : null;
+    if (first) document.querySelector<HTMLInputElement>(`[data-field="${first}"]`)?.focus();
+    return !e.items && !e.phone && !e.email;
+  }
+
   async function pay() {
     setError("");
+    if (!validate()) return;
     setState("pending");
     const res = await invokeFn(supabase, "stk-push", {
-      event_id: event.id, phone, buyer_email: email || undefined, items,
+      event_id: event.id, phone, buyer_email: email.trim(), items,
       ...(orderId ? { order_id: orderId } : {}),
     });
     if (res.data?.orderId) setOrderId(res.data.orderId);
@@ -96,6 +120,9 @@ export default function EventCheckout({
         return "That phone number doesn't look right. Use the format 07XX XXX XXX.";
       case "no_items":
         return "Choose at least one ticket first.";
+      case "email_required":
+      case "invalid_email":
+        return "We need a valid email — your ticket is sent there.";
       case "stk_failed":
         return "M-Pesa did not accept the request. Check the number and try again.";
       case "daraja_misconfigured":
@@ -209,29 +236,32 @@ export default function EventCheckout({
         <label className="field">
           <span>M-Pesa number</span>
           <input
-            type="tel" inputMode="numeric" autoComplete="tel"
-            placeholder="07XX XXX XXX"
-            value={phone} onChange={(e) => setPhone(e.target.value)}
+            data-field="phone" type="tel" inputMode="numeric" autoComplete="tel"
+            placeholder="07XX XXX XXX" aria-invalid={!!fieldErr.phone}
+            value={phone}
+            onChange={(e) => { setPhone(e.target.value); setFieldErr({ ...fieldErr, phone: undefined }); }}
           />
+          {fieldErr.phone && <span className="field-error">{fieldErr.phone}</span>}
         </label>
         <label className="field">
-          <span>Email <span className="small">(optional)</span></span>
+          <span>Email</span>
           <input
-            type="email" inputMode="email" autoComplete="email"
-            placeholder="you@example.com"
-            value={email} onChange={(e) => setEmail(e.target.value)}
+            data-field="email" type="email" inputMode="email" autoComplete="email"
+            placeholder="you@example.com" aria-invalid={!!fieldErr.email}
+            value={email}
+            onChange={(e) => { setEmail(e.target.value); setFieldErr({ ...fieldErr, email: undefined }); }}
           />
+          {fieldErr.email
+            ? <span className="field-error">{fieldErr.email}</span>
+            : <span className="small">{EMAIL_HINT}.</span>}
         </label>
 
         {error && <p className="small" style={{ color: "var(--danger)" }}>{error}</p>}
 
-        <button
-          className="btn-pay btn-block"
-          disabled={items.length === 0 || phone.replace(/\D/g, "").length < 9}
-          onClick={pay}
-        >
+        {fieldErr.items && <p className="small" style={{ color: "var(--danger)" }}>{fieldErr.items}</p>}
+        <button className="btn-pay btn-block" onClick={pay}>
           {items.length === 0
-            ? "Select a ticket"
+            ? "Pay with M-Pesa"
             : `${state === "failed" ? "Retry —" : "Pay"} KSh ${total.toLocaleString()}`}
         </button>
         <p className="small" style={{ textAlign: "center" }}>

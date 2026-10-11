@@ -35,6 +35,21 @@ export default function Scanner({ userId }: { userId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // A reservation admits a named party; a ticket admits a holder we never named.
+  // The door needs both facts large and immediately (FR-S7).
+  const admitText = (r: any) => {
+    if (r.kind !== "reservation") return "✓ ADMIT";
+    const lines = ["✓ ADMIT", r.holder_name ?? ""];
+    if (r.party_size > 1) lines.push(`Party of ${r.party_size}`);
+    // Staff must be able to hand over exactly what was paid for.
+    const pre = Array.isArray(r.preorder) ? r.preorder : [];
+    if (pre.length) {
+      lines.push(pre.map((p: any) => `${p.qty}x ${p.name}`).join(", "));
+      if (r.amount_kes) lines.push(`PAID KSh ${Number(r.amount_kes).toLocaleString()}`);
+    }
+    return lines.filter(Boolean).join("\n");
+  };
+
   const show = (kind: "ok" | "bad", text: string) => {
     setFlash({ kind, text });
     setTimeout(() => setFlash(null), 2200);
@@ -92,18 +107,21 @@ export default function Scanner({ userId }: { userId: string }) {
         const { data } = await invokeFn(supabase, "redeem", { token, station });
         const r = data?.results?.[0];
         if (!r || r.result === "error") show("bad", "Server error — try again");
-        else if (r.result === "admitted") show("ok", "✓ ADMIT");
+        else if (r.result === "admitted") show("ok", admitText(r));
         else if (r.result === "already_redeemed")
-          show("bad", `✗ Already redeemed\n${new Date(r.first_scanned_at).toLocaleTimeString()} @ ${r.station}`);
+          show("bad", `✗ Already admitted\n${r.holder_name ? r.holder_name + "\n" : ""}${new Date(r.first_scanned_at).toLocaleTimeString()} @ ${r.station}`);
         else if (r.result === "refunded") show("bad", "✗ Refunded ticket");
+        else if (r.result === "cancelled") show("bad", `✗ Cancelled\n${r.holder_name ?? ""}`);
+        else if (r.result === "unpaid") show("bad", `✗ Preorder unpaid\n${r.holder_name ?? ""}`);
         else if (r.result === "event_closed") show("bad", "✗ Event is closed");
-        else show("bad", "✗ Ticket not found");
+        else show("bad", "✗ Pass not found");
       } else {
         // Offline path: validate against cache, queue redemption
         const cache = await getCachedTokens();
         if (!cache) { show("bad", "Offline — no cache. Sync while online first."); return; }
         const t = cache.tokens.find((x) => x.token === token);
-        if (!t) show("bad", "✗ Unknown ticket (not in cache)");
+        if (!t) show("bad", "✗ Unknown pass (not in cache)");
+        else if (t.paid === false) show("bad", `✗ Preorder unpaid\n${t.holder_name ?? ""}`);
         else if (t.status === "refunded") show("bad", "✗ Refunded ticket");
         else if (t.status !== "active") {
           const at = t.redeemed_at ? new Date(t.redeemed_at).toLocaleTimeString() : "earlier";
@@ -113,7 +131,9 @@ export default function Scanner({ userId }: { userId: string }) {
           await enqueueRedemption({ token, station, scannedAt });
           await markLocalRedeemed(token, scannedAt);
           setPending(await outboxCount());
-          show("ok", "✓ ADMIT (offline — will sync)");
+          show("ok", `✓ ADMIT${t.holder_name ? `\n${t.holder_name}` : ""}${
+            t.party_size && t.party_size > 1 ? `\nParty of ${t.party_size}` : ""
+          }\n(offline — will sync)`);
         }
       }
     } finally { busyRef.current = false; }

@@ -62,6 +62,10 @@ Deno.serve(async (req) => {
     }
     if (!event_id || typeof event_id !== "string") return fail("missing_event_id", 400);
     if (!Array.isArray(items) || items.length === 0) return fail("no_items", 400);
+    // Web buyers must give an email: the ticket QR is delivered there.
+    if (channel === "web" && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(buyerEmail ?? "").trim())) {
+      return fail("email_required", 400);
+    }
     if (channel !== "web" && channel !== "gate") return fail("bad_channel", 400);
     log("validated", { phone: maskPhone(buyerPhone), channel, item_count: items.length });
 
@@ -93,9 +97,12 @@ Deno.serve(async (req) => {
     // ---- event ----
     stage = "event";
     const { data: event, error: evErr } = await db
-      .from("events").select("id,name,status").eq("id", event_id).single();
+      .from("events").select("id,name,status,payments_enabled").eq("id", event_id).single();
     if (evErr || !event) return fail("event_not_found", 400, { detail: evErr?.message });
     if (event.status !== "live") return fail("event_not_live", 400, { status: event.status });
+    // Kill switch while M-Pesa provisioning is pending. Refuse before creating
+    // an order, so nothing is left pending that can never be paid.
+    if (event.payments_enabled === false) return fail("payments_unavailable", 409);
     log("event ok", { event: event.name });
 
     // ---- ticket types: resolve prices server-side, never trust client amounts ----

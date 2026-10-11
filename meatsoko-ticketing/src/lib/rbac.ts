@@ -22,7 +22,11 @@ export type Capability =
   | "view_dashboard"
   | "refund"
   | "export_csv"
-  | "view_audit";
+  | "view_audit"
+  | "make_reservation"
+  | "view_reservations"
+  | "check_in_guests"
+  | "export_reservations";
 
 /**
  * Capabilities granted directly to each role. Roles widen as they go:
@@ -31,9 +35,12 @@ export type Capability =
  * place, which is what lets this single UI grow into the admin build.
  */
 const GRANTS: Record<Role, Capability[]> = {
-  public: ["buy_tickets", "lookup_tickets", "view_ticket"],
-  staff: ["scan", "gate_sales"],
-  admin: ["manage_events", "view_dashboard", "refund", "export_csv", "view_audit"],
+  public: ["buy_tickets", "lookup_tickets", "view_ticket", "make_reservation"],
+  staff: ["scan", "gate_sales", "check_in_guests"],
+  admin: [
+    "manage_events", "view_dashboard", "refund", "export_csv", "view_audit",
+    "view_reservations", "export_reservations",
+  ],
 };
 
 const INHERITS: Record<Role, Role[]> = {

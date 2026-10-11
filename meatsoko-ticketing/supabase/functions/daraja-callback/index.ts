@@ -2,6 +2,7 @@
 // Idempotency lives in confirm_payment() (unique checkout_request_id + state check).
 import { serviceClient } from "../_shared/supabase.ts";
 import { sendTicketEmail } from "../_shared/email.ts";
+import { buildAndSend } from "../_shared/reservation-email.ts";
 
 // stk-push writes mpesa_checkout_request_id immediately after Daraja responds, but the
 // callback is a separate connection and can in principle land first. Retry briefly rather
@@ -38,10 +39,19 @@ Deno.serve(async (req) => {
 
       const result = (data as any)?.result;
       if (result === "confirmed") {
-        // FR-T2(b). Only on the first confirmation, so duplicate callbacks don't
-        // re-send. Never let a mail failure affect the payment result.
-        await deliverEmail(db, (data as any).order_id).catch((e) =>
-          console.error("ticket email failed", checkoutId, e));
+        // Only on the FIRST confirmation, so duplicate callbacks never re-send.
+        // Never let a mail failure affect the payment result.
+        if ((data as any).kind === "reservation") {
+          const appUrl = (Deno.env.get("APP_URL") ?? "").trim();
+          if (appUrl) {
+            await buildAndSend(db, (data as any).reservation_id, appUrl)
+              .then((out) => console.log("reservation email", checkoutId, JSON.stringify(out)))
+              .catch((e) => console.error("reservation email failed", checkoutId, e));
+          }
+        } else {
+          await deliverEmail(db, (data as any).order_id).catch((e) =>
+            console.error("ticket email failed", checkoutId, e));
+        }
         return accept();
       }
       if (result !== "unknown") return accept();
