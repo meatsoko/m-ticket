@@ -2227,3 +2227,39 @@ a.login-submit { display: grid; place-items: center; text-decoration: none; }
 @media (prefers-reduced-motion: reduce) { .mpesa-spinner { animation-duration: 3s; } }
 .pay-or { display: flex; align-items: center; gap: 10px; margin: 2px 0; font-size: 12px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--muted, #77736e); }
 .pay-or::before, .pay-or::after { content: ""; flex: 1; height: 1px; background: var(--line, #dedbd4); }
+
+
+/* ---------- Event pages inside the store frame -------------------------
+   /events, /e/[slug] and /e/[slug]/concept render inside StoreShell (the
+   store header, nav and footer, like /investors) via AppShell's inStore.
+   The .app frame stops being a phone-height scroller: the page scrolls as
+   one, under the sticky store header. Always light, like the store around it
+   (in dark mode the event pages would otherwise turn dark inside a cream frame). */
+.app.in-store {
+  color-scheme: light;
+  --bg: #f6f3ed; --surface: #fff; --surface-2: #f0ede7; --surface-3: #e7e1d8; --line: #dedbd4;
+  --ink: #171717; --ink-2: #55514d; --muted: #77736e;
+  --ember: #d32f3b; --ember-soft: #f9e5e7; --on-ember: #fff;
+  --ok: #1B7A4B; --ok-soft: #DCEFE3; --warn: #8E5B00; --warn-soft: #F8EBD2; --danger: #B23222; --danger-soft: #F9E0DC;
+  color: var(--ink);
+  background: var(--bg);
+  max-width: none;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  margin: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.app.in-store .app-body { overflow: visible; }
+.app.in-store .in-store-bar { height: auto; min-height: 52px; padding: 0 max(4vw, 12px); background: var(--surface); }
+@media (min-width: 560px) {
+  .app.in-store { height: auto; min-height: 0; margin: 0; border: 0; border-radius: 0; box-shadow: none; }
+}
+@media (min-width: 900px) {
+  .app.in-store.wide-event-shell { max-width: 1600px; width: calc(100% - 64px); margin: 0 auto; min-height: 0; }
+  .app.in-store.wide-event-shell.full-bleed { max-width: none; width: 100%; }
+  .app.in-store.wide-event-shell .in-store-bar { min-height: 60px; height: auto; }
+}

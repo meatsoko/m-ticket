@@ -5,6 +5,7 @@ import TabBar from "@/components/TabBar";
 import SignOutButton from "@/components/SignOutButton";
 import { getRole } from "@/lib/require-staff";
 import { ROLE_LABEL, type Role } from "@/lib/rbac";
+import { StoreShell } from "@/components/StoreChrome";
 
 type Props = {
   children: ReactNode;
@@ -20,11 +21,36 @@ type Props = {
   wideEvent?: boolean;
   /** With wideEvent: run the page edge to edge on desktop (no 1600px column, no side margins). */
   fullBleed?: boolean;
+  /**
+   * Public pages that belong to the site's navigation (the events pages): render
+   * inside the store's header, nav and footer, like /investors, so every other
+   * nav item stays one tap away. The page keeps its own layout; `back` and
+   * `title` become a slim bar under the store header. No staff badge or tab bar.
+   */
+  inStore?: boolean;
 };
 
 export default async function AppShell({
-  children, title, hideTabs, back, action, role, wideEvent, fullBleed,
+  children, title, hideTabs, back, action, role, wideEvent, fullBleed, inStore,
 }: Props) {
+  if (inStore) {
+    return (
+      <StoreShell>
+        <div className={`app in-store${wideEvent ? " wide-event-shell" : ""}${wideEvent && fullBleed ? " full-bleed" : ""}`}>
+          {back ? (
+            <div className="app-bar in-store-bar">
+              <Link href={back} className="icon-btn" aria-label="Back">
+                <Icon name="back" />
+              </Link>
+              {title ? <span className="title">{title}</span> : null}
+            </div>
+          ) : null}
+          <main className="app-body">{children}</main>
+        </div>
+      </StoreShell>
+    );
+  }
+
   const resolved: Role = role ?? (await getRole());
 
   return (

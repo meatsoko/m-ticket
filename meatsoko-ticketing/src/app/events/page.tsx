@@ -108,7 +108,7 @@ export default async function EventsPage() {
   const heroName = hero ? hero.name.replace(/\s*\bmain\b\s*/i, " ").trim() : "";
 
   return (
-    <AppShell title="Events" wideEvent fullBleed>
+    <AppShell title="Events" wideEvent fullBleed inStore>
       {hero && <EventsHero event={hero} freeEntry={hasGa.has(hero.id)} priceFrom={priceFrom} />}
       {featured.length > 0 && <FeaturedEvents items={featured} className={displayFont.variable} />}
       {hero && (program ?? []).length > 0 && (

@@ -77,7 +77,7 @@ export default async function EventPage({ params }: { params: { slug: string } }
   // sign-up all live on /events now, so this page is just the event's name and
   // the booking panel — nothing repeated.
   return (
-    <AppShell title="Get tickets" back="/events" wideEvent>
+    <AppShell title="Get tickets" back="/events" wideEvent inStore>
       <div className="pad tk-page">
         <header className="tk-head">
           <span className="eyebrow">{fmt(ev.starts_at, { weekday: "long", day: "numeric", month: "long" })} · {ev.venue || "Nairobi"}</span>

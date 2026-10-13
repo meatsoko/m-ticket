@@ -15,6 +15,7 @@ export function StoreHeader() {
           <Link href="/#collections">Collections <span>↗</span></Link>
           <Link href="/events">Events and tickets <span>↗</span></Link>
           <Link href="/investors">Investors <span>↗</span></Link>
+          <Link href="/lookup">My tickets <span>↗</span></Link>
           <Link href="/cart">Your bag <span>↗</span></Link>
         </nav>
       </details>

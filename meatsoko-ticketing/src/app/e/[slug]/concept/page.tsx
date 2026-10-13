@@ -23,7 +23,7 @@ export default async function ConceptArticlePage({ params }: { params: { slug: s
   if (!concept) notFound();
 
   return (
-    <AppShell title="The concept" back="/events" wideEvent>
+    <AppShell title="The concept" back="/events" wideEvent inStore>
       <article className={`ca ${displayFont.variable}`}>
         <header className="ca-head">
           <span className="ch-eyebrow">The concept{ev.host ? ` · ${ev.host}` : ""}</span>
