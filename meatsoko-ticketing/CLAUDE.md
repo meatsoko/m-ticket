@@ -177,7 +177,7 @@ Dashboard → Events & tickets → Event orders. Migration `20261003100000_event
   customer-order`, merge to `main`, then an admin adds the menu in the dashboard and staff set
   themselves Available on `/orders`.
 
-## Cashless booth payments (branch `feat/cashless-vendors`, 2026-10-14; NOT merged or deployed)
+## Cashless booth payments (DEPLOYED 2026-10-14: migration, functions, site; payments still closed)
 
 Full guide: **`CASHLESS_VENDORS.md`**. Attendees scan a vendor's booth QR (`/pay/<code>`)
 and pay by M-Pesa STK into a **separate vendor-sales till** (the user's choice; Daraja
@@ -189,8 +189,11 @@ or per vendor, snapshotted on each sale; vendors must accept the current rate be
 their booth takes money. Vendors sign in with an email one-time code (`/vendor/login`,
 accounts only via the admin-only `vendor-invite`; vendors are never in `admin_users`).
 Admin: Dashboard → Events & tickets → **Cashless**. Phase B (after NyamaFest): payouts,
-refunds, statement reconciliation. Blocked on: Safaricom going live on the sales till
-(STK on Daraja production + passkey), and Supabase Auth custom SMTP + an OTP template.
+refunds, statement reconciliation. The sales account is a **bank paybill** (user,
+2026-10-14): `DARAJA_SALES_TRANSACTION_TYPE=CustomerPayBillOnline` is set; still to set:
+`DARAJA_SALES_SHORTCODE`, `DARAJA_SALES_PASSKEY`, `DARAJA_SALES_ACCOUNT_REFERENCE` (if the
+bank needs one), then `VENDOR_SALES=on`. Vendor sign-in needs Supabase Auth custom SMTP +
+an OTP template.
 
 ## Dashboard (`/dashboard`, store theme)
 

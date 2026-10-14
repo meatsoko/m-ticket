@@ -1,6 +1,8 @@
 # Cashless vendor payments
 
-Written 2026-10-14. Branch `feat/cashless-vendors`, **not merged and not deployed**.
+Written 2026-10-14. **Deployed 2026-10-14** (migration applied, 12 Edge Functions deployed,
+site merged to `main`). Payments stay closed until the sales paybill secrets and
+`VENDOR_SALES=on` are set (§7).
 Attendees pay a vendor by scanning the vendor's booth QR and approving an M-Pesa prompt.
 The money goes into **one MeatSoko collection till/paybill, separate from the ticket
 till**. Each sale is recorded against its event and vendor, MeatSoko keeps a commission,
@@ -8,7 +10,7 @@ and vendors are paid out after the event.
 
 | Phase | Scope | State |
 |---|---|---|
-| **A** (before NyamaFest, 17 Oct) | vendor accounts, booth QR, pay page, sales ledger + commission, vendor dashboard, admin Cashless section | Built and tested on the branch. Taking real money also needs the external setup below |
+| **A** (before NyamaFest, 17 Oct) | vendor accounts, booth QR, pay page, sales ledger + commission, vendor dashboard, admin Cashless section | Live. Taking real money needs the bank paybill secrets (§7) |
 | **B** (after the event) | payout requests and approval, refunds, M-Pesa statement import and reconciliation, ledger adjustments, the remaining reports | Not built |
 
 ## 1. How it works
