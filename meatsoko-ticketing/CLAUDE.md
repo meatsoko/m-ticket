@@ -188,8 +188,10 @@ vendor_sales, append-only vendor_ledger_entries, vendor_balances); kind `sale` i
 or per vendor, snapshotted on each sale; vendors must accept the current rate before
 their booth takes money. Vendors sign in with an email one-time code (`/vendor/login`,
 accounts only via the admin-only `vendor-invite`; vendors are never in `admin_users`).
-Admin: Dashboard → Events & tickets → **Cashless**. Phase B (after NyamaFest): payouts,
-refunds, statement reconciliation. The sales account is a **bank paybill** (user,
+Admin: Dashboard → Events & tickets → **Cashless**. Phase B (payouts, refunds, statement
+reconciliation, reports) is on branch `feat/cashless-settlements` (migration
+`20261014180000`) — **do not merge until phase A is verified taking real payments** (user,
+2026-10-14). The sales account is a **bank paybill** (user,
 2026-10-14): `DARAJA_SALES_TRANSACTION_TYPE=CustomerPayBillOnline` is set; still to set:
 `DARAJA_SALES_SHORTCODE`, `DARAJA_SALES_PASSKEY`, `DARAJA_SALES_ACCOUNT_REFERENCE` (if the
 bank needs one), then `VENDOR_SALES=on`. Vendor sign-in needs Supabase Auth custom SMTP +
