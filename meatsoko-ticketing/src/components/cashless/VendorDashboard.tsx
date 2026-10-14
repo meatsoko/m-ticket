@@ -5,8 +5,9 @@ import { createClient } from "@/lib/supabase/client";
 import QrImage from "@/components/QrImage";
 
 // The vendor's own dashboard (vendor_dashboard(), migration 20261014150000).
-// Read-only except accepting the commission policy. Payout requests come in
-// phase B, after the event; until then the vendor sees what it is owed.
+// The vendor can accept the commission policy and, after the event, request a
+// payout (request_vendor_payout(), migration 20261014180000) — never approve or
+// complete one.
 
 type Balance = {
   event_commission_bps: number; commission_bps: number; gross_kes: number; commission_kes: number; refunds_kes: number;
@@ -18,10 +19,14 @@ type EventRow = {
   event: { id: string; name: string; venue: string | null; starts_at: string; ends_at: string; status: string };
   commission_bps: number; policy_bps_accepted: number | null; policy_accepted_at: string | null;
   qr_code: string | null; balance: Balance | null; by_day: { day: string; count: number; amount_kes: number }[];
+  position?: { outstanding_kes: number; refunds_in_progress_kes: number; payouts_in_progress_kes: number; available_kes: number };
+  blockers?: string[];
+  payouts?: { id: string; requested_amount: number; approved_amount: number | null; status: string; decision_reason: string | null; payout_reference: string | null;
+    requested_at: string; decided_at: string | null; confirmed_at: string | null; verification: string }[];
 };
 type SaleRow = {
   id: string; reference: string; event_id: string; amount_kes: number; commission_bps: number; commission_kes: number | null;
-  status: "pending" | "success" | "failed" | "flagged"; reconciliation_status: string; payer: string; mpesa_receipt: string | null;
+  status: "pending" | "success" | "failed" | "flagged" | "returned"; reconciliation_status: string; refunded_kes?: number; payer: string; mpesa_receipt: string | null;
   created_at: string; paid_at: string | null;
 };
 export type VendorDashboardData = {
@@ -33,7 +38,16 @@ const kes = (n: number | null | undefined) => `KSh ${Number(n ?? 0).toLocaleStri
 const pct = (bps: number) => `${(bps / 100).toLocaleString("en-KE", { maximumFractionDigits: 2 })}%`;
 const when = (iso: string) => new Intl.DateTimeFormat("en-KE", { timeZone: "Africa/Nairobi", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
 const dayLabel = (ymd: string) => new Intl.DateTimeFormat("en-KE", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" }).format(new Date(`${ymd}T00:00:00Z`));
-const STATUS: Record<SaleRow["status"], string> = { pending: "Pending", success: "Paid", failed: "Failed", flagged: "Being checked" };
+const STATUS: Record<SaleRow["status"], string> = { pending: "Pending", success: "Paid", failed: "Failed", flagged: "Being checked", returned: "Returned to payer" };
+const PAYOUT: Record<string, string> = { requested: "Requested", approved: "Approved", processing: "Being sent", paid: "Paid", rejected: "Rejected", failed: "Didn't go through" };
+const WAITING: Record<string, string> = {
+  event_not_ended: "the event to end", pending_sales: "payments still waiting for M-Pesa", flagged_sales: "payments MeatSoko is checking",
+  unreconciled_sales: "MeatSoko to reconcile your sales with the M-Pesa statement", refund_in_progress: "a refund in progress",
+};
+const PAYOUT_ERR: Record<string, string> = {
+  event_not_ended: "Payouts open after the event ends.", exceeds_available: "That's more than you can request right now.",
+  payout_in_progress: "You already have a payout in progress.", invalid_amount: "Check the amount.", vendor_suspended: "Your account is suspended — contact MeatSoko.",
+};
 const PART: Record<EventRow["status"], string> = { pending: "Awaiting approval", active: "Active", inactive: "Paused", suspended: "Suspended" };
 
 export default function VendorDashboard({ data }: { data: VendorDashboardData }) {
@@ -42,6 +56,8 @@ export default function VendorDashboard({ data }: { data: VendorDashboardData })
   const [status, setStatus] = useState<"all" | SaleRow["status"]>("all");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const [amount, setAmount] = useState("");
+  const [note, setNote] = useState("");
   const ev = data.events.find((e) => e.event.id === eventId) ?? null;
   const b = ev?.balance;
   const sales = useMemo(() => data.sales.filter((s) => s.event_id === eventId && (status === "all" || s.status === status)), [data.sales, eventId, status]);
@@ -53,6 +69,17 @@ export default function VendorDashboard({ data }: { data: VendorDashboardData })
     const { data: r, error } = await createClient().rpc("accept_vendor_policy", { p_event_vendor_id: ev.event_vendor_id });
     setBusy(false);
     if (error || (r as any)?.error) { setMsg("Couldn't record your acceptance. Refresh and try again."); return; }
+    router.refresh();
+  }
+
+  async function requestPayout() {
+    if (!ev) return;
+    setBusy(true); setMsg("");
+    const { data: r, error } = await createClient().rpc("request_vendor_payout", { p_event_vendor_id: ev.event_vendor_id, p_amount_kes: Number(amount), p_note: note.trim() || null });
+    setBusy(false);
+    const out: any = r;
+    if (error || out?.error) { setMsg(PAYOUT_ERR[out?.error] ?? "Couldn't send the request. Try again."); return; }
+    setAmount(""); setNote("");
     router.refresh();
   }
 
@@ -126,10 +153,44 @@ export default function VendorDashboard({ data }: { data: VendorDashboardData })
             <p className="dash-muted">
               {b?.pending_count ? `${b.pending_count} payment${b.pending_count === 1 ? "" : "s"} still waiting for M-Pesa. ` : ""}
               {b?.flagged_count ? `${b.flagged_count} being checked by MeatSoko. ` : ""}
-              {ended ? "Payout requests open here once the event's collections are reconciled." : "Payouts are made after the event."}
+              {ended ? "" : "Payouts are made after the event."}
               {data.vendor.payout_phone_masked ? ` Payouts go to ${data.vendor.payout_phone_masked}.` : ""}
             </p>
           </div>
+
+          {ev.position && (
+            <div className="dash-card">
+              <strong>Payouts</strong>
+              {!ended ? <p className="dash-muted">You can request a payout once the event has ended.</p> : (() => {
+                const open = ev.payouts?.some((p) => ["requested", "approved", "processing"].includes(p.status));
+                const avail = Number(ev.position.available_kes);
+                return (
+                  <>
+                    <p className="dash-muted">Available to request: <b>{kes(avail)}</b>
+                      {Number(ev.position.refunds_in_progress_kes) > 0 ? ` (${kes(ev.position.refunds_in_progress_kes)} held for a refund in progress)` : ""}.
+                      {!!ev.blockers?.length && ` Approval is waiting for ${ev.blockers.map((b) => WAITING[b] ?? b).join(", ")}.`}</p>
+                    {open ? <p className="dash-muted">You have a payout in progress — you can request again once it&apos;s settled.</p>
+                      : avail >= 1 && (
+                        <form className="dash-row-actions" onSubmit={(e) => { e.preventDefault(); if (!busy) requestPayout(); }}>
+                          <input className="dash-search" inputMode="decimal" placeholder={`Up to ${avail}`} value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} style={{ width: 140 }} />
+                          <input className="dash-search" placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
+                          <button type="button" className="dash-btn small ghost" onClick={() => setAmount(String(avail))}>All</button>
+                          <button type="submit" className="dash-btn primary" disabled={busy || !amount}>{busy ? "Sending…" : "Request payout"}</button>
+                        </form>
+                      )}
+                    {msg && <p className="dash-error">{msg}</p>}
+                  </>
+                );
+              })()}
+              {!!ev.payouts?.length && (
+                <table className="dash-table"><thead><tr><th>Requested</th><th>Approved</th><th>Status</th><th>Reference</th></tr></thead>
+                  <tbody>{ev.payouts.map((p) => (
+                    <tr key={p.id}><td>{kes(p.requested_amount)}<small>{when(p.requested_at)}</small></td><td>{p.approved_amount === null ? "—" : kes(p.approved_amount)}</td>
+                      <td><span className={`dash-badge cl-po-${p.status}`}>{PAYOUT[p.status] ?? p.status}</span>{p.decision_reason && <small>{p.decision_reason}</small>}</td>
+                      <td>{p.payout_reference ? <><span className="dash-mono">{p.payout_reference}</span><small>{p.confirmed_at ? when(p.confirmed_at) : ""} · recorded by MeatSoko</small></> : "—"}</td></tr>))}</tbody></table>
+              )}
+            </div>
+          )}
 
           {!!ev.by_day.length && (
             <div className="dash-card">
@@ -143,7 +204,7 @@ export default function VendorDashboard({ data }: { data: VendorDashboardData })
             <div className="dash-card-head">
               <strong>Transactions</strong>
               <div className="dash-chips">
-                {(["all", "success", "pending", "failed", "flagged"] as const).map((s) => (
+                {(["all", "success", "pending", "failed", "flagged", "returned"] as const).map((s) => (
                   <button key={s} type="button" className={status === s ? "on" : undefined} onClick={() => setStatus(s)}>{s === "all" ? "All" : STATUS[s]}</button>
                 ))}
               </div>
@@ -158,7 +219,7 @@ export default function VendorDashboard({ data }: { data: VendorDashboardData })
                       <tr key={s.id}>
                         <td><strong className="dash-mono">{s.reference}</strong>{s.mpesa_receipt && <small className="dash-mono">M-Pesa {s.mpesa_receipt}</small>}<small>{s.payer}</small></td>
                         <td>{when(s.paid_at ?? s.created_at)}</td>
-                        <td>{kes(s.amount_kes)}</td>
+                        <td>{kes(s.amount_kes)}{Number(s.refunded_kes ?? 0) > 0 && <small>Refunded {kes(s.refunded_kes)}</small>}</td>
                         <td>{s.commission_kes === null ? <span className="dash-muted">—</span> : <>{kes(s.commission_kes)}<small>{pct(s.commission_bps)}</small></>}</td>
                         <td><span className={`dash-badge cl-sale-${s.status}`}>{STATUS[s.status]}</span>{s.status === "success" && s.reconciliation_status !== "unreconciled" && <small>{s.reconciliation_status}</small>}</td>
                       </tr>

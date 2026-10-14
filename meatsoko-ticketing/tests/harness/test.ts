@@ -2247,5 +2247,29 @@ console.log("\n--- cashless settlements ---");
   for (const k of ["DARAJA_SALES_SHORTCODE", "DARAJA_SALES_PASSKEY", "DARAJA_SALES_TILL_NUMBER", "VENDOR_SALES"]) Deno.env.delete(k);
 }
 
+// 25. Statement CSV reader (src/lib/mpesa-statement.ts), as the admin page uses it
+console.log("\n--- statement csv reader ---");
+{
+  const { parseCsv, detect, toRows, parseTime } = await import("/src/lib/mpesa-statement.ts");
+  const csv = [
+    "Organisation Name,MEATSOKO GROUP",
+    "Time Period,From 17-10-2026 00:00:00 To 18-10-2026 06:00:00",
+    "",
+    "Receipt No.,Completion Time,Initiation Time,Details,Transaction Status,Paid In,Withdrawn,Balance,Balance Confirmed,Reason Type,Other Party Info,Linked Transaction ID,A/C No.",
+    'TJH1AAAA01,17-10-2026 14:03:22,17-10-2026 14:03:10,"Pay Bill from 2547****001 - JANE, D",Completed,"1,250.00",,"1,250.00",true,Pay Bill Online,2547****001 - JANE D,,MEATSOKO01',
+    "TJH1CHG001,17-10-2026 14:03:22,,Pay Bill Charge,Completed,,12.50,1237.50,true,Pay Bill Charge,,TJH1AAAA01,",
+    "TJH1FAIL01,17-10-2026 15:00:00,,Pay Bill from 2547****002,Failed,500.00,,,,Pay Bill Online,2547****002,,",
+    "TJH1BBBB02,2026-10-17 21:15:00,,Pay Bill from 2547****003,Completed,300.00,,,,Pay Bill Online,2547****003,,",
+  ].join("\r\n");
+  const d = detect(parseCsv(csv));
+  const out = d ? toRows(d.sheet, d.map) : null;
+  check("csv: header found below the portal's metadata lines", d?.sheet.headerRow === 2 && d.map.receipt === 0 && d.map.amount === 5, d?.map);
+  check("csv: incoming completed payments only (charge and failed rows skipped), quoted commas and thousands read",
+    out?.rows.length === 2 && out.skipped === 2 && out.rows[0].amount_kes === 1250 && out.rows[0].receipt === "TJH1AAAA01" && out.problems.length === 0, out);
+  check("csv: the linked charge becomes the receipt's fee", out?.rows[0].fee_kes === 12.5 && out?.rows[1].fee_kes === undefined, out?.rows);
+  check("csv: statement times are Nairobi time", out?.rows[0].completed_at === "2026-10-17T11:03:22.000Z" && parseTime("17/10/2026 9:15:00 PM") === "2026-10-17T18:15:00.000Z", out?.rows[0]);
+  check("csv: an unrecognised file asks for the columns", detect(parseCsv("a,b,c\n1,2,3")) === null);
+}
+
 console.log(failures ? `\n${failures} FAILED` : "\nall passed");
 Deno.exit(failures ? 1 : 0);

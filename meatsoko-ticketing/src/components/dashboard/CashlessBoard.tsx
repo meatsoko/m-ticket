@@ -4,13 +4,14 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
+import { PayoutsTab, RefundsTab, ReconciliationTab, ReportsTab, SaleActions } from "@/components/dashboard/CashlessSettlements";
 
 // Dashboard → Events & tickets → Cashless (migration 20261014150000).
 // Vendors: create, assign to the event, approve / reject / pause / suspend,
 // commission, sign-in invitation, booth QR. Transactions: verified sales with
 // filters and CSV. Overview: the event's collections, commission and what is
 // owed to vendors — all from vendor_sales and the ledger, never page totals.
-// Payouts, refunds and statement reconciliation are phase B.
+// Payouts, refunds, reconciliation and reports: CashlessSettlements.tsx (phase B).
 
 export type CashlessData = {
   eventId: string;
@@ -20,7 +21,13 @@ export type CashlessData = {
   qrs: { id: string; event_vendor_id: string; code: string; created_at: string }[];
   balances: { event_vendor_id: string; event_id: string; vendor_id: string; commission_bps: number; gross_kes: number; commission_kes: number; refunds_kes: number; commission_reversed_kes: number; adjustments_kes: number; paid_out_kes: number; payable_kes: number; outstanding_kes: number; successful_count: number; pending_count: number; failed_count: number; flagged_count: number }[];
   applications: { id: string; event_id: string; reference_number: string; name: string; phone: string; email: string; status: string }[];
-  sales: { id: string; reference: string; event_id: string; event_vendor_id: string; vendor_id: string; amount_kes: number; commission_bps: number; commission_kes: number | null; collection_fee_kes: number | null; payer_phone_masked: string; status: "pending" | "success" | "failed" | "flagged"; status_reason: string | null; mpesa_receipt: string | null; reconciliation_status: string; created_at: string; paid_at: string | null }[];
+  sales: { id: string; reference: string; event_id: string; event_vendor_id: string; vendor_id: string; amount_kes: number; commission_bps: number; commission_kes: number | null; collection_fee_kes: number | null; refunded_kes: number; payer_phone_masked: string; status: "pending" | "success" | "failed" | "flagged" | "returned"; status_reason: string | null; mpesa_receipt: string | null; reconciliation_status: string; reconciliation_note: string | null; created_at: string; paid_at: string | null }[];
+  payouts: { id: string; event_vendor_id: string; requested_amount: number; approved_amount: number | null; status: "requested" | "approved" | "rejected" | "processing" | "paid" | "failed"; request_note: string | null; decision_reason: string | null; payout_phone: string | null; payout_reference: string | null; verification: string; requested_at: string; decided_at: string | null; processing_at: string | null; confirmed_at: string | null }[];
+  refunds: { id: string; sale_id: string; event_vendor_id: string; amount_kes: number; reason: string; status: "requested" | "completed" | "failed" | "cancelled"; reversal_reference: string | null; outcome_note: string | null; requested_at: string; decided_at: string | null }[];
+  imports: { id: string; filename: string | null; source: string; period_from: string | null; period_to: string | null; rows_total: number; matched: number; unmatched: number; duplicates: number; skipped: number; imported_at: string }[];
+  lines: { id: string; import_id: string; receipt: string; completed_at: string; amount_kes: number; payer_hint: string | null; account_ref: string | null; fee_kes: number | null; match_status: string; matched_sale_id: string | null; note: string | null }[];
+  overview: Record<string, { position: { outstanding_kes: number; refunds_in_progress_kes: number; payouts_in_progress_kes: number; available_kes: number }; blockers: string[] }>;
+  duplicates: { event_vendor_id: string; payer: string; amount_kes: number; references: string[] }[];
 };
 
 const kes = (n: number | null | undefined) => `KSh ${Number(n ?? 0).toLocaleString("en-KE", { maximumFractionDigits: 2 })}`;
@@ -28,7 +35,7 @@ const pct = (bps: number) => `${(bps / 100).toLocaleString("en-KE", { maximumFra
 const when = (iso: string) => new Intl.DateTimeFormat("en-KE", { timeZone: "Africa/Nairobi", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
 const localPhone = (p: string) => p?.startsWith("254") ? `0${p.slice(3)}` : p;
 const PART: Record<CashlessData["eventVendors"][number]["status"], string> = { pending: "Awaiting approval", active: "Active", inactive: "Paused", suspended: "Suspended", rejected: "Rejected" };
-const SALE: Record<CashlessData["sales"][number]["status"], string> = { pending: "Pending", success: "Paid", failed: "Failed", flagged: "Needs a look" };
+const SALE: Record<CashlessData["sales"][number]["status"], string> = { pending: "Pending", success: "Paid", failed: "Failed", flagged: "Needs a look", returned: "Returned to payer" };
 const ERR: Record<string, string> = {
   invalid_name: "Enter the business name.", invalid_phone: "Phone must be 07XX or 01XX.", invalid_payout_phone: "Payout number must be 07XX or 01XX.",
   invalid_email: "Enter a valid email.", email_taken: "Another vendor already uses that email.", reason_required: "Add a reason (3+ characters).",
@@ -45,7 +52,7 @@ type Pending = { kind: "status"; id: string; to: "inactive" | "suspended" | "rej
 export default function CashlessBoard({ data }: { data: CashlessData }) {
   const router = useRouter();
   const supabase = createClient();
-  const [tab, setTab] = useState<"vendors" | "transactions" | "overview">("vendors");
+  const [tab, setTab] = useState<"vendors" | "transactions" | "overview" | "payouts" | "refunds" | "reconciliation" | "reports">("vendors");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<Pending | null>(null);
@@ -115,14 +122,19 @@ export default function CashlessBoard({ data }: { data: CashlessData }) {
           {data.events.map((e) => <option key={e.id} value={e.id}>{e.name} · {when(e.starts_at)}{e.status !== "live" ? ` (${e.status})` : ""}</option>)}
         </select>
         <div className="dash-chips">
-          {(["vendors", "transactions", "overview"] as const).map((t) => (
+          {(["vendors", "transactions", "overview", "payouts", "refunds", "reconciliation", "reports"] as const).map((t) => (
             <button key={t} type="button" className={tab === t ? "on" : undefined} onClick={() => setTab(t)}>{t[0].toUpperCase() + t.slice(1)}</button>
           ))}
         </div>
       </div>
       {msg && <p className="dash-error" role="status">{msg}</p>}
       {!event ? <div className="dash-empty">No events yet.</div>
-        : tab === "vendors" ? renderVendors() : tab === "transactions" ? <TransactionsTab data={data} vendorById={vendorById} /> : <OverviewTab data={data} rows={rows} />}
+        : tab === "vendors" ? renderVendors() : tab === "transactions" ? <TransactionsTab data={data} vendorById={vendorById} />
+        : tab === "payouts" ? <PayoutsTab data={data} vendorById={vendorById} />
+        : tab === "refunds" ? <RefundsTab data={data} vendorById={vendorById} />
+        : tab === "reconciliation" ? <ReconciliationTab data={data} vendorById={vendorById} />
+        : tab === "reports" ? <ReportsTab data={data} vendorById={vendorById} />
+        : <OverviewTab data={data} rows={rows} />}
     </div>
   );
 
@@ -306,7 +318,7 @@ function TransactionsTab({ data, vendorById }: { data: CashlessData; vendorById:
     <div className="dash-card">
       <div className="dash-card-head">
         <div className="dash-chips">
-          {(["all", "success", "pending", "failed", "flagged"] as const).map((s) => (
+          {(["all", "success", "pending", "failed", "flagged", "returned"] as const).map((s) => (
             <button key={s} type="button" className={status === s ? "on" : undefined} onClick={() => setStatus(s)}>{s === "all" ? "All" : SALE[s]} <span className="dash-chip-count">{s === "all" ? data.sales.length : count(s)}</span></button>
           ))}
         </div>
@@ -324,25 +336,26 @@ function TransactionsTab({ data, vendorById }: { data: CashlessData; vendorById:
       {shown.length === 0 ? <div className="dash-empty">No transactions.</div> : (
         <div className="dash-table-wrap">
           <table className="dash-table">
-            <thead><tr><th>Reference</th><th>Vendor</th><th>Amount</th><th>Commission</th><th>Status</th><th>Payer</th><th>Time</th></tr></thead>
+            <thead><tr><th>Reference</th><th>Vendor</th><th>Amount</th><th>Commission</th><th>Status</th><th>Payer</th><th>Time</th><th /></tr></thead>
             <tbody>
               {shown.map((s) => (
                 <tr key={s.id}>
                   <td><strong className="dash-mono">{s.reference}</strong>{s.mpesa_receipt && <small className="dash-mono">M-Pesa {s.mpesa_receipt}</small>}</td>
                   <td>{vendorById.get(s.vendor_id)?.name}</td>
-                  <td>{kes(s.amount_kes)}</td>
+                  <td>{kes(s.amount_kes)}{Number(s.refunded_kes) > 0 && <small>Refunded {kes(s.refunded_kes)}</small>}</td>
                   <td>{s.commission_kes === null ? <span className="dash-muted">—</span> : kes(s.commission_kes)}<small>{pct(s.commission_bps)}</small></td>
                   <td><span className={`dash-badge cl-sale-${s.status}`}>{SALE[s.status]}</span>{s.status_reason && <small>{s.status_reason}</small>}
                     {s.status === "pending" && <small>Checked with Safaricom automatically every 2 minutes</small>}</td>
                   <td>{phones[s.id] ?? s.payer_phone_masked}{!phones[s.id] && <button type="button" className="dash-btn small ghost" onClick={() => reveal(s.id)}>Show</button>}</td>
-                  <td>{when(s.paid_at ?? s.created_at)}</td>
+                  <td>{when(s.paid_at ?? s.created_at)}{s.status === "success" && <small>{s.reconciliation_status}{s.reconciliation_note ? ` · ${s.reconciliation_note}` : ""}</small>}</td>
+                  <td><SaleActions sale={s} openRefund={data.refunds.some((x) => x.sale_id === s.id && x.status === "requested")} /></td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
-      <p className="dash-muted">“Needs a look” = M-Pesa paid but not credited automatically (a different amount, or paid after the attempt was marked failed). Nothing is credited to the vendor until it&apos;s resolved — resolution, refunds and statement reconciliation arrive with payouts.</p>
+      <p className="dash-muted">“Needs a look” = M-Pesa paid but not credited automatically (a different amount, or paid after the attempt was marked failed). Resolve it: credit the vendor (goods were handed over) or record that the money went back to the payer.</p>
     </div>
   );
 }
