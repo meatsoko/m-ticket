@@ -16,13 +16,19 @@
 // returns the same attempt (no second prompt), so a double tap, a refresh or a
 // lost response can't charge twice. A new attempt after a failure uses a new key.
 //
-// Switch: VENDOR_SALES=on (fails closed) and the DARAJA_SALES_* secrets. For a
-// bank paybill, DARAJA_SALES_ACCOUNT_REFERENCE is the account number the bank
-// needs on every payment (Daraja accepts at most 12 characters).
+// Switch: VENDOR_SALES=on (fails closed). Which provider sends the prompt to the
+// SEPARATE vendor collection account is VENDOR_SALES_PROVIDER:
+//   daraja (default) — the DARAJA_SALES_* till/paybill. For a bank paybill,
+//            DARAJA_SALES_ACCOUNT_REFERENCE is the account number the bank needs
+//            (Daraja accepts at most 12 characters).
+//   payhero — PayHero channel PAYHERO_SALES_CHANNEL_ID (MeatSoko's Equity bank
+//            channel), same PayHero login as before. Confirmed only by PayHero's
+//            transaction-status API (verifyMpesa), never by its callback.
+// Neither ever falls back to the ticket till or the ticket PayHero channel.
 import { json, preflight } from "../_shared/cors.ts";
 import { clientIp, normalizePhone, rateLimit, serviceClient } from "../_shared/supabase.ts";
 import { darajaConfigured, darajaStkPush } from "../_shared/daraja-express.ts";
-import { newPayheroReference, verifyMpesa } from "../_shared/payhero.ts";
+import { newPayheroReference, payheroSalesConfigured, sendStkPush, verifyMpesa } from "../_shared/payhero.ts";
 
 const CODE = /^[a-z2-7]{16}$/;
 const TOKEN = /^[a-f0-9]{32}$/;
@@ -30,6 +36,17 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SALE_COLUMNS = "id,reference,status,status_reason,amount_kes,mpesa_receipt,created_at,paid_at,event_vendor_id,vendors(name),events(name)";
 
 const salesOpen = () => (Deno.env.get("VENDOR_SALES") ?? "").trim().toLowerCase() === "on";
+const salesProvider = (): "daraja" | "payhero" | null => {
+  const v = (Deno.env.get("VENDOR_SALES_PROVIDER") ?? "").trim().toLowerCase();
+  return v === "" || v === "daraja" ? "daraja" : v === "payhero" ? "payhero" : null;
+};
+/** The vendor collection account is set up for the chosen provider (or why not). */
+function salesReady(): { ok: true } | { ok: false; missing: string[] } {
+  const p = salesProvider();
+  if (!p) return { ok: false, missing: ["VENDOR_SALES_PROVIDER (daraja|payhero)"] };
+  const c = p === "payhero" ? payheroSalesConfigured() : darajaConfigured("sales");
+  return c.ok ? { ok: true } : c;
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return preflight();
@@ -60,7 +77,7 @@ Deno.serve(async (req) => {
     const code = String(b.code ?? "").toLowerCase();
     if (!CODE.test(code)) return json({ error: "unknown_code" }, 404);
     if (!salesOpen()) return json({ error: "payments_closed" }, 503);
-    const ready = darajaConfigured("sales");
+    const ready = salesReady();
     if (!ready.ok) {
       console.error(JSON.stringify({ msg: "vendor sales till not configured", missing: ready.missing }));
       return json({ error: "payments_closed" }, 503);
@@ -87,11 +104,27 @@ Deno.serve(async (req) => {
     // A new attempt: open the ledger row, then send the prompt to the sales till.
     const reference = newPayheroReference();
     const { error: lErr } = await db.from("payhero_payments").insert({
-      reference, kind: "sale", provider: "daraja", account: "sales", vendor_sale_id: sale.id, phone, amount_kes: amount,
+      reference, kind: "sale", provider: salesProvider(), account: "sales", vendor_sale_id: sale.id, phone, amount_kes: amount,
     });
     if (lErr) {
       console.error(JSON.stringify({ msg: "vendor sale ledger insert failed", sale: sale.reference, detail: lErr.message }));
       return json({ error: "server_error" }, 500);
+    }
+    if (salesProvider() === "payhero") {
+      const ph = await sendStkPush({
+        reference, amountKes: amount, phone, customerName: String(r.vendor_name ?? "Vendor").slice(0, 40),
+        channelId: (payheroSalesConfigured() as { channelId: number }).channelId,
+      });
+      if (!ph.ok) {
+        await db.rpc("fail_payhero_payment", { p_reference: reference, p_reason: `stk_not_sent: ${ph.detail}` });
+        console.log(JSON.stringify({ msg: "vendor sale stk refused", provider: "payhero", sale: sale.reference, detail: ph.detail }));
+        return json({ error: "stk_failed", ...(await view(db, sale.status_token)) }, 502);
+      }
+      await db.from("payhero_payments").update({
+        payhero_reference: ph.payheroReference, checkout_request_id: ph.checkoutRequestId, updated_at: new Date().toISOString(),
+      }).eq("reference", reference);
+      console.log(JSON.stringify({ msg: "vendor sale prompt sent", provider: "payhero", sale: sale.reference, amount }));
+      return json(await view(db, sale.status_token));
     }
     const stk = await darajaStkPush({
       account: "sales", amountKes: amount, phone,
@@ -147,7 +180,7 @@ function closedReason(qr: any, ev: any, e: any): { open: boolean; reason?: strin
   if (e?.status !== "live" || now >= Date.parse(e.ends_at)) return { open: false, reason: "event_closed" };
   if (now < Date.parse(e.starts_at)) return { open: false, reason: "event_not_started" };
   if (ev.policy_bps_accepted !== (ev.commission_bps ?? e.vendor_commission_bps)) return { open: false, reason: "vendor_not_active" };
-  if (!salesOpen() || !darajaConfigured("sales").ok) return { open: false, reason: "payments_closed" };
+  if (!salesOpen() || !salesReady().ok) return { open: false, reason: "payments_closed" };
   return { open: true };
 }
 

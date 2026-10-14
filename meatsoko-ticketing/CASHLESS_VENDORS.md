@@ -156,6 +156,22 @@ Service-role only: `start_vendor_sale`, `confirm_payhero_sale_payment`, `expire_
 | `DARAJA_SALES_CONSUMER_KEY` / `_SECRET` | only if the till is on a different Daraja app; otherwise the main `DARAJA_CONSUMER_*` are used |
 | `DARAJA_SALES_ENV` | only if different from `DARAJA_ENV` |
 
+**Through PayHero to the Equity account (the user's choice, 2026-10-14).** MeatSoko's
+collection account is Equity Bank paybill `247247`, account `125385` (MeatSoko Limited). Daraja
+can't prompt to it (Equity holds that paybill's passkey), so booth prompts go through
+PayHero's bank channel, and the money lands in the Equity account directly:
+
+| Secret | |
+|---|---|
+| `VENDOR_SALES_PROVIDER=payhero` | send booth prompts through PayHero (unset or `daraja` = the `DARAJA_SALES_*` account) |
+| `PAYHERO_SALES_CHANNEL_ID` | the PayHero channel ID of the Equity bank channel (PayHero dashboard → Payment Channels → Bank → Equity 247247, account 125385). Separate from the ticket `PAYHERO_CHANNEL_ID` |
+| `PAYHERO_API_USERNAME` / `PAYHERO_API_PASSWORD` | the PayHero login (already set for the earlier ticket integration; the channel must belong to the same PayHero account) |
+
+`PAYHERO_PAYMENTS` (the ticket-side PayHero switch) stays off; tickets keep using Daraja.
+A PayHero sale is confirmed only by PayHero's transaction-status API (`verifyMpesa`); its
+callback (`payhero-callback`) is unsigned and only triggers that check. The M-Pesa receipt
+comes from PayHero's status answer. For reconciliation, import the Equity statement.
+
 With `VENDOR_SALES` off or the sales shortcode/passkey missing, the pay page says
 payments are closed. **It never falls back to the ticket till.**
 

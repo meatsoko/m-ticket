@@ -2000,5 +2000,83 @@ console.log("\n--- cashless vendor sales ---");
   for (const k of ["DARAJA_SALES_SHORTCODE", "DARAJA_SALES_PASSKEY", "DARAJA_SALES_TILL_NUMBER", "VENDOR_SALES"]) Deno.env.delete(k);
 }
 
+// 24. Cashless booth payments through PayHero to the Equity bank channel (VENDOR_SALES_PROVIDER=payhero)
+console.log("\n--- cashless via payhero ---");
+{
+  const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2.45.4");
+  const uid = crypto.randomUUID();
+  await fetch("http://supabase.test/rest/v1/rpc/test_make_user", { method: "POST", headers: svc, body: JSON.stringify({ p_id: uid }) });
+  await post("admin_users", { user_id: uid, role: "admin" });
+  const ak = await jwt({ role: "authenticated", sub: uid, exp: 4102444800 });
+  const admin = createClient("http://supabase.test", ak, { auth: { persistSession: false }, global: { headers: { Authorization: `Bearer ${ak}` } } });
+  const [ev] = await post("events", { name: "PayHero Fest", slug: "ph-cashless", starts_at: new Date(Date.now() - 3600_000).toISOString(), ends_at: new Date(Date.now() + 6 * 3600_000).toISOString(), status: "live", reservation_mode: "off" });
+  const v = (await admin.rpc("admin_save_vendor", { p_vendor_id: null, p_name: "Equity Grill", p_phone: "0712600001", p_email: "eqgrill@example.test", p_payout_phone: null })).data.vendor;
+  const pv = (await admin.rpc("admin_assign_vendor_event", { p_vendor_id: v.id, p_event_id: ev.id })).data.event_vendor;
+  await admin.rpc("admin_set_event_vendor_status", { p_event_vendor_id: pv.id, p_status: "active", p_reason: null });
+  await admin.rpc("accept_vendor_policy", { p_event_vendor_id: pv.id, p_note: "Signed form" });
+  const qr = (await admin.rpc("admin_issue_vendor_qr", { p_event_vendor_id: pv.id })).data.qr;
+  for (const k of ["DARAJA_SALES_SHORTCODE", "DARAJA_SALES_PASSKEY", "DARAJA_SALES_TILL_NUMBER"]) Deno.env.delete(k);
+  Deno.env.set("VENDOR_SALES", "on");
+  Deno.env.set("VENDOR_SALES_PROVIDER", "payhero");
+  Deno.env.delete("PAYHERO_PAYMENTS");   // the ticket-side PayHero switch stays off
+
+  let r: any = await call("vpay", { action: "info", code: qr.code }, ip());
+  check("payhero sales: closed until PAYHERO_SALES_CHANNEL_ID is set (no fallback to the ticket channel)", r.body?.open === false && r.body?.reason === "payments_closed", r.body);
+  const ph0 = payheroSent.length, dj0 = darajaSent.length;
+  r = await call("vpay", { action: "start", code: qr.code, amount: 100, phone: "0712600009", idempotency_key: crypto.randomUUID() }, ip());
+  check("payhero sales: start refused without the sales channel, nothing sent", r.status === 503 && payheroSent.length === ph0 && darajaSent.length === dj0, r.body);
+  Deno.env.set("PAYHERO_SALES_CHANNEL_ID", "24680");
+  r = await call("vpay", { action: "info", code: qr.code }, ip());
+  check("payhero sales: open once the channel is set, even with PAYHERO_PAYMENTS off", r.body?.open === true, r.body);
+
+  r = await call("vpay", { action: "start", code: qr.code, amount: 750, phone: "0712 600 010", idempotency_key: crypto.randomUUID() }, ip());
+  const s1 = r.body, sent = payheroSent.at(-1);
+  const sale = (await get(`vendor_sales?select=*&reference=eq.${s1?.reference}`))[0];
+  const led = (await get(`payhero_payments?select=*&vendor_sale_id=eq.${sale?.id}`))[0];
+  check("payhero sales: prompt to the SALES channel 24680 (not the ticket channel 13719), KSh 750, our PH reference, Daraja untouched",
+    r.status === 200 && s1?.status === "pending" && sent?.channel_id === 24680 && sent?.amount === 750 && sent?.phone_number === "254712600010" &&
+    sent?.external_reference === led?.reference && /payhero-callback$/.test(sent?.callback_url ?? "") && darajaSent.length === dj0, { s1, sent });
+  check("payhero sales: ledger row provider payhero, account sales, PayHero's reference stored", led?.provider === "payhero" && led?.account === "sales" && led?.kind === "sale" && !!led?.payhero_reference, led);
+  r = await call("phcb", { response: { ExternalReference: led.reference, Status: "Success", MpesaReceiptNumber: "FORGED0001", Amount: 750 } });
+  check("payhero sales: a forged success callback changes nothing while PayHero says QUEUED", (await get(`vendor_sales?select=status&id=eq.${sale.id}`))[0].status === "pending");
+  payhero.set(led.payhero_reference, { status: "SUCCESS", amount: 750, ext: led.reference, receipt: "TJQEQTY001" });
+  await call("phcb", { response: { ExternalReference: led.reference, Status: "Success" } });
+  const done = (await get(`vendor_sales?select=status,commission_kes,mpesa_receipt&id=eq.${sale.id}`))[0];
+  check("payhero sales: PayHero's status API says SUCCESS -> sale paid, 5% = 37.50, receipt from PayHero, ledger posted once",
+    done.status === "success" && Number(done.commission_kes) === 37.5 && done.mpesa_receipt === "TJQEQTY001" && (await get(`vendor_ledger_entries?select=id&sale_id=eq.${sale.id}`)).length === 2, done);
+  await call("phcb", { response: { ExternalReference: led.reference, Status: "Success" } });
+  await call("phrec", {});
+  check("payhero sales: repeat callback and reconcile post nothing more", (await get(`vendor_ledger_entries?select=id&sale_id=eq.${sale.id}`)).length === 2);
+  r = await call("vpay", { action: "status", status_token: s1.status_token }, ip());
+  check("payhero sales: the pay page sees Paid with the receipt", r.body?.status === "success" && r.body?.mpesa_receipt === "TJQEQTY001", r.body);
+
+  // a cancelled prompt, found by the waiting page
+  r = await call("vpay", { action: "start", code: qr.code, amount: 200, phone: "0712600011", idempotency_key: crypto.randomUUID() }, ip());
+  const s2 = r.body;
+  const sale2 = (await get(`vendor_sales?select=id&reference=eq.${s2.reference}`))[0];
+  const led2 = (await get(`payhero_payments?select=*&vendor_sale_id=eq.${sale2.id}`))[0];
+  payhero.set(led2.payhero_reference, { status: "FAILED", amount: 200, ext: led2.reference, receipt: null });
+  await patch(`vendor_sales?id=eq.${sale2.id}`, { created_at: new Date(Date.now() - 20_000).toISOString() });
+  r = await call("vpay", { action: "status", status_token: s2.status_token }, ip());
+  check("payhero sales: a failed prompt -> failed, nothing posted", r.body?.status === "failed" && (await get(`vendor_ledger_entries?select=id&sale_id=eq.${sale2.id}`)).length === 0, r.body);
+  // an amount PayHero reports differently is flagged, never credited
+  r = await call("vpay", { action: "start", code: qr.code, amount: 300, phone: "0712600012", idempotency_key: crypto.randomUUID() }, ip());
+  const sale3 = (await get(`vendor_sales?select=id&reference=eq.${r.body.reference}`))[0];
+  const led3 = (await get(`payhero_payments?select=*&vendor_sale_id=eq.${sale3.id}`))[0];
+  payhero.set(led3.payhero_reference, { status: "SUCCESS", amount: 30, ext: led3.reference, receipt: "TJQEQTY003" });
+  await call("phcb", { response: { ExternalReference: led3.reference } });
+  check("payhero sales: PayHero reports a different amount -> flagged, not credited", (await get(`vendor_sales?select=status,status_reason&id=eq.${sale3.id}`))[0].status === "flagged" &&
+    (await get(`vendor_ledger_entries?select=id&sale_id=eq.${sale3.id}`)).length === 0);
+  payheroRefuse = true;
+  r = await call("vpay", { action: "start", code: qr.code, amount: 50, phone: "0712600013", idempotency_key: crypto.randomUUID() }, ip());
+  payheroRefuse = false;
+  check("payhero sales: PayHero refuses the prompt -> 502, attempt failed", r.status === 502 && r.body?.error === "stk_failed" && r.body?.status === "failed", r.body);
+  Deno.env.set("VENDOR_SALES_PROVIDER", "mpesa-ish");
+  r = await call("vpay", { action: "start", code: qr.code, amount: 50, phone: "0712600014", idempotency_key: crypto.randomUUID() }, ip());
+  check("payhero sales: an unknown provider name keeps payments closed", r.status === 503, r.body);
+  for (const k of ["VENDOR_SALES", "VENDOR_SALES_PROVIDER", "PAYHERO_SALES_CHANNEL_ID"]) Deno.env.delete(k);
+  Deno.env.set("PAYHERO_PAYMENTS", "on");
+}
+
 console.log(failures ? `\n${failures} FAILED` : "\nall passed");
 Deno.exit(failures ? 1 : 0);
