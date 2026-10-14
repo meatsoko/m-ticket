@@ -36,3 +36,16 @@ export async function requireAdmin() {
   if (ctx.role !== "admin") redirect("/scan");
   return ctx;
 }
+
+/**
+ * Vendor dashboard guard (migration 20261014150000). A vendor is a Supabase Auth
+ * user linked from public.vendors.user_id — never a row in admin_users. What the
+ * vendor can read is decided by RLS and vendor_dashboard() in the database; this
+ * only sends signed-out visitors to the sign-in page.
+ */
+export async function requireVendor() {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/vendor/login");
+  return { supabase, user };
+}
