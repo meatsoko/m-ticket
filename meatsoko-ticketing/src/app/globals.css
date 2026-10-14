@@ -2263,3 +2263,55 @@ a.login-submit { display: grid; place-items: center; text-decoration: none; }
   .app.in-store.wide-event-shell.full-bleed { max-width: none; width: 100%; }
   .app.in-store.wide-event-shell .in-store-bar { min-height: 60px; height: auto; }
 }
+
+/* ---------- Cashless booth payments (migration 20261014150000) ---------- */
+/* Pay page (/pay/<code>): ticketing theme, phone first. */
+.pay-head { gap: var(--s1); }
+.pay-vendor { margin: 0; font-size: 1.6rem; line-height: 1.15; }
+.pay-amount input { font-size: 1.8rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.pay-result { align-items: flex-start; }
+.pay-result.success { border-color: var(--ok); }
+.pay-result.failed { border-color: var(--danger); }
+.pay-amount-big { font-size: 2.2rem; letter-spacing: -.02em; }
+.pay-facts { display: grid; gap: 6px; margin: 0; width: 100%; }
+.pay-facts > div { display: flex; justify-content: space-between; gap: var(--s3); }
+.pay-facts dt { color: var(--muted); font-size: .85rem; }
+.pay-facts dd { margin: 0; font-weight: 700; }
+
+/* Vendor dashboard (/vendor/dashboard): store theme. */
+.vendor-shell { min-height: 100vh; background: var(--store-cream, #f6f3ed); }
+.vendor-bar { display: flex; align-items: center; gap: 12px; padding: 12px max(4vw, 16px); border-bottom: 1px solid var(--store-line); background: #fff; }
+.vendor-bar .brand-logo { height: 32px; width: auto; }
+.vendor-bar-user { margin-left: auto; font-size: 13px; color: var(--store-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 50vw; }
+.vendor-main { max-width: 1100px; margin: 0 auto; padding: 20px max(4vw, 16px) 48px; }
+.vendor-policy { display: grid; gap: 8px; padding: 14px; border: 1px solid var(--store-red); border-radius: 12px; background: #fff7f7; }
+.vendor-policy p { margin: 0; }
+.vendor-summary { display: grid; gap: 6px; margin: 0; }
+.vendor-summary > div { display: flex; justify-content: space-between; gap: 16px; font-variant-numeric: tabular-nums; }
+.vendor-summary dt { color: var(--store-muted); }
+.vendor-summary dd { margin: 0; font-weight: 700; text-align: right; }
+.vendor-summary .total { border-top: 1px solid var(--store-line); padding-top: 6px; }
+.vendor-qr summary { cursor: pointer; font-weight: 700; }
+.vendor-qr { display: grid; gap: 8px; justify-items: start; }
+
+/* Admin: Dashboard → Cashless. */
+.dash-badge.cl-active, .dash-badge.cl-sale-success { background: #e3f0e7; color: #2f7a4a; }
+.dash-badge.cl-pending, .dash-badge.cl-inactive, .dash-badge.cl-sale-pending { background: #fdf0d9; color: #8a5a00; }
+.dash-badge.cl-suspended, .dash-badge.cl-rejected, .dash-badge.cl-sale-flagged { background: #fbe3e5; color: var(--store-red); }
+.dash-badge.cl-sale-failed { background: #eeeae4; color: var(--store-muted); }
+.cl-table td { vertical-align: top; }
+.cl-table td small { display: block; }
+
+/* Printable booth poster. */
+.cl-poster { display: grid; justify-items: center; gap: 10px; padding: 32px; background: #fff; border: 1px solid var(--store-line); border-radius: 16px; text-align: center; max-width: 640px; }
+.cl-poster-logo { width: 220px; height: auto; }
+.cl-poster-event { margin: 0; font-weight: 700; color: var(--store-muted); text-transform: uppercase; letter-spacing: .08em; }
+.cl-poster-vendor { margin: 0; font-size: 2.4rem; line-height: 1.1; }
+.cl-poster-cta { margin: 0; font-size: 1.6rem; font-weight: 800; color: var(--store-red); }
+.cl-poster-small { margin: 0; max-width: 46ch; color: var(--store-muted); }
+.cl-poster-url { margin: 0; font-family: ui-monospace, monospace; font-size: 13px; }
+@media print {
+  .no-print, .dash-side { display: none !important; }
+  .dash-shell, .dash-main { display: block !important; padding: 0 !important; margin: 0 !important; }
+  .cl-poster { border: 0; max-width: none; padding: 0; }
+}

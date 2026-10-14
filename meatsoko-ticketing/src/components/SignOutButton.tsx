@@ -14,7 +14,8 @@ import Icon from "@/components/Icon";
  * whatever the next person does. A reload guarantees the server re-resolves the
  * role with no cookie and the client starts from nothing.
  */
-export default function SignOutButton() {
+/** `to`: where to land afterwards (vendors go back to the vendor sign-in). */
+export default function SignOutButton({ to = "/login" }: { to?: string }) {
   const supabase = createClient();
   const [busy, setBusy] = useState(false);
 
@@ -27,7 +28,7 @@ export default function SignOutButton() {
       // Even if the network call fails the local session is gone; getting the
       // person off this device matters more than a clean server round-trip.
     }
-    window.location.assign("/login");
+    window.location.assign(to);
   }
 
   return (

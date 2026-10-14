@@ -38,10 +38,30 @@ let payheroRefuse = false;
 const daraja = new Map<string, { state: "pending" | "success" | "failed" | "processing"; code?: string }>();
 const darajaSent: any[] = [];
 let darajaRefuse = false;
+const authCreated: string[] = [];
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (input: any, init?: any) => {
   const req = new Request(input, init);
   const url = new URL(req.url);
+  if (url.host === "supabase.test" && url.pathname.startsWith("/auth/v1/")) {
+    // Fake Supabase Auth: who a JWT belongs to, and admin user creation (vendor-invite).
+    if (url.pathname === "/auth/v1/user") {
+      const tok = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
+      try {
+        const claims = JSON.parse(atob(tok.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+        if (claims.sub) return Response.json({ id: claims.sub, aud: "authenticated", role: "authenticated" });
+      } catch { /* fall through */ }
+      return Response.json({ msg: "invalid JWT" }, { status: 401 });
+    }
+    if (url.pathname === "/auth/v1/admin/users" && req.method === "POST") {
+      const b = await req.json();
+      authCreated.push(b.email);
+      const r = await realFetch("http://mt-harness-rest:3000/rpc/test_make_auth_user", { method: "POST", headers: { apikey: SERVICE_KEY, authorization: `Bearer ${SERVICE_KEY}`, "content-type": "application/json" }, body: JSON.stringify({ p_email: b.email }) });
+      const id = await r.json();
+      if (!id) return Response.json({ code: 422, error_code: "email_exists", msg: "A user with this email address has already been registered" }, { status: 422 });
+      return Response.json({ id, email: b.email });
+    }
+  }
   if (url.host === "supabase.test") {
     const target = `http://mt-harness-rest:3000${url.pathname.replace(/^\/rest\/v1/, "")}${url.search}`;
     // Docker's network occasionally drops a reused keep-alive connection before
@@ -92,7 +112,8 @@ globalThis.fetch = async (input: any, init?: any) => {
     }
     if (req.headers.get("authorization") !== "Bearer daraja-token-1") return Response.json({ errorCode: "404.001.03", errorMessage: "Invalid Access Token" }, { status: 401 });
     const b = await req.json();
-    const pwOk = atob(b.Password ?? "") === `600100pk_test${b.Timestamp}`;
+    // The ticket till (600100/pk_test) or the separate vendor-sales till (700100/pk_sales).
+    const pwOk = [`600100pk_test${b.Timestamp}`, `700100pk_sales${b.Timestamp}`].includes(atob(b.Password ?? ""));
     if (url.pathname === "/mpesa/stkpush/v1/processrequest") {
       darajaSent.push({ ...b, pwOk });
       if (darajaRefuse || !pwOk) return Response.json({ errorCode: "400.002.02", errorMessage: "Bad Request - Invalid PhoneNumber" }, { status: 400 });
@@ -116,7 +137,7 @@ globalThis.fetch = async (input: any, init?: any) => {
 const handlers: Record<string, (r: Request) => Promise<Response>> = {};
 let loading = "";
 (Deno as any).serve = (h: any) => { handlers[loading] = h; return { finished: Promise.resolve() }; };
-for (const [name, path] of [["checkout", "merch-checkout"], ["order", "merch-order"], ["webhook", "paystack-webhook"], ["fx", "merch-fx-refresh"], ["reconcile", "paystack-reconcile"], ["reserve", "reserve"], ["reslookup", "reservation-lookup"], ["lookup", "lookup"], ["verify", "paystack-verify"], ["upgrade", "upgrade-reservation"], ["bytoken", "reservation-by-token"], ["vendor", "vendor-apply"], ["oreg", "online-register"], ["oacc", "online-access"], ["addon", "platter-addon"], ["inv", "investor-register"], ["receipt", "event-order-receipt"], ["cust", "customer-order"], ["cel", "celebration-request"], ["phpay", "payhero-pay"], ["phcb", "payhero-callback"], ["phst", "payhero-status"], ["phrec", "payhero-reconcile"], ["stkres", "stk-result"], ["darcb", "daraja-callback"], ["stkpush", "stk-push"], ["ostatus", "order-status"], ["rstatus", "reservation-status"]]) {
+for (const [name, path] of [["checkout", "merch-checkout"], ["order", "merch-order"], ["webhook", "paystack-webhook"], ["fx", "merch-fx-refresh"], ["reconcile", "paystack-reconcile"], ["reserve", "reserve"], ["reslookup", "reservation-lookup"], ["lookup", "lookup"], ["verify", "paystack-verify"], ["upgrade", "upgrade-reservation"], ["bytoken", "reservation-by-token"], ["vendor", "vendor-apply"], ["oreg", "online-register"], ["oacc", "online-access"], ["addon", "platter-addon"], ["inv", "investor-register"], ["receipt", "event-order-receipt"], ["cust", "customer-order"], ["cel", "celebration-request"], ["phpay", "payhero-pay"], ["phcb", "payhero-callback"], ["phst", "payhero-status"], ["phrec", "payhero-reconcile"], ["stkres", "stk-result"], ["darcb", "daraja-callback"], ["stkpush", "stk-push"], ["ostatus", "order-status"], ["rstatus", "reservation-status"], ["vpay", "vendor-pay"], ["vinv", "vendor-invite"]]) {
   loading = name; await import(`/fns/${path}/index.ts`);
 }
 const call = async (name: string, body: unknown, headers: Record<string, string> = {}) => {
@@ -1659,6 +1680,324 @@ console.log("\n--- daraja m-pesa express ---");
   lrow = (await get(`orders?select=status,mpesa_receipt&id=eq.${lo?.id}`))[0];
   check("legacy daraja-callback: confirmed only once Safaricom says paid, at the order's own amount (callback said KSh 1)", lrow?.status === "paid" && lrow?.mpesa_receipt === "TJ7LEG0001", lrow);
   for (const k of ["MPESA_PROVIDER", "DARAJA_PAYMENTS"]) Deno.env.delete(k);
+}
+
+// 23. Cashless vendor sales: booth QR -> M-Pesa to the separate sales till (migration 20261014150000)
+console.log("\n--- cashless vendor sales ---");
+{
+  const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2.45.4");
+  const asUser = async (uid: string) => {
+    const k = await jwt({ role: "authenticated", sub: uid, exp: 4102444800 });
+    return { k, c: createClient("http://supabase.test", k, { auth: { persistSession: false }, global: { headers: { Authorization: `Bearer ${k}` } } }) };
+  };
+  const mkUser = async (role: "admin" | "staff" | null) => {
+    const uid = crypto.randomUUID();
+    await fetch("http://supabase.test/rest/v1/rpc/test_make_user", { method: "POST", headers: svc, body: JSON.stringify({ p_id: uid }) });
+    if (role) await fetch("http://supabase.test/rest/v1/admin_users", { method: "POST", headers: svc, body: JSON.stringify({ user_id: uid, role }) });
+    return { uid, ...(await asUser(uid)) };
+  };
+  const admin = await mkUser("admin"), staff = await mkUser("staff"), stranger = await mkUser(null);
+  for (const [k, v] of Object.entries({ DARAJA_ENV: "sandbox", DARAJA_CONSUMER_KEY: "dk_test", DARAJA_CONSUMER_SECRET: "ds_test", DARAJA_PASSKEY: "pk_test",
+    DARAJA_SHORTCODE: "600100", DARAJA_TILL_NUMBER: "600200", DARAJA_SALES_SHORTCODE: "700100", DARAJA_SALES_PASSKEY: "pk_sales", DARAJA_SALES_TILL_NUMBER: "700200", VENDOR_SALES: "on" })) Deno.env.set(k, v);
+  const hour = 3600_000;
+  const [fest] = await post("events", { name: "Cashless Fest", slug: "cl-fest", venue: "Thika Greens", starts_at: new Date(Date.now() - hour).toISOString(), ends_at: new Date(Date.now() + 6 * hour).toISOString(), status: "live", reservation_mode: "off" });
+  const [other] = await post("events", { name: "Other Cashless", slug: "cl-other", starts_at: new Date(Date.now() - hour).toISOString(), ends_at: new Date(Date.now() + 6 * hour).toISOString(), status: "live", reservation_mode: "off" });
+  const [future] = await post("events", { name: "Later Fest", slug: "cl-later", starts_at: new Date(Date.now() + 24 * hour).toISOString(), ends_at: new Date(Date.now() + 30 * hour).toISOString(), status: "live", reservation_mode: "off" });
+  check("cashless: events default to a 5% vendor commission (500 bps)", fest.vendor_commission_bps === 500, fest);
+
+  // --- vendors: only admins create, approve, set commission, issue QR codes ---
+  let r: any = await staff.c.rpc("admin_save_vendor", { p_vendor_id: null, p_name: "Sneaky", p_phone: "0712000001", p_email: "s@example.test", p_payout_phone: null });
+  check("cashless: staff can't create vendors", r.error?.code === "42501", r);
+  r = await rpc("admin_save_vendor", { p_vendor_id: null, p_name: "Sneaky", p_phone: "0712000001", p_email: "s@example.test", p_payout_phone: null });
+  check("cashless: anon can't create vendors", r.body?.code === "42501", r);
+  r = await admin.c.rpc("admin_save_vendor", { p_vendor_id: null, p_name: "Kuku Grill", p_phone: "0712 300 001", p_email: "Kuku@Example.test", p_payout_phone: "" });
+  const kuku = r.data?.vendor;
+  check("cashless: admin creates a vendor; phone normalised; email lower-cased; payout number defaults to the phone", r.data?.result === "saved" && kuku?.phone === "254712300001" && kuku?.email === "kuku@example.test" && kuku?.payout_phone === "254712300001", r.data ?? r.error);
+  r = await admin.c.rpc("admin_save_vendor", { p_vendor_id: null, p_name: "Dup", p_phone: "0712300009", p_email: "kuku@example.test", p_payout_phone: null });
+  check("cashless: one vendor per email", r.data?.error === "email_taken", r.data);
+  r = await admin.c.rpc("admin_save_vendor", { p_vendor_id: null, p_name: "Bad", p_phone: "12345", p_email: "bad@example.test", p_payout_phone: null });
+  check("cashless: bad phone refused", r.data?.error === "invalid_phone", r.data);
+  const juice = (await admin.c.rpc("admin_save_vendor", { p_vendor_id: null, p_name: "Juice Bar", p_phone: "0712300002", p_email: "juice@example.test", p_payout_phone: "0722300002" })).data?.vendor;
+
+  r = await admin.c.rpc("admin_assign_vendor_event", { p_vendor_id: kuku.id, p_event_id: fest.id });
+  const kukuEv = r.data?.event_vendor;
+  check("cashless: assigned to the event as pending", r.data?.result === "assigned" && kukuEv?.status === "pending", r.data ?? r.error);
+  r = await admin.c.rpc("admin_assign_vendor_event", { p_vendor_id: kuku.id, p_event_id: fest.id });
+  check("cashless: assigning twice returns the same participation", r.data?.result === "existing" && r.data?.event_vendor?.id === kukuEv.id, r.data);
+  const juiceEv = (await admin.c.rpc("admin_assign_vendor_event", { p_vendor_id: juice.id, p_event_id: fest.id })).data?.event_vendor;
+  const kukuOther = (await admin.c.rpc("admin_assign_vendor_event", { p_vendor_id: kuku.id, p_event_id: other.id })).data?.event_vendor;
+  const rejV = (await admin.c.rpc("admin_save_vendor", { p_vendor_id: null, p_name: "Rejected Co", p_phone: "0712300003", p_email: "rej@example.test", p_payout_phone: null })).data?.vendor;
+  const rejEv = (await admin.c.rpc("admin_assign_vendor_event", { p_vendor_id: rejV.id, p_event_id: fest.id })).data?.event_vendor;
+  r = await admin.c.rpc("admin_set_event_vendor_status", { p_event_vendor_id: rejEv.id, p_status: "rejected", p_reason: "" });
+  check("cashless: rejecting needs a reason", r.data?.error === "reason_required", r.data);
+  r = await admin.c.rpc("admin_set_event_vendor_status", { p_event_vendor_id: rejEv.id, p_status: "rejected", p_reason: "No food licence" });
+  check("cashless: admin rejects an application", r.data?.status === "rejected", r.data);
+  r = await admin.c.rpc("admin_set_event_vendor_status", { p_event_vendor_id: rejEv.id, p_status: "active", p_reason: null });
+  check("cashless: a rejection is final", r.data?.error === "rejected_is_final", r.data);
+  r = await staff.c.rpc("admin_set_event_vendor_status", { p_event_vendor_id: kukuEv.id, p_status: "active", p_reason: null });
+  check("cashless: staff can't approve", r.error?.code === "42501", r);
+  for (const ev of [kukuEv, juiceEv, kukuOther]) await admin.c.rpc("admin_set_event_vendor_status", { p_event_vendor_id: ev.id, p_status: "active", p_reason: null });
+  check("cashless: approvals audited", (await get(`admin_audit?select=action&subject_id=eq.${kukuEv.id}&action=eq.event_vendor_status`)).length === 1);
+
+  // --- QR codes ---
+  r = await staff.c.rpc("admin_issue_vendor_qr", { p_event_vendor_id: kukuEv.id });
+  check("cashless: staff can't issue QR codes", r.error?.code === "42501", r);
+  r = await admin.c.rpc("admin_issue_vendor_qr", { p_event_vendor_id: kukuEv.id });
+  const qr1 = r.data?.qr;
+  check("cashless: QR issued — 16 base32 characters, active", /^[a-z2-7]{16}$/.test(qr1?.code ?? "") && qr1?.active === true, r.data ?? r.error);
+  const juiceQr = (await admin.c.rpc("admin_issue_vendor_qr", { p_event_vendor_id: juiceEv.id })).data?.qr;
+  const otherQr = (await admin.c.rpc("admin_issue_vendor_qr", { p_event_vendor_id: kukuOther.id })).data?.qr;
+
+  // --- the pay page before the vendor accepts the commission policy ---
+  r = await call("vpay", { action: "info", code: qr1.code }, ip());
+  check("pay page: shows vendor and event; closed until the vendor accepts the commission policy", r.status === 200 && r.body?.vendor_name === "Kuku Grill" && r.body?.event_name === "Cashless Fest" && r.body?.open === false && r.body?.reason === "vendor_not_active" && !("commission_bps" in r.body), r.body);
+  r = await call("vpay", { action: "info", code: "aaaaaaaaaaaaaaaa" }, ip());
+  check("pay page: an unknown code is 404", r.status === 404, r);
+  const idem = () => crypto.randomUUID();
+  r = await call("vpay", { action: "start", code: qr1.code, amount: 500, phone: "0712999001", idempotency_key: idem() }, ip());
+  check("pay: refused before the policy is accepted", r.status === 409 && r.body?.error === "policy_not_accepted", r.body);
+
+  // --- vendor accounts (vendor-invite) ---
+  r = await call("vinv", { vendor_id: kuku.id }, { authorization: `Bearer ${staff.k}` });
+  check("invite: staff (not admin) refused", r.status === 403, r.body);
+  r = await call("vinv", { vendor_id: kuku.id });
+  check("invite: no session refused", r.status === 401, r.body);
+  sentEmails.length = 0;
+  r = await call("vinv", { vendor_id: kuku.id }, { authorization: `Bearer ${admin.k}` });
+  const kukuUid = (await get(`vendors?select=user_id&id=eq.${kuku.id}`))[0]?.user_id;
+  check("invite: admin creates and links the account, emails the sign-in link", r.status === 200 && r.body?.result === "linked" && !!kukuUid && authCreated.includes("kuku@example.test") &&
+    sentEmails.some((m: any) => m.to?.[0] === "kuku@example.test" && /\/vendor\/login/.test(m.text)), { r: r.body, kukuUid });
+  r = await call("vinv", { vendor_id: kuku.id }, { authorization: `Bearer ${admin.k}` });
+  check("invite: inviting again is harmless", r.status === 200 && r.body?.result === "already", r.body);
+  await call("vinv", { vendor_id: juice.id }, { authorization: `Bearer ${admin.k}` });
+  const juiceUid = (await get(`vendors?select=user_id&id=eq.${juice.id}`))[0]?.user_id;
+  // a staff login can never become a vendor login
+  const staffEmailUid = (await svcRpc("test_make_auth_user", { p_email: "staffy@example.test" })).body;
+  await post("admin_users", { user_id: staffEmailUid, role: "staff" });
+  const staffy = (await admin.c.rpc("admin_save_vendor", { p_vendor_id: null, p_name: "Staffy", p_phone: "0712300004", p_email: "staffy@example.test", p_payout_phone: null })).data?.vendor;
+  r = await call("vinv", { vendor_id: staffy.id }, { authorization: `Bearer ${admin.k}` });
+  check("invite: a staff member's login can't become a vendor login", r.status === 409 && r.body?.error === "email_is_staff" && !(await get(`vendors?select=user_id&id=eq.${staffy.id}`))[0]?.user_id, r.body);
+  const kukuU = await asUser(kukuUid), juiceU = await asUser(juiceUid);
+
+  // --- vendor isolation ---
+  r = await kukuU.c.from("vendors").select("id,name");
+  check("isolation: a vendor sees only its own vendor row", !r.error && r.data?.length === 1 && r.data[0].id === kuku.id, r.data ?? r.error);
+  r = await juiceU.c.from("event_vendors").select("id");
+  check("isolation: Juice sees only its own participation", r.data?.length === 1 && r.data[0].id === juiceEv.id, r.data);
+  r = await kukuU.c.rpc("admin_set_vendor_commission", { p_event_vendor_id: kukuEv.id, p_bps: 0, p_reason: "I want none" });
+  check("isolation: a vendor can't change commission", r.error?.code === "42501", r);
+  r = await kukuU.c.rpc("admin_issue_vendor_qr", { p_event_vendor_id: kukuEv.id });
+  check("isolation: a vendor can't issue QR codes", r.error?.code === "42501", r);
+  r = await juiceU.c.rpc("accept_vendor_policy", { p_event_vendor_id: kukuEv.id });
+  check("isolation: a vendor can't accept the policy for another vendor", r.error?.code === "42501", r);
+  r = await stranger.c.rpc("vendor_dashboard");
+  check("isolation: a signed-in non-vendor gets no dashboard", r.data?.error === "not_a_vendor", r.data);
+  r = await kukuU.c.from("admin_audit").select("id").limit(1);
+  check("isolation: vendors can't read the audit log", (r.data ?? []).length === 0, r.data);
+  r = await kukuU.c.from("orders").select("id").limit(1);
+  check("isolation: vendors aren't staff (no orders)", (r.data ?? []).length === 0, r.data);
+
+  // --- policy acceptance ---
+  r = await kukuU.c.rpc("accept_vendor_policy", { p_event_vendor_id: kukuEv.id });
+  check("policy: Kuku accepts 5% for Cashless Fest", r.data?.result === "accepted" && r.data?.bps === 500, r.data ?? r.error);
+  r = await kukuU.c.rpc("accept_vendor_policy", { p_event_vendor_id: kukuOther.id });
+  r = await admin.c.rpc("accept_vendor_policy", { p_event_vendor_id: juiceEv.id });
+  check("policy: an admin recording it needs a note", r.data?.error === "note_required", r.data);
+  r = await admin.c.rpc("accept_vendor_policy", { p_event_vendor_id: juiceEv.id, p_note: "Signed paper form at the gate" });
+  check("policy: admin records acceptance given on paper (audited)", r.data?.result === "accepted" && (await get(`admin_audit?select=detail&subject_id=eq.${juiceEv.id}&action=eq.vendor_policy_accepted`))[0]?.detail?.by === "admin", r.data);
+
+  // --- a successful payment ---
+  r = await call("vpay", { action: "info", code: qr1.code }, ip());
+  check("pay page: open once the policy is accepted", r.body?.open === true, r.body);
+  const k1 = idem();
+  const sent0 = darajaSent.length;
+  r = await call("vpay", { action: "start", code: qr1.code, amount: 1250, phone: "0712 999 001", idempotency_key: k1, vendor_id: juice.id, event_id: other.id, commission_bps: 0 }, ip());
+  const s1 = r.body, stk1 = darajaSent.at(-1);
+  check("pay: STK to the SALES till (700100 signs, 700200 receives), KSh 1,250, VS reference, stk-result callback",
+    r.status === 200 && s1?.status === "pending" && /^VS-[A-Z2-9]{8}$/.test(s1?.reference ?? "") && /^[a-f0-9]{32}$/.test(s1?.status_token ?? "") &&
+    darajaSent.length === sent0 + 1 && stk1?.BusinessShortCode === "700100" && stk1?.PartyB === "700200" && stk1?.pwOk && stk1?.Amount === 1250 &&
+    stk1?.PartyA === "254712999001" && stk1?.AccountReference === s1.reference.replace("-", "") && /stk-result$/.test(stk1?.CallBackURL ?? ""), { s1, stk1 });
+  let sale = (await get(`vendor_sales?select=*&reference=eq.${s1.reference}`))[0];
+  check("pay: attribution from the QR only — extra vendor/event/commission fields ignored", sale?.vendor_id === kuku.id && sale?.event_id === fest.id && sale?.event_vendor_id === kukuEv.id && sale?.commission_bps === 500, sale);
+  const led1 = (await get(`payhero_payments?select=*&vendor_sale_id=eq.${sale.id}`))[0];
+  check("pay: M-Pesa ledger row kind sale on the sales account", led1?.kind === "sale" && led1?.account === "sales" && led1?.provider === "daraja" && Number(led1?.amount_kes) === 1250 && !!led1?.checkout_request_id, led1);
+  r = await call("vpay", { action: "start", code: qr1.code, amount: 1250, phone: "0712999001", idempotency_key: k1 }, ip());
+  check("pay: the same idempotency key returns the same attempt, no second prompt", r.status === 200 && r.body?.reference === s1.reference && darajaSent.length === sent0 + 1, r.body);
+  r = await call("vpay", { action: "start", code: qr1.code, amount: 999, phone: "0712999001", idempotency_key: k1 }, ip());
+  check("pay: the same key with a different amount is refused", r.status === 409 && r.body?.error === "idempotency_conflict", r.body);
+  r = await call("vpay", { action: "start", code: qr1.code, amount: 300, phone: "0712999001", idempotency_key: idem() }, ip());
+  check("pay: a second payment from the same phone while one is pending is refused", r.status === 409 && r.body?.error === "pending_payment_exists", r.body);
+
+  const backdateSale = async (ref: string, ms: number) => {
+    const when = new Date(Date.now() - ms).toISOString();
+    await patch(`vendor_sales?reference=eq.${ref}`, { created_at: when });
+    const sid = (await get(`vendor_sales?select=id&reference=eq.${ref}`))[0].id;
+    await patch(`payhero_payments?vendor_sale_id=eq.${sid}`, { created_at: when });
+  };
+  await backdateSale(s1.reference, 20_000);
+  r = await call("vpay", { action: "status", status_token: s1.status_token }, ip());
+  check("status: pending while Safaricom says processing", r.body?.status === "pending" && r.body?.mpesa_receipt === null, r.body);
+  const cb = (id: string, ok: boolean, receipt = "TK1AAAA001", amount = 1) => ({ Body: { stkCallback: { MerchantRequestID: "m", CheckoutRequestID: id, ResultCode: ok ? 0 : 1032, ResultDesc: ok ? "ok" : "cancelled",
+    ...(ok ? { CallbackMetadata: { Item: [{ Name: "Amount", Value: amount }, { Name: "MpesaReceiptNumber", Value: receipt }] } } : {}) } } });
+  await call("stkres", cb(led1.checkout_request_id, true, "FORGED0001", 1250));
+  sale = (await get(`vendor_sales?select=*&id=eq.${sale.id}`))[0];
+  check("callback: a forged success changes nothing while Safaricom says processing", sale.status === "pending" && sale.mpesa_receipt === null && (await get(`vendor_ledger_entries?select=id&sale_id=eq.${sale.id}`)).length === 0, sale);
+  r = await call("stkres", { nonsense: true });
+  check("callback: an invalid payload is accepted and ignored", r.status === 200 && r.body?.ResultCode === 0, r.body);
+  daraja.set(led1.checkout_request_id, { state: "success" });
+  await call("stkres", cb(led1.checkout_request_id, true, "TK1REAL001"));
+  sale = (await get(`vendor_sales?select=*&id=eq.${sale.id}`))[0];
+  let ledger = await get(`vendor_ledger_entries?select=kind,amount_kes&sale_id=eq.${sale.id}&order=kind`);
+  check("confirmed: sale success, commission 5% = 62.50 snapshotted, receipt from the callback",
+    sale.status === "success" && Number(sale.commission_kes) === 62.5 && sale.mpesa_receipt === "TK1REAL001" && !!sale.paid_at, sale);
+  check("ledger: +1,250 sale and -62.50 commission", ledger.length === 2 && Number(ledger.find((l: any) => l.kind === "sale")?.amount_kes) === 1250 && Number(ledger.find((l: any) => l.kind === "commission")?.amount_kes) === -62.5, ledger);
+  await call("stkres", cb(led1.checkout_request_id, true, "TK1REAL001"));
+  await call("phrec", {});
+  r = await call("vpay", { action: "status", status_token: s1.status_token }, ip());
+  check("duplicates: repeat callback, reconcile and status poll post nothing more", (await get(`vendor_ledger_entries?select=id&sale_id=eq.${sale.id}`)).length === 2 && r.body?.status === "success" && r.body?.mpesa_receipt === "TK1REAL001", r.body);
+  r = await kukuU.c.from("vendor_ledger_entries").update({ amount_kes: 0 }).eq("sale_id", sale.id).select("id");
+  check("ledger: a vendor can't edit it", (r.data ?? []).length === 0, r);
+  r = await fetch(`http://supabase.test/rest/v1/vendor_ledger_entries?sale_id=eq.${sale.id}`, { method: "DELETE", headers: svc });
+  check("ledger: append-only even for the service role", r.status >= 400 && (await get(`vendor_ledger_entries?select=id&sale_id=eq.${sale.id}`)).length === 2, r.status);
+
+  // --- failed (cancelled PIN), then a retry with a new key ---
+  r = await call("vpay", { action: "start", code: qr1.code, amount: 400, phone: "0712999002", idempotency_key: idem() }, ip());
+  const s2 = r.body;
+  const led2 = (await get(`payhero_payments?select=*&vendor_sale_id=eq.${(await get(`vendor_sales?select=id&reference=eq.${s2.reference}`))[0].id}`))[0];
+  daraja.set(led2.checkout_request_id, { state: "failed", code: "1032" });
+  await backdateSale(s2.reference, 20_000);
+  r = await call("vpay", { action: "status", status_token: s2.status_token }, ip());
+  check("failed: cancelled PIN -> failed with a plain message, no ledger rows", r.body?.status === "failed" && /cancelled/i.test(r.body?.failure ?? "") &&
+    (await get(`vendor_ledger_entries?select=id&sale_id=eq.${(await get(`vendor_sales?select=id&reference=eq.${s2.reference}`))[0].id}`)).length === 0, r.body);
+  r = await call("vpay", { action: "start", code: qr1.code, amount: 400, phone: "0712999002", idempotency_key: idem() }, ip());
+  const s3 = r.body;
+  check("retry: a new key after a failure is a new attempt", r.status === 200 && s3?.reference !== s2.reference && s3?.status === "pending", r.body);
+  // ...and the old prompt turns out paid after all: flagged for a person, never credited automatically
+  const sid2 = (await get(`vendor_sales?select=id&reference=eq.${s2.reference}`))[0].id;
+  r = await svcRpc("confirm_payhero_sale_payment", { p_reference: led2.reference, p_amount_kes: 400, p_receipt: "TK1LATE002" });
+  check("late PIN on a failed attempt: flagged for a person, never credited automatically",
+    r.body?.result === "paid_after_failed" && (await get(`vendor_sales?select=status,status_reason&id=eq.${sid2}`))[0].status === "flagged" &&
+    (await get(`vendor_ledger_entries?select=id&sale_id=eq.${sid2}`)).length === 0, r.body);
+
+  // --- 4999 / unknown codes stay pending; a dead prompt expires after 30 minutes ---
+  const s3row = (await get(`vendor_sales?select=id&reference=eq.${s3.reference}`))[0];
+  const led3 = (await get(`payhero_payments?select=*&vendor_sale_id=eq.${s3row.id}`))[0];
+  daraja.set(led3.checkout_request_id, { state: "processing", code: "4999" });
+  await backdateSale(s3.reference, 30_000);
+  r = await call("vpay", { action: "status", status_token: s3.status_token }, ip());
+  check("pending: 4999 'still under processing' stays pending", r.body?.status === "pending", r.body);
+  await backdateSale(s3.reference, 31 * 60_000);
+  await call("phrec", {});
+  check("pending: still unanswered after 30 minutes -> failed (expired)", (await get(`vendor_sales?select=status,status_reason&id=eq.${s3row.id}`))[0].status === "failed");
+
+  // --- amount mismatch is flagged, never credited ---
+  r = await call("vpay", { action: "start", code: juiceQr.code, amount: 200, phone: "0712999003", idempotency_key: idem() }, ip());
+  const s4row = (await get(`vendor_sales?select=id&reference=eq.${r.body.reference}`))[0];
+  const led4 = (await get(`payhero_payments?select=*&vendor_sale_id=eq.${s4row.id}`))[0];
+  r = await svcRpc("confirm_payhero_sale_payment", { p_reference: led4.reference, p_amount_kes: 20, p_receipt: "TK1MISM004" });
+  check("mismatch: a different amount -> flagged, no ledger rows", r.body?.result === "amount_mismatch" && (await get(`vendor_sales?select=status&id=eq.${s4row.id}`))[0].status === "flagged" &&
+    (await get(`vendor_ledger_entries?select=id&sale_id=eq.${s4row.id}`)).length === 0, r.body);
+  r = await rpc("confirm_payhero_sale_payment", { p_reference: led4.reference, p_amount_kes: 200, p_receipt: "X" });
+  check("lock-down: anon can't confirm a sale", r.body?.code === "42501", r.body);
+  r = await kukuU.c.rpc("start_vendor_sale", { p_code: qr1.code, p_amount_kes: 1, p_phone: "0712999009", p_idempotency_key: idem() });
+  check("lock-down: a signed-in user can't call start_vendor_sale", r.error?.code === "42501", r.error);
+
+  // --- commission change: snapshot kept, new rate needs re-acceptance ---
+  r = await admin.c.rpc("admin_set_vendor_commission", { p_event_vendor_id: kukuEv.id, p_bps: 300, p_reason: "Early partner rate" });
+  check("commission: override to 3% (audited with old/new)", r.data?.effective_bps === 300 &&
+    (await get(`admin_audit?select=detail&subject_id=eq.${kukuEv.id}&action=eq.commission_vendor`))[0]?.detail?.to_bps === 300, r.data ?? r.error);
+  check("commission: the confirmed sale keeps 5% / 62.50", (await get(`vendor_sales?select=commission_bps,commission_kes&id=eq.${sale.id}`))[0].commission_kes == 62.5);
+  r = await call("vpay", { action: "start", code: qr1.code, amount: 100, phone: "0712999004", idempotency_key: idem() }, ip());
+  check("commission: a changed rate closes the booth until the vendor accepts it", r.body?.error === "policy_not_accepted", r.body);
+  await kukuU.c.rpc("accept_vendor_policy", { p_event_vendor_id: kukuEv.id });
+  r = await call("vpay", { action: "start", code: qr1.code, amount: 333, phone: "0712999004", idempotency_key: idem() }, ip());
+  const s5row = (await get(`vendor_sales?select=id,commission_bps&reference=eq.${r.body.reference}`))[0];
+  const led5 = (await get(`payhero_payments?select=*&vendor_sale_id=eq.${s5row.id}`))[0];
+  daraja.set(led5.checkout_request_id, { state: "success" });
+  await backdateSale(r.body.reference, 2 * 60_000);
+  await call("phrec", {});
+  const s5 = (await get(`vendor_sales?select=status,commission_kes,commission_bps&id=eq.${s5row.id}`))[0];
+  check("commission: new sale at 3%: 333 * 3% = 9.99 (reconcile confirmed it without a callback)", s5.status === "success" && s5.commission_bps === 300 && Number(s5.commission_kes) === 9.99, s5);
+  r = await admin.c.rpc("admin_set_event_commission", { p_event_id: fest.id, p_bps: 9000, p_reason: "typo" });
+  check("commission: over 50% refused", r.data?.error === "invalid_rate", r.data);
+
+  // --- balances ---
+  const bal = (await kukuU.c.from("vendor_balances").select("*").eq("event_vendor_id", kukuEv.id)).data?.[0];
+  check("payable: gross 1,583 - commission 72.49 = 1,510.51; nothing paid; counts by status",
+    Number(bal?.gross_kes) === 1583 && Number(bal?.commission_kes) === 72.49 && Number(bal?.payable_kes) === 1510.51 && Number(bal?.outstanding_kes) === 1510.51 &&
+    Number(bal?.paid_out_kes) === 0 && bal?.successful_count === 2 && bal?.failed_count === 1 && bal?.flagged_count === 1, bal);
+  r = await juiceU.c.from("vendor_balances").select("event_vendor_id");
+  check("isolation: Juice's balances don't include Kuku's", (r.data ?? []).every((b: any) => b.event_vendor_id === juiceEv.id) && (r.data ?? []).length === 1, r.data);
+  r = await juiceU.c.from("vendor_sales").select("id,vendor_id");
+  check("isolation: Juice sees only its own sales", (r.data ?? []).length === 1 && r.data![0].vendor_id === juice.id, r.data);
+  r = await kukuU.c.from("vendor_sales").select("payer_phone").limit(1);
+  check("privacy: the payer's full phone isn't readable by vendors", !!r.error, r);
+  r = await kukuU.c.from("vendor_sales").select("payer_phone_masked").eq("id", sale.id);
+  check("privacy: vendors see the masked phone", r.data?.[0]?.payer_phone_masked === "0712***001", r.data);
+  r = await kukuU.c.rpc("vendor_dashboard");
+  const dash = r.data;
+  check("dashboard: Kuku sees both events, its sales only, balance and daily totals",
+    dash?.vendor?.name === "Kuku Grill" && dash?.events?.length === 2 && dash?.sales?.every((x: any) => x.event_id === fest.id || x.event_id === other.id) &&
+    dash?.sales?.length === 4 && dash?.events?.find((e: any) => e.event_vendor_id === kukuEv.id)?.balance?.payable_kes == 1510.51 &&
+    dash?.events?.find((e: any) => e.event_vendor_id === kukuEv.id)?.by_day?.[0]?.amount_kes == 1583 && !JSON.stringify(dash).includes("254712999001"), dash);
+  r = await admin.c.rpc("admin_vendor_sale_phone", { p_sale_id: sale.id });
+  check("privacy: an admin can reveal the phone for one sale (audited)", r.data === "254712999001" && (await get(`admin_audit?select=id&subject_id=eq.${sale.id}&action=eq.vendor_sale_phone_viewed`)).length === 1, r);
+  r = await kukuU.c.rpc("admin_vendor_sale_phone", { p_sale_id: sale.id });
+  check("privacy: a vendor can't", r.error?.code === "42501", r.error);
+
+  // --- regenerate / deactivate / suspend / closed event ---
+  r = await admin.c.rpc("admin_issue_vendor_qr", { p_event_vendor_id: kukuEv.id, p_reason: "Poster damaged" });
+  const qr2 = r.data?.qr;
+  r = await call("vpay", { action: "start", code: qr1.code, amount: 100, phone: "0712999005", idempotency_key: idem() }, ip());
+  check("QR regenerate: the old code stops taking payments", r.body?.error === "code_inactive", r.body);
+  check("QR regenerate: the old code's sales keep their history", (await get(`vendor_sales?select=id&qr_code_id=eq.${qr1.id}&status=eq.success`)).length === 2 && qr2.code !== qr1.code);
+  r = await call("vpay", { action: "status", status_token: s1.status_token }, ip());
+  check("QR regenerate: an old payment's status still works", r.body?.status === "success", r.body);
+  await admin.c.rpc("admin_deactivate_vendor_qr", { p_qr_id: qr2.id, p_reason: "Booth closed for the night" });
+  r = await call("vpay", { action: "info", code: qr2.code }, ip());
+  check("QR deactivate: the page says closed", r.body?.open === false && r.body?.reason === "code_inactive", r.body);
+  await admin.c.rpc("admin_set_event_vendor_status", { p_event_vendor_id: juiceEv.id, p_status: "inactive", p_reason: null });
+  r = await call("vpay", { action: "start", code: juiceQr.code, amount: 100, phone: "0712999006", idempotency_key: idem() }, ip());
+  check("inactive participation: refused", r.body?.error === "vendor_not_active", r.body);
+  await admin.c.rpc("admin_set_event_vendor_status", { p_event_vendor_id: juiceEv.id, p_status: "active", p_reason: null });
+  await admin.c.rpc("admin_set_vendor_status", { p_vendor_id: juice.id, p_status: "suspended", p_reason: "Complaint under review" });
+  r = await call("vpay", { action: "start", code: juiceQr.code, amount: 100, phone: "0712999006", idempotency_key: idem() }, ip());
+  check("suspended vendor: refused", r.body?.error === "vendor_suspended", r.body);
+  await admin.c.rpc("admin_set_vendor_status", { p_vendor_id: juice.id, p_status: "active", p_reason: "Cleared" });
+  const fqv = (await admin.c.rpc("admin_assign_vendor_event", { p_vendor_id: juice.id, p_event_id: future.id })).data?.event_vendor;
+  await admin.c.rpc("admin_set_event_vendor_status", { p_event_vendor_id: fqv.id, p_status: "active", p_reason: null });
+  await juiceU.c.rpc("accept_vendor_policy", { p_event_vendor_id: fqv.id });
+  const fq = (await admin.c.rpc("admin_issue_vendor_qr", { p_event_vendor_id: fqv.id })).data?.qr;
+  r = await call("vpay", { action: "start", code: fq.code, amount: 100, phone: "0712999007", idempotency_key: idem() }, ip());
+  check("event not started: refused", r.body?.error === "event_not_started", r.body);
+  await patch(`events?id=eq.${other.id}`, { ends_at: new Date(Date.now() - 60_000).toISOString() });
+  r = await call("vpay", { action: "start", code: otherQr.code, amount: 100, phone: "0712999008", idempotency_key: idem() }, ip());
+  check("event over: refused", r.body?.error === "event_closed", r.body);
+
+  // --- bank paybill: a fixed account reference on every prompt ---
+  Deno.env.set("DARAJA_SALES_ACCOUNT_REFERENCE", "MEATSOKO01");
+  Deno.env.set("DARAJA_SALES_TRANSACTION_TYPE", "CustomerPayBillOnline");
+  r = await call("vpay", { action: "start", code: juiceQr.code, amount: 50, phone: "0712999011", idempotency_key: idem() }, ip());
+  const bankStk = darajaSent.at(-1);
+  check("bank paybill: PayBill to the shortcode with the bank account reference", r.status === 200 && bankStk?.TransactionType === "CustomerPayBillOnline" &&
+    bankStk?.PartyB === "700100" && bankStk?.AccountReference === "MEATSOKO01", { r: r.body, bankStk });
+  Deno.env.delete("DARAJA_SALES_ACCOUNT_REFERENCE"); Deno.env.delete("DARAJA_SALES_TRANSACTION_TYPE");
+
+  // --- switches ---
+  Deno.env.set("VENDOR_SALES", "off");
+  r = await call("vpay", { action: "start", code: juiceQr.code, amount: 100, phone: "0712999010", idempotency_key: idem() }, ip());
+  check("switch: VENDOR_SALES off -> 503, nothing created", r.status === 503 && r.body?.error === "payments_closed", r.body);
+  Deno.env.set("VENDOR_SALES", "on");
+  Deno.env.delete("DARAJA_SALES_SHORTCODE");
+  const sentBefore = darajaSent.length;
+  r = await call("vpay", { action: "start", code: juiceQr.code, amount: 100, phone: "0712999010", idempotency_key: idem() }, ip());
+  check("switch: no sales till configured -> closed; never falls back to the ticket till", r.status === 503 && darajaSent.length === sentBefore, r.body);
+  Deno.env.set("DARAJA_SALES_SHORTCODE", "700100");
+  darajaRefuse = true;
+  r = await call("vpay", { action: "start", code: juiceQr.code, amount: 100, phone: "0712999010", idempotency_key: idem() }, ip());
+  darajaRefuse = false;
+  check("STK refused by Safaricom -> 502, attempt failed", r.status === 502 && r.body?.error === "stk_failed" && r.body?.status === "failed", r.body);
+  for (const k of ["DARAJA_SALES_SHORTCODE", "DARAJA_SALES_PASSKEY", "DARAJA_SALES_TILL_NUMBER", "VENDOR_SALES"]) Deno.env.delete(k);
 }
 
 console.log(failures ? `\n${failures} FAILED` : "\nall passed");

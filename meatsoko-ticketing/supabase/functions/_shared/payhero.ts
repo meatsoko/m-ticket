@@ -19,10 +19,10 @@ import { sendTicketEmail } from "./email.ts";
 import { notifyMerchOrder, sendMerchOrderEmail } from "./merch.ts";
 import { sendVendorEmail, VENDOR_TYPES } from "./vendor.ts";
 import { escapeHtml as esc, sendEmail } from "./resend.ts";
-import { queryStk } from "./daraja-express.ts";
+import { type DarajaAccount, queryStk } from "./daraja-express.ts";
 
 type Db = ReturnType<typeof serviceClient>;
-export type PayheroKind = "event" | "vendor" | "merch";
+export type PayheroKind = "event" | "vendor" | "merch" | "sale";
 
 export const PAYHERO_REFERENCE = /^PH[a-f0-9]{32}$/;
 const DARAJA_GIVE_UP_MS = 30 * 60 * 1000;
@@ -94,11 +94,11 @@ async function fetchStatus(payheroReference: string): Promise<{ status: string; 
 }
 
 export type Ledger = {
-  id: string; reference: string; kind: PayheroKind; provider: "payhero" | "daraja"; status: "queued" | "success" | "failed"; outcome: string | null;
-  order_id: string | null; vendor_application_id: string | null; merch_order_id: string | null;
+  id: string; reference: string; kind: PayheroKind; provider: "payhero" | "daraja"; account: DarajaAccount; status: "queued" | "success" | "failed"; outcome: string | null;
+  order_id: string | null; vendor_application_id: string | null; merch_order_id: string | null; vendor_sale_id: string | null;
   amount_kes: number; payhero_reference: string | null; checkout_request_id: string | null; mpesa_receipt: string | null; created_at: string;
 };
-const LEDGER = "id,reference,kind,provider,status,outcome,order_id,vendor_application_id,merch_order_id,amount_kes,payhero_reference,checkout_request_id,mpesa_receipt,created_at";
+const LEDGER = "id,reference,kind,provider,account,status,outcome,order_id,vendor_application_id,merch_order_id,vendor_sale_id,amount_kes,payhero_reference,checkout_request_id,mpesa_receipt,created_at";
 
 export async function loadLedger(db: Db, reference: string): Promise<Ledger | null> {
   const { data } = await db.from("payhero_payments").select(LEDGER).eq("reference", reference).maybeSingle();
@@ -123,7 +123,7 @@ export async function verifyMpesa(db: Db, reference: string): Promise<{ status: 
   let s: { status: string; receipt: string | null; amount: number | null; desc: string | null };
   if (row.provider === "daraja") {
     if (!row.checkout_request_id) return { status: "queued" };   // STK not accepted yet
-    const q = await queryStk(row.checkout_request_id);
+    const q = await queryStk(row.checkout_request_id, row.account ?? "main");
     // An STK prompt expires within minutes: still "pending" after 30 is a dead prompt.
     const expired = q.state === "pending" && Date.now() - Date.parse(row.created_at) > DARAJA_GIVE_UP_MS;
     s = { status: q.state === "success" ? "SUCCESS" : q.state === "failed" || expired ? "FAILED" : "QUEUED",
@@ -143,7 +143,8 @@ export async function verifyMpesa(db: Db, reference: string): Promise<{ status: 
   // asked for (we set it server-side when starting the STK push).
   const amount = s.amount ?? Number(row.amount_kes);
   const fn = row.kind === "event" ? "confirm_payhero_event_payment"
-    : row.kind === "vendor" ? "confirm_payhero_vendor_payment" : "confirm_payhero_merch_payment";
+    : row.kind === "vendor" ? "confirm_payhero_vendor_payment"
+    : row.kind === "sale" ? "confirm_payhero_sale_payment" : "confirm_payhero_merch_payment";
   const { data, error } = await db.rpc(fn, { p_reference: reference, p_amount_kes: amount, p_receipt: s.receipt });
   if (error) throw new Error(`confirmation_failed:${error.message}`);
   const r: any = data;
@@ -160,6 +161,8 @@ async function afterConfirmed(db: Db, kind: PayheroKind, r: any) {
     } else if (kind === "event") {
       const appUrl = (Deno.env.get("APP_URL") ?? "").trim();
       if (appUrl && r.reservation_id) await buildAndSend(db, r.reservation_id, appUrl);
+    } else if (kind === "sale") {
+      return;   // booth sales: the payer's page and the vendor's dashboard show it; no email
     } else if (kind === "vendor") {
       await Promise.all([sendVendorEmail(db, r.id), notifyVendorOrganiser(db, r.id)]);
     } else {

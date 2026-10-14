@@ -2,41 +2,62 @@
 // till — migration 20261008120000. Separate from the legacy _shared/daraja.ts
 // (paid-ticket checkout, hidden), which it leaves untouched.
 //
-// Secrets: DARAJA_ENV (production | sandbox), DARAJA_CONSUMER_KEY,
-// DARAJA_CONSUMER_SECRET, DARAJA_PASSKEY, DARAJA_SHORTCODE (for a till: the
-// STORE number, used as BusinessShortCode and in the password),
-// DARAJA_TILL_NUMBER (the till that receives the money; defaults to the
-// shortcode), optional DARAJA_TRANSACTION_TYPE (default CustomerBuyGoodsOnline).
-// DARAJA_PAYMENTS=on opens payments (fails closed).
+// Two collection accounts (migration 20261014150000):
+//   main  — the ticket till. Secrets: DARAJA_ENV (production | sandbox),
+//           DARAJA_CONSUMER_KEY, DARAJA_CONSUMER_SECRET, DARAJA_PASSKEY,
+//           DARAJA_SHORTCODE (for a till: the STORE number, used as
+//           BusinessShortCode and in the password), DARAJA_TILL_NUMBER (the till
+//           that receives the money; defaults to the shortcode), optional
+//           DARAJA_TRANSACTION_TYPE (default CustomerBuyGoodsOnline).
+//           DARAJA_PAYMENTS=on opens payments (fails closed).
+//   sales — the separate vendor-sales collection till/paybill (cashless booths).
+//           The same names with DARAJA_SALES_ in front. DARAJA_SALES_ENV and the
+//           consumer key/secret fall back to the main ones (one Daraja app can
+//           hold both shortcodes); shortcode, passkey and till never fall back,
+//           so vendor money can't land in the ticket till by a missing secret.
+//           VENDOR_SALES=on opens it (_shared/vendor-sales.ts).
 //
 // The STK callback comes back to the stk-result function. It is unsigned, so it
 // is never believed: queryStk() asks Safaricom itself.
 
+export type DarajaAccount = "main" | "sales";
+
 const BASE: Record<string, string> = { production: "https://api.safaricom.co.ke", sandbox: "https://sandbox.safaricom.co.ke" };
 
 const env = (name: string) => (Deno.env.get(name) ?? "").trim();
-const base = () => BASE[env("DARAJA_ENV") || "production"] ?? null;
+/** A setting for `account`; `shared` settings fall back to the main account's. */
+const cfg = (account: DarajaAccount, name: string, shared = false) =>
+  account === "main" ? env(`DARAJA_${name}`) : env(`DARAJA_SALES_${name}`) || (shared ? env(`DARAJA_${name}`) : "");
+const base = (account: DarajaAccount = "main") => BASE[cfg(account, "ENV", true) || "production"] ?? null;
 
 export const darajaOpen = () => env("DARAJA_PAYMENTS").toLowerCase() === "on";
 
-export function darajaConfigured(): { ok: true } | { ok: false; missing: string[] } {
-  const missing = ["DARAJA_CONSUMER_KEY", "DARAJA_CONSUMER_SECRET", "DARAJA_PASSKEY", "DARAJA_SHORTCODE", "SUPABASE_URL"].filter((n) => !env(n));
-  if (!base()) missing.push("DARAJA_ENV (production|sandbox)");
+export function darajaConfigured(account: DarajaAccount = "main"): { ok: true } | { ok: false; missing: string[] } {
+  const p = account === "main" ? "DARAJA_" : "DARAJA_SALES_";
+  const missing = [
+    !cfg(account, "CONSUMER_KEY", true) && `${p}CONSUMER_KEY`, !cfg(account, "CONSUMER_SECRET", true) && `${p}CONSUMER_SECRET`,
+    !cfg(account, "PASSKEY") && `${p}PASSKEY`, !cfg(account, "SHORTCODE") && `${p}SHORTCODE`, !env("SUPABASE_URL") && "SUPABASE_URL",
+  ].filter(Boolean) as string[];
+  if (!base(account)) missing.push(`${p}ENV (production|sandbox)`);
   return missing.length ? { ok: false, missing } : { ok: true };
 }
 
 // Tokens live ~1 hour; reuse one per isolate until a minute before it expires.
-let token: { value: string; until: number } | null = null;
-async function accessToken(): Promise<string> {
-  if (token && Date.now() < token.until) return token.value;
-  const res = await fetch(`${base()}/oauth/v1/generate?grant_type=client_credentials`, {
-    headers: { Authorization: `Basic ${btoa(`${env("DARAJA_CONSUMER_KEY")}:${env("DARAJA_CONSUMER_SECRET")}`)}` },
+// One cache entry per app (base URL + consumer key), so two accounts on one app share it.
+const tokens = new Map<string, { value: string; until: number }>();
+async function accessToken(account: DarajaAccount): Promise<string> {
+  const key = cfg(account, "CONSUMER_KEY", true), secret = cfg(account, "CONSUMER_SECRET", true);
+  const slot = `${base(account)}|${key}`;
+  const hit = tokens.get(slot);
+  if (hit && Date.now() < hit.until) return hit.value;
+  const res = await fetch(`${base(account)}/oauth/v1/generate?grant_type=client_credentials`, {
+    headers: { Authorization: `Basic ${btoa(`${key}:${secret}`)}` },
     signal: AbortSignal.timeout(10_000),
   });
   const body: any = await res.json().catch(() => null);
   if (!res.ok || !body?.access_token) throw new Error(`daraja_oauth_failed:${res.status}`);
-  token = { value: body.access_token, until: Date.now() + (Number(body.expires_in ?? 3599) - 60) * 1000 };
-  return token.value;
+  tokens.set(slot, { value: body.access_token, until: Date.now() + (Number(body.expires_in ?? 3599) - 60) * 1000 });
+  return body.access_token;
 }
 
 /** Daraja wants yyyyMMddHHmmss in Nairobi time. */
@@ -46,24 +67,25 @@ function timestamp(): string {
   }).formatToParts(new Date()).map((x) => [x.type, x.value]));
   return `${p.year}${p.month}${p.day}${p.hour === "24" ? "00" : p.hour}${p.minute}${p.second}`;
 }
-const password = (ts: string) => btoa(`${env("DARAJA_SHORTCODE")}${env("DARAJA_PASSKEY")}${ts}`);
+const password = (account: DarajaAccount, ts: string) => btoa(`${cfg(account, "SHORTCODE")}${cfg(account, "PASSKEY")}${ts}`);
 
 /** Where Safaricom sends the result. No "mpesa" in the URL: Safaricom refuses such callback URLs. */
 export const stkResultUrl = () => `${env("SUPABASE_URL").replace(/\/+$/, "")}/functions/v1/stk-result`;
 
-export async function darajaStkPush(o: { amountKes: number; phone: string; accountRef: string; description: string }):
+export async function darajaStkPush(o: { amountKes: number; phone: string; accountRef: string; description: string; account?: DarajaAccount }):
   Promise<{ ok: true; checkoutRequestId: string; merchantRequestId: string | null } | { ok: false; detail: string }> {
   try {
-    const type = env("DARAJA_TRANSACTION_TYPE") || "CustomerBuyGoodsOnline";
-    const shortcode = env("DARAJA_SHORTCODE");
-    const partyB = type === "CustomerBuyGoodsOnline" ? env("DARAJA_TILL_NUMBER") || shortcode : shortcode;
+    const account = o.account ?? "main";
+    const type = cfg(account, "TRANSACTION_TYPE") || "CustomerBuyGoodsOnline";
+    const shortcode = cfg(account, "SHORTCODE");
+    const partyB = type === "CustomerBuyGoodsOnline" ? cfg(account, "TILL_NUMBER") || shortcode : shortcode;
     const ts = timestamp();
-    const res = await fetch(`${base()}/mpesa/stkpush/v1/processrequest`, {
+    const res = await fetch(`${base(account)}/mpesa/stkpush/v1/processrequest`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${await accessToken()}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${await accessToken(account)}`, "Content-Type": "application/json" },
       signal: AbortSignal.timeout(20_000),
       body: JSON.stringify({
-        BusinessShortCode: shortcode, Password: password(ts), Timestamp: ts, TransactionType: type,
+        BusinessShortCode: shortcode, Password: password(account, ts), Timestamp: ts, TransactionType: type,
         Amount: Math.round(o.amountKes), PartyA: o.phone, PartyB: partyB, PhoneNumber: o.phone,
         CallBackURL: stkResultUrl(), AccountReference: o.accountRef.slice(0, 12), TransactionDesc: o.description.slice(0, 13),
       }),
@@ -101,13 +123,13 @@ const FAILED_CODES = new Set([
  * FAILED_CODES), or pending (4999 / "being processed" / any code we don't know).
  * Anything else (throttled, misconfigured) throws, so nothing is decided on it.
  */
-export async function queryStk(checkoutRequestId: string): Promise<{ state: "success" | "failed" | "pending"; code: string | null; desc: string | null }> {
+export async function queryStk(checkoutRequestId: string, account: DarajaAccount = "main"): Promise<{ state: "success" | "failed" | "pending"; code: string | null; desc: string | null }> {
   const ts = timestamp();
-  const res = await fetch(`${base()}/mpesa/stkpushquery/v1/query`, {
+  const res = await fetch(`${base(account)}/mpesa/stkpushquery/v1/query`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${await accessToken()}`, "Content-Type": "application/json" },
+    headers: { Authorization: `Bearer ${await accessToken(account)}`, "Content-Type": "application/json" },
     signal: AbortSignal.timeout(15_000),
-    body: JSON.stringify({ BusinessShortCode: env("DARAJA_SHORTCODE"), Password: password(ts), Timestamp: ts, CheckoutRequestID: checkoutRequestId }),
+    body: JSON.stringify({ BusinessShortCode: cfg(account, "SHORTCODE"), Password: password(account, ts), Timestamp: ts, CheckoutRequestID: checkoutRequestId }),
   });
   const body: any = await res.json().catch(() => null);
   if (body?.ResultCode !== undefined && body?.ResultCode !== null && String(body?.ResponseCode ?? "0") === "0") {

@@ -177,6 +177,21 @@ Dashboard → Events & tickets → Event orders. Migration `20261003100000_event
   customer-order`, merge to `main`, then an admin adds the menu in the dashboard and staff set
   themselves Available on `/orders`.
 
+## Cashless booth payments (branch `feat/cashless-vendors`, 2026-10-14; NOT merged or deployed)
+
+Full guide: **`CASHLESS_VENDORS.md`**. Attendees scan a vendor's booth QR (`/pay/<code>`)
+and pay by M-Pesa STK into a **separate vendor-sales till** (the user's choice; Daraja
+account `sales`, secrets `DARAJA_SALES_*`, switch `VENDOR_SALES=on`; never falls back to
+the ticket till). Migration `20261014150000` (vendors, event_vendors, vendor_qr_codes,
+vendor_sales, append-only vendor_ledger_entries, vendor_balances); kind `sale` in
+`payhero_payments`, confirmed only by `verifyMpesa()`. Commission per event (default 5 %)
+or per vendor, snapshotted on each sale; vendors must accept the current rate before
+their booth takes money. Vendors sign in with an email one-time code (`/vendor/login`,
+accounts only via the admin-only `vendor-invite`; vendors are never in `admin_users`).
+Admin: Dashboard → Events & tickets → **Cashless**. Phase B (after NyamaFest): payouts,
+refunds, statement reconciliation. Blocked on: Safaricom going live on the sales till
+(STK on Daraja production + passkey), and Supabase Auth custom SMTP + an OTP template.
+
 ## Dashboard (`/dashboard`, store theme)
 
 Overview · Orders · Inventory · Events & tickets (Create event, Tickets — activity, passes,
@@ -294,7 +309,7 @@ user's say-so. Use `supabase db query --linked "<sql>"` for read-only checks.
 - Edge Functions: `deno check <fn>/index.ts` (or `docker run --rm -v
   $PWD/supabase/functions:/f -w /f denoland/deno:2.6.3 deno check <fn>/index.ts`).
 - **Integration harness: `./tests/harness/run.sh`** (Docker) — fresh Postgres from
-  `schema.sql` + migrations, real Edge Functions; expect `ok: 406 FAIL: 0`. Add checks
+  `schema.sql` + migrations, real Edge Functions; expect `ok: 502 FAIL: 0` (2026-10-14, on `feat/cashless-vendors`). Add checks
   for every new function or permission. See `tests/harness/README.md`.
 - **No browser testing of site features** (user, 2026-10-06): don't click through pages in
   Chrome or a local dev server to verify them — use the checks above, then tell the user

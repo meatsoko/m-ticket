@@ -12,6 +12,7 @@ const I = {
   celebrations: "M4 21h16M5 21v-8h14v8M12 13V9m0 0c-1.5 0-2.5-1-2.5-2.3C9.5 5 12 3 12 3s2.5 2 2.5 3.7C14.5 8 13.5 9 12 9Z",
   investors: "M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9Zm0 4h18",
   events: "M4 8V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 0 0 8v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-8Z",
+  cashless: "M4 4h6v6H4V4Zm10 0h6v6h-6V4ZM4 14h6v6H4v-6Zm10 0h2v2h-2v-2Zm4 0h2v2h-2v-2Zm-4 4h2v2h-2v-2Zm4 0h2v2h-2v-2Z",
   scan: "M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M7 12h10",
 };
 const Icon = ({ d }: { d: string }) => (
@@ -31,6 +32,7 @@ export default function DashboardNav({ toFulfil }: { toFulfil: number }) {
     { href: "/dashboard/tickets", label: "Tickets", icon: I.tickets },
     { href: "/dashboard/event-orders", label: "Event orders", icon: I.eventOrders },
     { href: "/dashboard/vendors", label: "Vendors", icon: I.vendors },
+    { href: "/dashboard/cashless", label: "Cashless", icon: I.cashless },
     { href: "/dashboard/investors", label: "Investors", icon: I.investors },
     { href: "/dashboard/celebrations", label: "Celebrations", icon: I.celebrations },
   ];

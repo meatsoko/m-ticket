@@ -111,3 +111,14 @@ verify_jwt = false
 # only triggers a Safaricom STK Push Query (see _shared/payhero.ts verifyMpesa).
 [functions.stk-result]
 verify_jwt = false
+
+# Cashless booth payments (migration 20261014150000). vendor-pay is the public pay
+# page's API: the QR code decides vendor and event, VENDOR_SALES=on opens it, and
+# only Safaricom's STK Push Query confirms money. Rate-limited.
+[functions.vendor-pay]
+verify_jwt = false
+
+# Creates/links a vendor's sign-in account. Admins only: requireStaff() + role
+# check inside, gateway JWT on.
+[functions.vendor-invite]
+verify_jwt = true
