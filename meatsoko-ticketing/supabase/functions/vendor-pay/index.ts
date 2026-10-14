@@ -16,7 +16,9 @@
 // returns the same attempt (no second prompt), so a double tap, a refresh or a
 // lost response can't charge twice. A new attempt after a failure uses a new key.
 //
-// Switch: VENDOR_SALES=on (fails closed) and the DARAJA_SALES_* secrets.
+// Switch: VENDOR_SALES=on (fails closed) and the DARAJA_SALES_* secrets. For a
+// bank paybill, DARAJA_SALES_ACCOUNT_REFERENCE is the account number the bank
+// needs on every payment (Daraja accepts at most 12 characters).
 import { json, preflight } from "../_shared/cors.ts";
 import { clientIp, normalizePhone, rateLimit, serviceClient } from "../_shared/supabase.ts";
 import { darajaConfigured, darajaStkPush } from "../_shared/daraja-express.ts";
@@ -93,7 +95,9 @@ Deno.serve(async (req) => {
     }
     const stk = await darajaStkPush({
       account: "sales", amountKes: amount, phone,
-      accountRef: sale.reference.replace(/[^A-Za-z0-9]/g, "").slice(0, 12),
+      // A bank paybill routes on the account number: DARAJA_SALES_ACCOUNT_REFERENCE
+      // (the bank's account reference for MeatSoko) when set, else the sale reference.
+      accountRef: (Deno.env.get("DARAJA_SALES_ACCOUNT_REFERENCE") ?? "").trim() || sale.reference.replace(/[^A-Za-z0-9]/g, "").slice(0, 12),
       description: String(r.vendor_name ?? "Vendor").replace(/[^A-Za-z0-9 ]/g, "").slice(0, 13) || "Vendor",
     });
     if (!stk.ok) {

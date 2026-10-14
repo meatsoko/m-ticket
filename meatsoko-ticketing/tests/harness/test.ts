@@ -1974,6 +1974,15 @@ console.log("\n--- cashless vendor sales ---");
   r = await call("vpay", { action: "start", code: otherQr.code, amount: 100, phone: "0712999008", idempotency_key: idem() }, ip());
   check("event over: refused", r.body?.error === "event_closed", r.body);
 
+  // --- bank paybill: a fixed account reference on every prompt ---
+  Deno.env.set("DARAJA_SALES_ACCOUNT_REFERENCE", "MEATSOKO01");
+  Deno.env.set("DARAJA_SALES_TRANSACTION_TYPE", "CustomerPayBillOnline");
+  r = await call("vpay", { action: "start", code: juiceQr.code, amount: 50, phone: "0712999011", idempotency_key: idem() }, ip());
+  const bankStk = darajaSent.at(-1);
+  check("bank paybill: PayBill to the shortcode with the bank account reference", r.status === 200 && bankStk?.TransactionType === "CustomerPayBillOnline" &&
+    bankStk?.PartyB === "700100" && bankStk?.AccountReference === "MEATSOKO01", { r: r.body, bankStk });
+  Deno.env.delete("DARAJA_SALES_ACCOUNT_REFERENCE"); Deno.env.delete("DARAJA_SALES_TRANSACTION_TYPE");
+
   // --- switches ---
   Deno.env.set("VENDOR_SALES", "off");
   r = await call("vpay", { action: "start", code: juiceQr.code, amount: 100, phone: "0712999010", idempotency_key: idem() }, ip());

@@ -149,7 +149,8 @@ Service-role only: `start_vendor_sale`, `confirm_payhero_sale_payment`, `expire_
 | `DARAJA_SALES_SHORTCODE` | the sales till's **store number** (for a till) or the paybill number |
 | `DARAJA_SALES_PASSKEY` | the M-Pesa Express passkey for that shortcode |
 | `DARAJA_SALES_TILL_NUMBER` | the till that receives the money (Buy Goods); defaults to the shortcode |
-| `DARAJA_SALES_TRANSACTION_TYPE` | `CustomerBuyGoodsOnline` (default) or `CustomerPayBillOnline` |
+| `DARAJA_SALES_TRANSACTION_TYPE` | `CustomerBuyGoodsOnline` (default) or `CustomerPayBillOnline` (**set for the bank paybill**) |
+| `DARAJA_SALES_ACCOUNT_REFERENCE` | bank paybill: the account number the bank needs on every payment (≤ 12 characters, Daraja's limit). Unset = each sale's `VS…` reference |
 | `DARAJA_SALES_CONSUMER_KEY` / `_SECRET` | only if the till is on a different Daraja app; otherwise the main `DARAJA_CONSUMER_*` are used |
 | `DARAJA_SALES_ENV` | only if different from `DARAJA_ENV` |
 
