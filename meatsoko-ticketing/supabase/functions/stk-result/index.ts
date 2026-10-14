@@ -24,7 +24,7 @@ Deno.serve(async (req) => {
   const gate = await rateLimit(db, "stk-result:global", 300, 60);
   if (!gate.allowed) return accept();
 
-  const { data: row } = await db.from("payhero_payments").select("reference,status,mpesa_receipt,order_id")
+  const { data: row } = await db.from("payhero_payments").select("reference,status,mpesa_receipt,order_id,vendor_sale_id")
     .eq("checkout_request_id", checkoutId).eq("provider", "daraja").maybeSingle();
   if (!row) { console.log(JSON.stringify({ msg: "stk-result for an unknown checkout", id: checkoutId.slice(0, 18) })); return accept(); }
 
@@ -39,6 +39,7 @@ Deno.serve(async (req) => {
     if (label && out.status === "success") {
       await db.from("payhero_payments").update({ mpesa_receipt: label }).eq("reference", row.reference).is("mpesa_receipt", null);
       if (row.order_id) await db.from("orders").update({ mpesa_receipt: label }).eq("id", row.order_id).is("mpesa_receipt", null);
+      if (row.vendor_sale_id) await db.from("vendor_sales").update({ mpesa_receipt: label }).eq("id", row.vendor_sale_id).is("mpesa_receipt", null);
     }
     console.log(JSON.stringify({ msg: "stk-result", ref: row.reference.slice(0, 10), status: out.status, result: out.result ?? null }));
   } catch (e) {
