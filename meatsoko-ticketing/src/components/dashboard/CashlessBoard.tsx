@@ -5,6 +5,8 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
 import { PayoutsTab, RefundsTab, ReconciliationTab, ReportsTab, SaleActions } from "@/components/dashboard/CashlessSettlements";
+import { BulkAddVendors, VendorLogin } from "@/components/dashboard/CashlessOnboarding";
+import { SendPrompt } from "@/components/cashless/VendorTools";
 
 // Dashboard → Events & tickets → Cashless (migration 20261014150000).
 // Vendors: create, assign to the event, approve / reject / pause / suspend,
@@ -15,8 +17,8 @@ import { PayoutsTab, RefundsTab, ReconciliationTab, ReportsTab, SaleActions } fr
 
 export type CashlessData = {
   eventId: string;
-  events: { id: string; name: string; starts_at: string; ends_at: string; status: string; vendor_commission_bps: number }[];
-  vendors: { id: string; name: string; phone: string; email: string; payout_phone: string | null; status: "active" | "suspended"; user_id: string | null; application_id: string | null; admin_note: string | null; created_at: string }[];
+  events: { id: string; name: string; starts_at: string; ends_at: string; status: string; vendor_commission_bps: number; cashless_opens_at: string | null }[];
+  vendors: { id: string; name: string; phone: string; email: string | null; login_method: string | null; payout_phone: string | null; status: "active" | "suspended"; user_id: string | null; application_id: string | null; admin_note: string | null; created_at: string }[];
   eventVendors: { id: string; event_id: string; vendor_id: string; status: "pending" | "active" | "inactive" | "suspended" | "rejected"; commission_bps: number | null; policy_bps_accepted: number | null; policy_accepted_at: string | null; status_reason: string | null; decided_at: string | null; created_at: string }[];
   qrs: { id: string; event_vendor_id: string; code: string; created_at: string }[];
   balances: { event_vendor_id: string; event_id: string; vendor_id: string; commission_bps: number; gross_kes: number; commission_kes: number; refunds_kes: number; commission_reversed_kes: number; adjustments_kes: number; paid_out_kes: number; payable_kes: number; outstanding_kes: number; successful_count: number; pending_count: number; failed_count: number; flagged_count: number }[];
@@ -59,6 +61,7 @@ export default function CashlessBoard({ data }: { data: CashlessData }) {
   const [reason, setReason] = useState("");
   const [rate, setRate] = useState("");
   const [addOpen, setAddOpen] = useState(false);
+  const [promptFor, setPromptFor] = useState<string | null>(null);
   const emptyForm = { app: "", existing: "", name: "", phone: "", email: "", payout: "" };
   const [f, setF] = useState(emptyForm);
   const event = data.events.find((e) => e.id === data.eventId) ?? null;
@@ -154,8 +157,11 @@ export default function CashlessBoard({ data }: { data: CashlessData }) {
           {ask({ kind: "event_commission" }, "Save rate", "rate")}
           <p className="dash-muted">A change applies to new sales only, and each vendor must accept the new rate before their booth takes payments again.</p>
         </div>
+        <OpensAt event={event!} />
 
+        <BulkAddVendors eventId={data.eventId} eventName={event!.name} knownPhones={new Map(data.vendors.map((v) => [v.phone, v.name]))} />
         {renderAddVendor(assigned)}
+        {rows.some((r) => r.qr) && <div><Link className="dash-btn" href={`/dashboard/cashless/qr/all?event=${data.eventId}`}>Print all booth posters</Link></div>}
 
         <div className="dash-card">
           <strong>Vendors at {event!.name}</strong>
@@ -170,11 +176,14 @@ export default function CashlessBoard({ data }: { data: CashlessData }) {
                       <tr key={ev.id}>
                         <td>
                           <strong>{vendor.name}</strong>
-                          <small><a href={`tel:+${vendor.phone}`}>{localPhone(vendor.phone)}</a> · <a href={`mailto:${vendor.email}`}>{vendor.email}</a></small>
+                          <small><a href={`tel:+${vendor.phone}`}>{localPhone(vendor.phone)}</a>{vendor.email && <> · <a href={`mailto:${vendor.email}`}>{vendor.email}</a></>}</small>
                           {vendor.payout_phone && <small>Payout: {localPhone(vendor.payout_phone)}</small>}
                           {vendor.status === "suspended" && <span className="dash-badge cl-suspended">Vendor suspended</span>}
-                          <small>{vendor.user_id ? "Has a sign-in account" : "No sign-in account yet"}{" "}
-                            <button type="button" className="dash-btn small ghost" disabled={busy} onClick={() => invite(vendor.id)}>{vendor.user_id ? "Resend invite" : "Invite"}</button></small>
+                          <small>{!vendor.user_id ? "No login yet" : vendor.login_method === "phone_password" ? "Signs in with phone + password" : "Signs in with email"}</small>
+                          <div className="dash-row-actions">
+                            {vendor.login_method !== "email" && <VendorLogin vendorId={vendor.id} name={vendor.name} phone={vendor.phone} hasLogin={!!vendor.user_id} method={vendor.login_method} />}
+                            {vendor.email && vendor.login_method !== "phone_password" && <button type="button" className="dash-btn small ghost" disabled={busy} onClick={() => invite(vendor.id)}>{vendor.user_id ? "Resend email invite" : "Email invite"}</button>}
+                          </div>
                           {pending?.kind === "vendor_status" && pending.id === vendor.id ? ask(pending, vendor.status === "active" ? "Suspend vendor" : "Reinstate", "reason")
                             : <button type="button" className="dash-btn small ghost" onClick={() => setPending({ kind: "vendor_status", id: vendor.id, to: vendor.status === "active" ? "suspended" : "active" })}>{vendor.status === "active" ? "Suspend everywhere…" : "Reinstate…"}</button>}
                         </td>
@@ -211,6 +220,10 @@ export default function CashlessBoard({ data }: { data: CashlessData }) {
                         <td>
                           <strong>{kes(bal?.gross_kes)}</strong><small>{bal?.successful_count ?? 0} paid · {bal?.pending_count ?? 0} pending · {bal?.flagged_count ?? 0} to check</small>
                           <small>Owed {kes(bal?.outstanding_kes)}</small>
+                          {ev.status === "active" && (promptFor === ev.id
+                            ? <><SendPrompt eventVendorId={ev.id} disabledReason={ev.policy_bps_accepted !== (ev.commission_bps ?? event!.vendor_commission_bps) ? "The vendor hasn't accepted the commission yet." : null} />
+                                <button type="button" className="dash-btn small ghost" onClick={() => setPromptFor(null)}>Close</button></>
+                            : <button type="button" className="dash-btn small ghost" onClick={() => setPromptFor(ev.id)}>Send M-Pesa prompt…</button>)}
                         </td>
                       </tr>
                     );
@@ -265,19 +278,61 @@ export default function CashlessBoard({ data }: { data: CashlessData }) {
             )}
             <div className="field-grid two">
               <label className="store-field"><span>Business name *</span><input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
-              <label className="store-field"><span>Sign-in email *</span><input type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></label>
+              <label className="store-field"><span>Email (optional)</span><input type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></label>
               <label className="store-field"><span>Phone *</span><input inputMode="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} /></label>
               <label className="store-field"><span>M-Pesa payout number (blank = phone)</span><input inputMode="tel" value={f.payout} onChange={(e) => setF({ ...f, payout: e.target.value })} /></label>
             </div>
           </>
         )}
         <div className="dash-row-actions">
-          <button type="button" className="dash-btn primary" disabled={busy || (!f.existing && (!f.name || !f.phone || !f.email))} onClick={save}>Add (awaiting approval)</button>
+          <button type="button" className="dash-btn primary" disabled={busy || (!f.existing && (!f.name || !f.phone))} onClick={save}>Add (awaiting approval)</button>
           <button type="button" className="dash-btn ghost" onClick={() => { setAddOpen(false); setF(emptyForm); }}>Cancel</button>
         </div>
       </div>
     );
   }
+}
+
+/** When booths may start taking payments (default: the event start). Payments always stop at the event end. */
+function OpensAt({ event }: { event: CashlessData["events"][number] }) {
+  const router = useRouter();
+  const [editing, setEditing] = useState(false);
+  const [at, setAt] = useState("");
+  const [reason, setReason] = useState("");
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  const opens = event.cashless_opens_at ?? event.starts_at;
+  const openNow = Date.now() >= Date.parse(opens) && Date.now() < Date.parse(event.ends_at);
+  async function save(value: string | null) {
+    if (reason.trim().length < 3) { setMsg("Add a reason (3+ characters)."); return; }
+    setBusy(true); setMsg("");
+    const { data, error } = await createClient().rpc("admin_set_cashless_opens_at", { p_event_id: event.id, p_opens_at: value, p_reason: reason });
+    setBusy(false);
+    const out: any = data;
+    if (error || out?.error) { setMsg(out?.error === "after_event_end" ? "That's after the event ends." : error?.code === "42501" ? "Only admins can do that." : "Couldn't save."); return; }
+    setEditing(false); setReason(""); setAt("");
+    router.refresh();
+  }
+  return (
+    <div className="dash-card">
+      <div className="dash-card-head">
+        <div><strong>Payments open from</strong><small className="dash-muted"> · booths take payments from this time until the event ends ({when(event.ends_at)})</small></div>
+        <span><b>{when(opens)}</b>{!event.cashless_opens_at && <small className="dash-muted"> (event start)</small>} <span className={`dash-badge ${openNow ? "cl-active" : "cl-inactive"}`}>{openNow ? "Open now" : "Not open"}</span></span>
+      </div>
+      {!editing ? <div className="dash-row-actions"><button type="button" className="dash-btn small" onClick={() => setEditing(true)}>Change…</button></div> : (
+        <div className="dash-inline-confirm">
+          <input type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} aria-label="Opens at (Nairobi time)" />
+          <input placeholder="Reason * (e.g. KSh 1 test before doors open)" value={reason} onChange={(e) => setReason(e.target.value)} />
+          <button type="button" className="dash-btn small primary" disabled={busy || !at} onClick={() => save(new Date(`${at}:00+03:00`).toISOString())}>Save time</button>
+          <button type="button" className="dash-btn small" disabled={busy} onClick={() => save(new Date().toISOString())}>Open now</button>
+          {event.cashless_opens_at && <button type="button" className="dash-btn small ghost" disabled={busy} onClick={() => save(null)}>Back to event start</button>}
+          <button type="button" className="dash-btn small ghost" onClick={() => { setEditing(false); setMsg(""); }}>Cancel</button>
+        </div>
+      )}
+      {msg && <p className="dash-error">{msg}</p>}
+      <p className="dash-muted">Times are Nairobi time. Payments also need cashless switched on for the whole site.</p>
+    </div>
+  );
 }
 
 function TransactionsTab({ data, vendorById }: { data: CashlessData; vendorById: Map<string, CashlessData["vendors"][number]> }) {

@@ -1,6 +1,6 @@
 /**
  * Turn a collection-account statement (CSV) into the rows
- * admin_import_mpesa_statement() takes (migration 20261014180000). The database
+ * admin_import_mpesa_statement() takes (migration 20261015190000). The database
  * re-validates every row; this only reads the file.
  *
  * The M-Pesa org portal export is recognised by its column names ("Receipt No.",

@@ -1,4 +1,6 @@
--- Cashless vendor payments, phase B (2026-10-14, the user's plan): refunds,
+-- Cashless vendor payments, phase B (written 2026-10-14, deployed 2026-10-15 after the
+-- live test passed; renamed from 20261015190000 so it runs after the onboarding,
+-- opening-time and ticket-till migrations already on production): refunds,
 -- adjustments, flagged-sale resolution, M-Pesa statement reconciliation and
 -- vendor payouts. Builds on 20261014150000_cashless_vendor_sales.sql (read its
 -- header for the model and the money rules).
@@ -637,8 +639,9 @@ revoke all on function public.admin_payout_overview(uuid) from public, anon;
 grant execute on function public.admin_payout_overview(uuid) to authenticated;
 
 -- ---------------------------------------------------------------- vendor dashboard
--- Phase A's vendor_dashboard(), plus payouts, refunds, the payout position and
--- what blocks settlement, per participation.
+-- vendor_dashboard() as in 20261015140000 (opening time, sale channel, login
+-- method), plus payouts, refunded amounts, the payout position and what blocks
+-- settlement, per participation.
 create or replace function public.vendor_dashboard()
 returns jsonb language plpgsql stable security definer set search_path = public as $$
 declare v public.vendors%rowtype;
@@ -646,13 +649,15 @@ begin
   select * into v from public.vendors where user_id = auth.uid() and auth.uid() is not null;
   if not found then return jsonb_build_object('error', 'not_a_vendor'); end if;
   return jsonb_build_object(
-    'vendor', jsonb_build_object('id', v.id, 'name', v.name, 'status', v.status, 'email', v.email,
+    'vendor', jsonb_build_object('id', v.id, 'name', v.name, 'status', v.status, 'email', v.email, 'login_method', v.login_method,
+                                 'phone_masked', '0' || substr(v.phone, 4, 3) || '***' || right(v.phone, 3),
                                  'payout_phone_masked', case when v.payout_phone is null then null
                                    else '0' || substr(v.payout_phone, 4, 3) || '***' || right(v.payout_phone, 3) end),
     'events', coalesce((
       select jsonb_agg(jsonb_build_object(
         'event_vendor_id', ev.id, 'status', ev.status, 'status_reason', ev.status_reason,
-        'event', jsonb_build_object('id', e.id, 'name', e.name, 'venue', e.venue, 'starts_at', e.starts_at, 'ends_at', e.ends_at, 'status', e.status),
+        'event', jsonb_build_object('id', e.id, 'name', e.name, 'venue', e.venue, 'starts_at', e.starts_at, 'ends_at', e.ends_at, 'status', e.status,
+                                 'cashless_opens_at', coalesce(e.cashless_opens_at, e.starts_at)),
         'commission_bps', coalesce(ev.commission_bps, e.vendor_commission_bps),
         'policy_bps_accepted', ev.policy_bps_accepted, 'policy_accepted_at', ev.policy_accepted_at,
         'qr_code', (select q.code from public.vendor_qr_codes q where q.event_vendor_id = ev.id and q.active),
@@ -672,7 +677,7 @@ begin
      where ev.vendor_id = v.id and ev.status <> 'rejected'), '[]'::jsonb),
     'sales', coalesce((
       select jsonb_agg(jsonb_build_object('id', s.id, 'reference', s.reference, 'event_id', s.event_id, 'amount_kes', s.amount_kes,
-               'commission_bps', s.commission_bps, 'commission_kes', s.commission_kes, 'refunded_kes', s.refunded_kes, 'status', s.status,
+               'commission_bps', s.commission_bps, 'commission_kes', s.commission_kes, 'refunded_kes', s.refunded_kes, 'status', s.status, 'channel', s.channel,
                'reconciliation_status', s.reconciliation_status, 'payer', s.payer_phone_masked, 'mpesa_receipt', s.mpesa_receipt,
                'created_at', s.created_at, 'paid_at', s.paid_at) order by s.created_at desc)
       from (select * from public.vendor_sales where vendor_id = v.id order by created_at desc limit 500) s), '[]'::jsonb)

@@ -11,7 +11,7 @@ and vendors are paid out after the event.
 | Phase | Scope | State |
 |---|---|---|
 | **A** (before NyamaFest, 17 Oct) | vendor accounts, booth QR, pay page, sales ledger + commission, vendor dashboard, admin Cashless section | Live. Taking real money needs the bank paybill secrets (§7) |
-| **B** (after the event) | payout requests and approval, refunds, M-Pesa statement import and reconciliation, ledger adjustments, the remaining reports | Built and tested on branch `feat/cashless-settlements` (§11). **Not merged, not deployed** — waiting until phase A is confirmed taking payments |
+| **B** (after the event) | payout requests and approval, refunds, M-Pesa statement import and reconciliation, ledger adjustments, the remaining reports | Live since 2026-10-15 (§11), after phase A took real payments |
 
 ## 1. How it works
 
@@ -156,6 +156,22 @@ Service-role only: `start_vendor_sale`, `confirm_payhero_sale_payment`, `expire_
 | `DARAJA_SALES_CONSUMER_KEY` / `_SECRET` | only if the till is on a different Daraja app; otherwise the main `DARAJA_CONSUMER_*` are used |
 | `DARAJA_SALES_ENV` | only if different from `DARAJA_ENV` |
 
+**Through PayHero to the Equity account (the user's choice, 2026-10-14).** MeatSoko's
+collection account is Equity Bank paybill `247247`, account `125385` (MeatSoko Limited). Daraja
+can't prompt to it (Equity holds that paybill's passkey), so booth prompts go through
+PayHero's bank channel, and the money lands in the Equity account directly:
+
+| Secret | |
+|---|---|
+| `VENDOR_SALES_PROVIDER=payhero` | send booth prompts through PayHero (unset or `daraja` = the `DARAJA_SALES_*` account) |
+| `PAYHERO_SALES_CHANNEL_ID` | the PayHero channel ID of the Equity bank channel (PayHero dashboard → Payment Channels → Bank → Equity 247247, account 125385). Separate from the ticket `PAYHERO_CHANNEL_ID` |
+| `PAYHERO_API_USERNAME` / `PAYHERO_API_PASSWORD` | the PayHero login (already set for the earlier ticket integration; the channel must belong to the same PayHero account) |
+
+`PAYHERO_PAYMENTS` (the ticket-side PayHero switch) stays off; tickets keep using Daraja.
+A PayHero sale is confirmed only by PayHero's transaction-status API (`verifyMpesa`); its
+callback (`payhero-callback`) is unsigned and only triggers that check. The M-Pesa receipt
+comes from PayHero's status answer. For reconciliation, import the Equity statement.
+
 With `VENDOR_SALES` off or the sales shortcode/passkey missing, the pay page says
 payments are closed. **It never falls back to the ticket till.**
 
@@ -212,7 +228,81 @@ success says nothing about production readiness.
 4. Merge to `main` (Vercel deploys).
 5. Onboard one vendor, then a KSh 1 live test (§6).
 
-## 11. Phase B — settlements (branch `feat/cashless-settlements`, migration `20261014180000_vendor_settlements.sql`)
+## 12. Onboarding by phone, vendor-sent prompts, receipts (branch `feat/cashless-onboarding`, migration `20261015100000`)
+
+**Vendors are identified by phone number** (unique); email is optional. The user's first
+vendors: ally mutembei 0703777706, peter thungutha 0712997774, roselyn makona 0722563789,
+harriet wanyoike 0790272814 (none has a tent registration).
+
+**Add them** — Cashless → *Add vendors by phone number*: paste `phone - name` lines, preview,
+*Add & approve*. Each vendor is created (or found by phone), added to the event, approved,
+given a booth QR, and — if ticked — their commission acceptance is recorded with a note
+(otherwise they accept on first sign-in and the booth stays closed until then).
+`admin_bulk_add_vendors(event, rows, policy_note)`; everything audited.
+
+**Logins (custom: phone + password)** — *Create login* / *Reset password* on each vendor.
+`vendor-invite` with `method: "phone_password"` creates the Supabase Auth user with an
+internal address `v<phone>@vendors.meatsokogroup.com` (never emailed) and a random
+10-character password, shown to the admin **once** with a ready message (copy / WhatsApp).
+The vendor signs in at `/vendor/login` with phone + password and can change it from the
+dashboard. A forgotten password = *Reset password*. Email-code login still works for
+vendors set up with an email.
+
+**Vendor-sent M-Pesa prompt** (QR fails, or no smartphone) — dashboard *Send M-Pesa prompt*:
+amount + customer's number → the PIN prompt on any phone. `vendor-pay` action `charge`
+with the vendor's session; `start_vendor_prompt_sale()` lets a vendor charge only into its
+own participation (admins into any, from Cashless → *Send M-Pesa prompt…*). Same checks
+as a QR payment, one prompt per customer phone at a time, 20 prompts per login per 10 min.
+`vendor_sales.channel` = `qr` | `vendor_prompt` | `admin_prompt`, `initiated_by` = the login.
+
+**Tracking** — the vendor dashboard refreshes every 10 s while open, shows a *New payment*
+banner (optional beep) with a Print receipt button, and labels prompt sales.
+
+**Receipts** — the payer's Paid screen links to `/pay/receipt/<status token>`; vendors and
+admins reprint any paid sale at `/vendor/receipt/<sale id>` (RLS: own sales / admin).
+Both print on 80 mm receipt paper (`@page` set only on those pages). The M-Pesa SMS stays
+the official proof.
+
+**Posters** — now show the vendor's phone ending and "No smartphone? Ask us to send an
+M-Pesa prompt to your phone."; *Print all booth posters* prints every active vendor's
+poster, one per A4 page (`/dashboard/cashless/qr/all?event=`).
+
+**Tests:** harness 539/539 (23 new: bulk add incl. bad and duplicate numbers, phone lookup,
+phone uniqueness, login creation/reset/audit and staff refusal, vendor isolation, prompt
+auth (none / other vendor / staff / admin), idempotent prompt, pending guard, paid via
+PayHero status, paused booth, QR path unchanged).
+
+**Deploy** (with the user's go-ahead): `supabase db push --linked` (migrations
+`20261015100000`; this branch also carries the PayHero change, no migration), deploy
+`vendor-pay` and `vendor-invite`, merge to `main`. Then set `VENDOR_SALES_PROVIDER=payhero`,
+`PAYHERO_SALES_CHANNEL_ID`, and `VENDOR_SALES=on` after a KSh 1 test.
+
+## 13. Payments open from (migration `20261015140000`)
+
+`events.cashless_opens_at` (null = the event start): booths take payments from this time
+until `ends_at`. Set in Cashless → *Payments open from* (Save time / Open now / Back to
+event start), admin only, reason required, audited (`admin_set_cashless_opens_at`). Used
+for the live KSh 1 test before NyamaFest opens; it never changes the event's public times
+or tickets. The Cashless page now defaults to the next live event that hasn't ended.
+
+## 14. Temporary route: booth sales through Daraja into the ticket till (migration `20261015170000`)
+
+While the PayHero merchant account waits for KYC (2026-10-15), booth payments can go
+through Daraja M-Pesa Express into the **ticket till**. It is an explicit opt-in, never a
+fallback:
+
+| To use | Secrets |
+|---|---|
+| Ticket till via Daraja (temporary) | `VENDOR_SALES_PROVIDER=daraja`, `DARAJA_SALES_USE_MAIN_TILL=on` |
+| **Switch back to PayHero / Equity** (once KYC is approved) | `VENDOR_SALES_PROVIDER=payhero` (and unset `DARAJA_SALES_USE_MAIN_TILL`) |
+
+No redeploy is needed to switch. Every sale is still recorded against its vendor; only the
+destination account differs. Each Daraja ledger row stores `daraja_profile` (`main` = ticket
+till), so a payment still being confirmed when you switch is checked against the till that
+sent it. While the ticket till is used, ticket and booth money share its statement: when
+reconciling, ticket payments appear as lines that are not vendor sales (ignore them).
+Prompts show the sale reference (`VS…`) as the account reference.
+## 11. Phase B — settlements (migration `20261015190000_vendor_settlements.sql`; deployed 2026-10-15)
 
 Nothing in phase B moves money: Safaricom's Reversal, Transaction Status and B2C APIs
 aren't available on the collection account. People send refunds and payouts from the
@@ -273,6 +363,6 @@ matching including the receipt-less sale and fees, invalid file rejected whole, 
 skipped, partial approval, paid once, reference reuse, failed and rejected payouts,
 discrepancy resolution, isolation) and 5 CSV reader checks. Lint, `tsc` and the build are clean.
 
-**Deploying phase B** (only after phase A is confirmed taking payments, and with the user's go-ahead):
+**Deploying phase B** (done 2026-10-15):
 `supabase db push --linked` (one migration; it replaces `vendor_dashboard()`), merge
 `feat/cashless-settlements` to `main`. No Edge Functions change.

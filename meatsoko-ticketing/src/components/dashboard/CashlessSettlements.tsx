@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { detect, parseCsv, toRows, type ColumnMap, type ParsedSheet, type StatementRow } from "@/lib/mpesa-statement";
 import type { CashlessData } from "@/components/dashboard/CashlessBoard";
 
-// Phase B of Dashboard → Cashless (migration 20261014180000): payouts, refunds,
+// Phase B of Dashboard → Cashless (migration 20261015190000): payouts, refunds,
 // statement reconciliation, reports, and the per-sale actions on Transactions.
 // Every action is a SECURITY DEFINER function that checks is_admin() and audits;
 // nothing here sends money — refunds and payouts are sent by a person and then

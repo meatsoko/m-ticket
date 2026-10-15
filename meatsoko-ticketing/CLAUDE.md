@@ -188,10 +188,27 @@ vendor_sales, append-only vendor_ledger_entries, vendor_balances); kind `sale` i
 or per vendor, snapshotted on each sale; vendors must accept the current rate before
 their booth takes money. Vendors sign in with an email one-time code (`/vendor/login`,
 accounts only via the admin-only `vendor-invite`; vendors are never in `admin_users`).
+Admin: Dashboard → Events & tickets → **Cashless**. Phase B (after NyamaFest): payouts,
+refunds, statement reconciliation. The collection account is **Equity paybill 247247, account
+125385** (MeatSoko Limited); Daraja can't prompt to a bank's paybill, so booth prompts go
+through **PayHero's Equity bank channel** (branch `feat/cashless-payhero`, 2026-10-14):
+`VENDOR_SALES_PROVIDER=payhero` + `PAYHERO_SALES_CHANNEL_ID`, then `VENDOR_SALES=on`.
+Tickets stay on Daraja; `PAYHERO_PAYMENTS` stays off.
+Onboarding (DEPLOYED 2026-10-15 with the PayHero route: migration 20261015100000, vendor-pay,
+vendor-invite, site; `VENDOR_SALES_PROVIDER=payhero`, `PAYHERO_SALES_CHANNEL_ID=14056`, `VENDOR_SALES` still off): vendors
+by **phone number**, phone + password logins created by an admin, vendor-sent M-Pesa
+prompts, receipts — `CASHLESS_VENDORS.md` §12.
+**Temporary (2026-10-15): booth sales via Daraja into the ticket till** while PayHero KYC is
+pending — `VENDOR_SALES_PROVIDER=daraja` + `DARAJA_SALES_USE_MAIN_TILL=on`; switch back with
+`VENDOR_SALES_PROVIDER=payhero` (§14).
+**Live test passed 2026-10-15** (user confirmed): KSh 1 by admin prompt (VS-EE9PWQFZ, Ally, receipt
+UJFOEAL54A) and by QR (VS-BU9C8RH3, Harriet, UJFOWANCBW) via the ticket till; vendor dashboard
+shows them. NyamaFest `cashless_opens_at` was set to 2026-10-15 16:09 for the test — booths stay
+open until the event ends unless reset (Cashless → Payments open from → Back to event start).
+Settlements (phase B) merged and deployed the same day. Vendor sign-in needs Supabase Auth custom SMTP +
 Admin: Dashboard → Events & tickets → **Cashless**. Phase B (payouts, refunds, statement
-reconciliation, reports) is on branch `feat/cashless-settlements` (migration
-`20261014180000`) — **do not merge until phase A is verified taking real payments** (user,
-2026-10-14). The sales account is a **bank paybill** (user,
+reconciliation, reports; migration `20261015190000`) was merged and deployed on 2026-10-15
+after the live test passed (§11). The sales account is a **bank paybill** (user,
 2026-10-14): `DARAJA_SALES_TRANSACTION_TYPE=CustomerPayBillOnline` is set; still to set:
 `DARAJA_SALES_SHORTCODE`, `DARAJA_SALES_PASSKEY`, `DARAJA_SALES_ACCOUNT_REFERENCE` (if the
 bank needs one), then `VENDOR_SALES=on`. Vendor sign-in needs Supabase Auth custom SMTP +

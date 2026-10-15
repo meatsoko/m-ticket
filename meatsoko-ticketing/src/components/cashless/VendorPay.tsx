@@ -30,7 +30,7 @@ const CLOSED: Record<string, string> = {
   vendor_suspended: "This vendor can't take cashless payments right now.",
   vendor_not_active: "This vendor isn't set up for cashless payments yet.",
   event_closed: "Cashless payments for this event have closed.",
-  event_not_started: "Cashless payments open when the event starts.",
+  event_not_started: "Cashless payments for this event haven't opened yet.",
   payments_closed: "Cashless payments aren't open at the moment. Please pay the vendor another way.",
 };
 const ERRORS: Record<string, string> = {
@@ -166,7 +166,7 @@ export default function VendorPay({ code }: { code: string }) {
           <dl className="pay-facts">
             <div><dt>Reference</dt><dd className="num">{sale.reference}</dd></div>
             {sale.mpesa_receipt && <div><dt>M-Pesa receipt</dt><dd className="num">{sale.mpesa_receipt}</dd></div>}
-            <div><dt>{sale.paid_at ? "Paid" : "Started"}</dt><dd>{when(sale.paid_at ?? sale.created_at)}</dd></div>
+            {sale.paid_at && <div><dt>Paid</dt><dd>{when(sale.paid_at)}</dd></div>}
           </dl>
           {sale.status === "pending" && (
             <p className="small">
@@ -176,6 +176,7 @@ export default function VendorPay({ code }: { code: string }) {
             </p>
           )}
           {sale.status === "success" && <p className="small">Show this screen to the vendor. Confirmed by M-Pesa.</p>}
+          {sale.status === "success" && <a className="btn btn-ghost btn-block" href={`/pay/receipt/${sale.status_token}`}>Keep this receipt</a>}
           {sale.status === "failed" && <p className="small">{sale.failure ?? "The payment wasn't completed."} Nothing was taken from your M-Pesa.</p>}
           {sale.status === "flagged" && <p className="small">Your money reached us but needs a quick check by MeatSoko staff. Keep your M-Pesa message and show this reference to the vendor or an organiser.</p>}
           {sale.status === "pending" && stalled && (

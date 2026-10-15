@@ -32,6 +32,15 @@ const base = (account: DarajaAccount = "main") => BASE[cfg(account, "ENV", true)
 
 export const darajaOpen = () => env("DARAJA_PAYMENTS").toLowerCase() === "on";
 
+/**
+ * Temporary, explicit opt-in (migration 20261015170000): booth sales go to the
+ * TICKET till ("main" credentials) instead of a separate sales account.
+ * Never a silent fallback — only when DARAJA_SALES_USE_MAIN_TILL is exactly "on".
+ */
+export const salesUseMainTill = () => env("DARAJA_SALES_USE_MAIN_TILL").toLowerCase() === "on";
+/** Which Daraja credentials booth sales use right now. */
+export const salesDarajaProfile = (): DarajaAccount => (salesUseMainTill() ? "main" : "sales");
+
 export function darajaConfigured(account: DarajaAccount = "main"): { ok: true } | { ok: false; missing: string[] } {
   const p = account === "main" ? "DARAJA_" : "DARAJA_SALES_";
   const missing = [

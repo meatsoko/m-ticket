@@ -50,8 +50,24 @@ export function payheroConfigured(): { ok: true } | { ok: false; missing: string
   return missing.length ? { ok: false, missing } : { ok: true };
 }
 
+/**
+ * Cashless booth payments through PayHero (VENDOR_SALES_PROVIDER=payhero): the
+ * money goes to the PayHero channel PAYHERO_SALES_CHANNEL_ID — MeatSoko's Equity
+ * bank channel (paybill 247247, account 125385), kept apart from the ticket channel.
+ * Uses the same PayHero login; PAYHERO_PAYMENTS (the ticket-side switch) isn't needed.
+ */
+export function payheroSalesConfigured(): { ok: true; channelId: number } | { ok: false; missing: string[] } {
+  const raw = (Deno.env.get("PAYHERO_SALES_CHANNEL_ID") ?? "").trim();
+  const missing = [
+    !authHeader() && "PAYHERO_API_USERNAME/PAYHERO_API_PASSWORD",
+    (!raw || !Number.isInteger(Number(raw))) && "PAYHERO_SALES_CHANNEL_ID",
+    !Deno.env.get("SUPABASE_URL") && "SUPABASE_URL",
+  ].filter(Boolean) as string[];
+  return missing.length ? { ok: false, missing } : { ok: true, channelId: Number(raw) };
+}
+
 /** Ask PayHero to send the STK prompt. Our reference goes as external_reference. */
-export async function sendStkPush(o: { reference: string; amountKes: number; phone: string; customerName: string }):
+export async function sendStkPush(o: { reference: string; amountKes: number; phone: string; customerName: string; channelId?: number }):
   Promise<{ ok: true; payheroReference: string | null; checkoutRequestId: string | null } | { ok: false; detail: string }> {
   const auth = authHeader();
   if (!auth) return { ok: false, detail: "payhero_misconfigured" };
@@ -62,7 +78,7 @@ export async function sendStkPush(o: { reference: string; amountKes: number; pho
       headers: { Authorization: auth, "Content-Type": "application/json" },
       signal: AbortSignal.timeout(20_000),
       body: JSON.stringify({
-        amount: Math.round(o.amountKes), phone_number: o.phone, channel_id: Number(Deno.env.get("PAYHERO_CHANNEL_ID")),
+        amount: Math.round(o.amountKes), phone_number: o.phone, channel_id: o.channelId ?? Number(Deno.env.get("PAYHERO_CHANNEL_ID")),
         provider: "m-pesa", external_reference: o.reference, customer_name: o.customerName.slice(0, 60),
         callback_url: callback,
       }),
@@ -94,11 +110,11 @@ async function fetchStatus(payheroReference: string): Promise<{ status: string; 
 }
 
 export type Ledger = {
-  id: string; reference: string; kind: PayheroKind; provider: "payhero" | "daraja"; account: DarajaAccount; status: "queued" | "success" | "failed"; outcome: string | null;
+  id: string; reference: string; kind: PayheroKind; provider: "payhero" | "daraja"; account: DarajaAccount; daraja_profile: DarajaAccount | null; status: "queued" | "success" | "failed"; outcome: string | null;
   order_id: string | null; vendor_application_id: string | null; merch_order_id: string | null; vendor_sale_id: string | null;
   amount_kes: number; payhero_reference: string | null; checkout_request_id: string | null; mpesa_receipt: string | null; created_at: string;
 };
-const LEDGER = "id,reference,kind,provider,account,status,outcome,order_id,vendor_application_id,merch_order_id,vendor_sale_id,amount_kes,payhero_reference,checkout_request_id,mpesa_receipt,created_at";
+const LEDGER = "id,reference,kind,provider,account,daraja_profile,status,outcome,order_id,vendor_application_id,merch_order_id,vendor_sale_id,amount_kes,payhero_reference,checkout_request_id,mpesa_receipt,created_at";
 
 export async function loadLedger(db: Db, reference: string): Promise<Ledger | null> {
   const { data } = await db.from("payhero_payments").select(LEDGER).eq("reference", reference).maybeSingle();
@@ -123,7 +139,8 @@ export async function verifyMpesa(db: Db, reference: string): Promise<{ status: 
   let s: { status: string; receipt: string | null; amount: number | null; desc: string | null };
   if (row.provider === "daraja") {
     if (!row.checkout_request_id) return { status: "queued" };   // STK not accepted yet
-    const q = await queryStk(row.checkout_request_id, row.account ?? "main");
+    // The credentials that sent this prompt (recorded since 20261015170000), else its account.
+    const q = await queryStk(row.checkout_request_id, row.daraja_profile ?? row.account ?? "main");
     // An STK prompt expires within minutes: still "pending" after 30 is a dead prompt.
     const expired = q.state === "pending" && Date.now() - Date.parse(row.created_at) > DARAJA_GIVE_UP_MS;
     s = { status: q.state === "success" ? "SUCCESS" : q.state === "failed" || expired ? "FAILED" : "QUEUED",
