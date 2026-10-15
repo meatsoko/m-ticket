@@ -2353,3 +2353,8 @@ a.login-submit { display: grid; place-items: center; text-decoration: none; }
 .cl-poster-alt { margin: 0; font-size: 1.05rem; font-weight: 700; color: var(--store-ink); }
 .cl-poster-page { break-after: page; page-break-after: always; }
 .cl-poster-page:last-child { break-after: auto; page-break-after: auto; }
+/* Cashless settlements (migration 20261015190000). */
+.dash-badge.cl-po-paid, .dash-badge.cl-rf-completed { background: #e3f0e7; color: #2f7a4a; }
+.dash-badge.cl-po-requested, .dash-badge.cl-po-approved, .dash-badge.cl-po-processing, .dash-badge.cl-rf-requested { background: #fdf0d9; color: #8a5a00; }
+.dash-badge.cl-po-rejected, .dash-badge.cl-po-failed, .dash-badge.cl-rf-failed { background: #fbe3e5; color: var(--store-red); }
+.dash-badge.cl-rf-cancelled, .dash-badge.cl-sale-returned { background: #eeeae4; color: var(--store-muted); }

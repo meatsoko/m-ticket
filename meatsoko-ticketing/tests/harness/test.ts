@@ -2258,5 +2258,276 @@ console.log("\n--- booth sales via the ticket till ---");
   for (const k of ["VENDOR_SALES", "VENDOR_SALES_PROVIDER", "PAYHERO_SALES_CHANNEL_ID", "DARAJA_SALES_ACCOUNT_REFERENCE"]) Deno.env.delete(k);
 }
 
+// 28. Cashless settlements: refunds, adjustments, flagged sales, statement reconciliation, payouts (migration 20261015190000)
+console.log("\n--- cashless settlements ---");
+{
+  const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2.45.4");
+  const asUser = async (uid: string) => {
+    const k = await jwt({ role: "authenticated", sub: uid, exp: 4102444800 });
+    return { k, c: createClient("http://supabase.test", k, { auth: { persistSession: false }, global: { headers: { Authorization: `Bearer ${k}` } } }) };
+  };
+  const mkUser = async (role: "admin" | "staff" | null) => {
+    const uid = crypto.randomUUID();
+    await fetch("http://supabase.test/rest/v1/rpc/test_make_user", { method: "POST", headers: svc, body: JSON.stringify({ p_id: uid }) });
+    if (role) await post("admin_users", { user_id: uid, role });
+    return { uid, ...(await asUser(uid)) };
+  };
+  const admin = await mkUser("admin"), staff = await mkUser("staff");
+  for (const [k, v] of Object.entries({ DARAJA_ENV: "sandbox", DARAJA_CONSUMER_KEY: "dk_test", DARAJA_CONSUMER_SECRET: "ds_test",
+    DARAJA_SALES_SHORTCODE: "700100", DARAJA_SALES_PASSKEY: "pk_sales", DARAJA_SALES_TILL_NUMBER: "700200", VENDOR_SALES: "on" })) Deno.env.set(k, v);
+  const hour = 3600_000;
+  const [ev] = await post("events", { name: "Settle Fest", slug: "st-fest", starts_at: new Date(Date.now() - hour).toISOString(), ends_at: new Date(Date.now() + 6 * hour).toISOString(), status: "live", reservation_mode: "off" });
+  const setup = async (name: string, email: string, phone: string) => {
+    const v = (await admin.c.rpc("admin_save_vendor", { p_vendor_id: null, p_name: name, p_phone: phone, p_email: email, p_payout_phone: null })).data.vendor;
+    const pv = (await admin.c.rpc("admin_assign_vendor_event", { p_vendor_id: v.id, p_event_id: ev.id })).data.event_vendor;
+    await admin.c.rpc("admin_set_event_vendor_status", { p_event_vendor_id: pv.id, p_status: "active", p_reason: null });
+    await call("vinv", { vendor_id: v.id }, { authorization: `Bearer ${admin.k}` });
+    const u = await asUser((await get(`vendors?select=user_id&id=eq.${v.id}`))[0].user_id);
+    await u.c.rpc("accept_vendor_policy", { p_event_vendor_id: pv.id });
+    const qr = (await admin.c.rpc("admin_issue_vendor_qr", { p_event_vendor_id: pv.id })).data.qr;
+    return { v, pv, u, qr };
+  };
+  const A = await setup("Nyama Choma Kings", "kings@example.test", "0712400001");
+  const B = await setup("Mocktail Hut", "mocktail@example.test", "0712400002");
+  const cb = (id: string, ok: boolean, receipt: string) => ({ Body: { stkCallback: { MerchantRequestID: "m", CheckoutRequestID: id, ResultCode: ok ? 0 : 1032, ResultDesc: ok ? "ok" : "cancelled",
+    ...(ok ? { CallbackMetadata: { Item: [{ Name: "MpesaReceiptNumber", Value: receipt }] } } : {}) } } });
+  const start = async (code: string, amount: number, phone: string) => {
+    const r = await call("vpay", { action: "start", code, amount, phone, idempotency_key: crypto.randomUUID() }, ip());
+    const sale = (await get(`vendor_sales?select=*&reference=eq.${r.body.reference}`))[0];
+    const led = (await get(`payhero_payments?select=*&vendor_sale_id=eq.${sale.id}`))[0];
+    return { sale, led, token: r.body.status_token };
+  };
+  const pay = async (code: string, amount: number, phone: string, receipt: string | null) => {
+    const s = await start(code, amount, phone);
+    daraja.set(s.led.checkout_request_id, { state: "success" });
+    if (receipt) await call("stkres", cb(s.led.checkout_request_id, true, receipt));
+    else { await patch(`payhero_payments?id=eq.${s.led.id}`, { created_at: new Date(Date.now() - 20_000).toISOString() }); await patch(`vendor_sales?id=eq.${s.sale.id}`, { created_at: new Date(Date.now() - 20_000).toISOString() }); await call("vpay", { action: "status", status_token: s.token }, ip()); }
+    return (await get(`vendor_sales?select=*&id=eq.${s.sale.id}`))[0];
+  };
+  const s1 = await pay(A.qr.code, 1000, "0712500001", "RA1AAAA001");
+  const s2 = await pay(A.qr.code, 500, "0712500002", "RA2AAAA002");
+  const s3 = await pay(A.qr.code, 200, "0712500003", null);
+  const s6 = await pay(A.qr.code, 100, "0712500006", "RA6AAAA006");
+  const s7 = await pay(A.qr.code, 100, "0712500006", "RA7AAAA007");
+  const b1 = await pay(B.qr.code, 300, "0712500009", "RB1AAAA001");
+  check("settle setup: sales paid (S3 with no receipt, confirmed by the status poll)", [s1, s2, s3, s6, s7, b1].every((x) => x.status === "success") && s3.mpesa_receipt === null, [s1, s2, s3].map((x) => x.status));
+
+  // --- flagged sales: paid after failed (credit), amount mismatch (return) ---
+  const f4 = await start(A.qr.code, 150, "0712500004");
+  daraja.set(f4.led.checkout_request_id, { state: "failed", code: "1032" });
+  await call("stkres", cb(f4.led.checkout_request_id, false, ""));
+  await svcRpc("confirm_payhero_sale_payment", { p_reference: f4.led.reference, p_amount_kes: 150, p_receipt: "RA4FLAG001" });
+  const f5 = await start(A.qr.code, 80, "0712500005");
+  await svcRpc("confirm_payhero_sale_payment", { p_reference: f5.led.reference, p_amount_kes: 8, p_receipt: "RA5MISM001" });
+  check("flagged: a late PIN and a wrong amount are both flagged, not credited",
+    (await get(`vendor_sales?select=status&id=in.(${f4.sale.id},${f5.sale.id})`)).every((x: any) => x.status === "flagged"));
+  let r: any = await staff.c.rpc("admin_resolve_flagged_sale", { p_sale_id: f4.sale.id, p_action: "credit", p_reason: "Vendor confirms goods handed over" });
+  check("flagged: staff can't resolve", r.error?.code === "42501", r.error);
+  r = await admin.c.rpc("admin_resolve_flagged_sale", { p_sale_id: f5.sale.id, p_action: "credit", p_reason: "Vendor confirms goods handed over" });
+  check("flagged: a wrong-amount payment can't be credited", r.data?.error === "amount_mismatch_cannot_be_credited", r.data);
+  r = await admin.c.rpc("admin_resolve_flagged_sale", { p_sale_id: f5.sale.id, p_action: "return", p_reason: "Payer sent the wrong amount" });
+  check("flagged: returning money needs the reversal reference", r.data?.error === "reference_required", r.data);
+  r = await admin.c.rpc("admin_resolve_flagged_sale", { p_sale_id: f5.sale.id, p_action: "return", p_reason: "Payer sent the wrong amount", p_reference: "RVS0000001" });
+  check("flagged: returned to the payer -> 'returned', no ledger rows", r.data?.result === "returned" && (await get(`vendor_ledger_entries?select=id&sale_id=eq.${f5.sale.id}`)).length === 0, r.data);
+  r = await admin.c.rpc("admin_resolve_flagged_sale", { p_sale_id: f4.sale.id, p_action: "credit", p_reason: "Vendor confirms goods handed over" });
+  const f4row = (await get(`vendor_sales?select=status,commission_kes&id=eq.${f4.sale.id}`))[0];
+  check("flagged: credited by an admin -> success, 7.50 commission, ledger posted, resolution logged",
+    r.data?.result === "credited" && f4row.status === "success" && Number(f4row.commission_kes) === 7.5 &&
+    (await get(`vendor_ledger_entries?select=kind&sale_id=eq.${f4.sale.id}`)).length === 2 && (await get(`reconciliation_resolutions?select=id&sale_id=eq.${f4.sale.id}`)).length === 1, { r: r.data, f4row });
+  r = await admin.c.rpc("admin_resolve_flagged_sale", { p_sale_id: f4.sale.id, p_action: "credit", p_reason: "Vendor confirms goods handed over" });
+  check("flagged: can't be credited twice", r.data?.error === "not_flagged", r.data);
+
+  // --- refunds on S1 (KSh 1,000 at 5% = 50) ---
+  r = await staff.c.rpc("admin_request_vendor_refund", { p_sale_id: s1.id, p_amount_kes: 100, p_reason: "Cold food" });
+  check("refund: staff can't request", r.error?.code === "42501", r.error);
+  r = await A.u.c.rpc("admin_request_vendor_refund", { p_sale_id: s1.id, p_amount_kes: 100, p_reason: "Cold food" });
+  check("refund: the vendor can't request", r.error?.code === "42501", r.error);
+  r = await admin.c.rpc("admin_request_vendor_refund", { p_sale_id: s1.id, p_amount_kes: 1001, p_reason: "Cold food" });
+  check("refund: more than the sale is refused", r.data?.error === "exceeds_refundable" && Number(r.data?.refundable_kes) === 1000, r.data);
+  r = await admin.c.rpc("admin_request_vendor_refund", { p_sale_id: s1.id, p_amount_kes: 400, p_reason: "Half portion only" });
+  const rf1 = r.data?.refund;
+  check("refund: partial request recorded, nothing posted yet", r.data?.result === "requested" && (await get(`vendor_ledger_entries?select=id&refund_id=eq.${rf1?.id}`)).length === 0, r.data);
+  r = await admin.c.rpc("admin_request_vendor_refund", { p_sale_id: s1.id, p_amount_kes: 100, p_reason: "Again" });
+  check("refund: a second request while one is open is refused (no duplicates)", r.data?.error === "refund_in_progress", r.data);
+  r = await admin.c.rpc("admin_complete_vendor_refund", { p_refund_id: rf1.id, p_reversal_reference: "" });
+  check("refund: completing needs the reversal reference", r.data?.error === "reference_required", r.data);
+  r = await admin.c.rpc("admin_complete_vendor_refund", { p_refund_id: rf1.id, p_reversal_reference: "RVS0000002", p_note: "Sent from the M-Pesa portal" });
+  let led = await get(`vendor_ledger_entries?select=kind,amount_kes&refund_id=eq.${rf1.id}`);
+  check("refund completed: -400 refund, +20 commission reversal, refunded_kes 400",
+    r.data?.result === "completed" && Number(led.find((l: any) => l.kind === "refund")?.amount_kes) === -400 && Number(led.find((l: any) => l.kind === "commission_reversal")?.amount_kes) === 20 &&
+    Number((await get(`vendor_sales?select=refunded_kes&id=eq.${s1.id}`))[0].refunded_kes) === 400, { r: r.data, led });
+  r = await admin.c.rpc("admin_complete_vendor_refund", { p_refund_id: rf1.id, p_reversal_reference: "RVS0000003" });
+  check("refund: can't be completed twice", r.data?.error === "not_open", r.data);
+  const rf2 = (await admin.c.rpc("admin_request_vendor_refund", { p_sale_id: s1.id, p_amount_kes: 600, p_reason: "Order cancelled" })).data?.refund;
+  r = await admin.c.rpc("admin_complete_vendor_refund", { p_refund_id: rf2.id, p_reversal_reference: "rvs0000002" });
+  check("refund: a reversal reference can't be reused (any case)", r.data?.error === "reference_used", r.data);
+  r = await admin.c.rpc("admin_complete_vendor_refund", { p_refund_id: rf2.id, p_reversal_reference: "RVS0000004" });
+  check("refund: the last refund reverses exactly the remaining commission (30) — the sale nets to zero",
+    Number(r.data?.commission_reversed_kes) === 30 && (await get(`vendor_ledger_entries?select=amount_kes&sale_id=eq.${s1.id}`)).reduce((a: number, l: any) => a + Number(l.amount_kes), 0) === 0, r.data);
+  r = await admin.c.rpc("admin_request_vendor_refund", { p_sale_id: s1.id, p_amount_kes: 1, p_reason: "More" });
+  check("refund: a fully refunded sale can't be refunded again", r.data?.error === "exceeds_refundable", r.data);
+  const rf3 = (await admin.c.rpc("admin_request_vendor_refund", { p_sale_id: s2.id, p_amount_kes: 50, p_reason: "Test failure path" })).data?.refund;
+  r = await admin.c.rpc("admin_close_vendor_refund", { p_refund_id: rf3.id, p_status: "failed", p_reason: "Payer's line unreachable" });
+  check("refund: a failed attempt posts nothing and frees the sale", r.data?.result === "failed" && (await get(`vendor_ledger_entries?select=id&refund_id=eq.${rf3.id}`)).length === 0, r.data);
+
+  // --- adjustment ---
+  r = await staff.c.rpc("admin_record_vendor_adjustment", { p_event_vendor_id: A.pv.id, p_amount_kes: 100, p_reason: "Gas reimbursement" });
+  check("adjustment: staff refused", r.error?.code === "42501", r.error);
+  r = await admin.c.rpc("admin_record_vendor_adjustment", { p_event_vendor_id: A.pv.id, p_amount_kes: 100, p_reason: "no" });
+  check("adjustment: needs a reason", r.data?.error === "reason_required", r.data);
+  r = await admin.c.rpc("admin_record_vendor_adjustment", { p_event_vendor_id: A.pv.id, p_amount_kes: 100, p_reason: "Gas cylinder supplied by vendor for MeatSoko" });
+  check("adjustment: +100 recorded and audited", r.data?.result === "recorded" && (await get(`admin_audit?select=id&subject_id=eq.${A.pv.id}&action=eq.vendor_adjustment`)).length === 1, r.data);
+
+  // gross 1000+500+200+150+100+100 = 2050; commission 50+25+10+7.5+5+5 = 102.5; refunds 1000, reversals 50; adjustment +100
+  let bal = (await get(`vendor_balances?select=*&event_vendor_id=eq.${A.pv.id}`))[0];
+  check("payable: 2050 - 102.50 - 1000 + 50 + 100 = 1,097.50", Number(bal.gross_kes) === 2050 && Number(bal.commission_kes) === 102.5 && Number(bal.refunds_kes) === 1000 &&
+    Number(bal.commission_reversed_kes) === 50 && Number(bal.adjustments_kes) === 100 && Number(bal.payable_kes) === 1097.5 && Number(bal.outstanding_kes) === 1097.5, bal);
+
+  // --- duplicates ---
+  r = await admin.c.rpc("admin_possible_duplicate_sales", { p_event_id: ev.id });
+  check("duplicates: same payer, booth and amount within 10 min is listed once", Array.isArray(r.data) && r.data.length === 1 && r.data[0].references.length === 2 && Number(r.data[0].amount_kes) === 100, r.data);
+  r = await A.u.c.rpc("admin_possible_duplicate_sales", { p_event_id: ev.id });
+  check("duplicates: vendors can't run it", r.error?.code === "42501", r.error);
+
+  // --- payouts before the event ends ---
+  r = await A.u.c.rpc("request_vendor_payout", { p_event_vendor_id: A.pv.id, p_amount_kes: 100 });
+  check("payout: no withdrawal during the event", r.data?.error === "event_not_ended", r.data);
+  await patch(`events?id=eq.${ev.id}`, { ends_at: new Date(Date.now() - 60_000).toISOString() });
+  r = await B.u.c.rpc("request_vendor_payout", { p_event_vendor_id: A.pv.id, p_amount_kes: 100 });
+  check("payout: another vendor can't request mine", r.error?.code === "42501", r.error);
+  r = await A.u.c.rpc("request_vendor_payout", { p_event_vendor_id: A.pv.id, p_amount_kes: 1200 });
+  check("payout: more than available refused", r.data?.error === "exceeds_available" && Number(r.data?.available_kes) === 1097.5, r.data);
+  r = await A.u.c.rpc("request_vendor_payout", { p_event_vendor_id: A.pv.id, p_amount_kes: 300, p_note: "First part please" });
+  const po1 = r.data?.payout;
+  check("payout: the vendor requests KSh 300 after the event", r.data?.result === "requested" && po1?.status === "requested", r.data);
+  r = await A.u.c.rpc("request_vendor_payout", { p_event_vendor_id: A.pv.id, p_amount_kes: 100 });
+  check("payout: one request at a time", r.data?.error === "payout_in_progress", r.data);
+  r = await A.u.c.rpc("admin_decide_vendor_payout", { p_payout_id: po1.id, p_approve: true, p_amount_kes: 300, p_reason: null });
+  check("payout: a vendor can't approve its own payout", r.error?.code === "42501", r.error);
+  r = await A.u.c.rpc("admin_update_vendor_payout", { p_payout_id: po1.id, p_status: "paid", p_reference: "XYZ12345" });
+  check("payout: a vendor can't mark it paid", r.error?.code === "42501", r.error);
+  r = await admin.c.rpc("admin_decide_vendor_payout", { p_payout_id: po1.id, p_approve: true, p_amount_kes: 250, p_reason: null });
+  check("payout: approval blocked until every sale is reconciled", r.data?.error === "unresolved" && r.data?.blockers?.includes("unreconciled_sales"), r.data);
+
+  // --- statement import ---
+  const now = new Date().toISOString();
+  const rows = [
+    { receipt: "RA1AAAA001", completed_at: now, amount_kes: 1000, payer_hint: "2547****001" },
+    { receipt: "RA2AAAA002", completed_at: now, amount_kes: 500, payer_hint: "2547****002", fee_kes: 5 },
+    { receipt: "RA3NORC003", completed_at: now, amount_kes: 200, payer_hint: "254712***003 - A" },
+    { receipt: "RA4FLAG001", completed_at: now, amount_kes: 150 },
+    { receipt: "RA6AAAA006", completed_at: now, amount_kes: 100 },
+    { receipt: "RA7AAAA007", completed_at: now, amount_kes: 100 },
+    { receipt: "RA5MISM001", completed_at: now, amount_kes: 8 },
+    { receipt: "RB1AAAA001", completed_at: now, amount_kes: 350 },
+    { receipt: "ZZ9UNKN001", completed_at: now, amount_kes: 999 },
+    { receipt: "RA2AAAA002", completed_at: now, amount_kes: 500 },
+  ];
+  r = await A.u.c.rpc("admin_import_mpesa_statement", { p_rows: rows, p_filename: "x.csv" });
+  check("statement: vendors can't import", r.error?.code === "42501", r.error);
+  r = await admin.c.rpc("admin_import_mpesa_statement", { p_rows: [...rows, { receipt: "bad", completed_at: now, amount_kes: 1 }], p_filename: "bad.csv" });
+  check("statement: an invalid row rejects the whole file, nothing written", r.data?.error === "invalid_row" && r.data?.row === 11 && (await get("mpesa_statement_imports?select=id&filename=eq.bad.csv")).length === 0, r.data);
+  r = await admin.c.rpc("admin_import_mpesa_statement", { p_rows: rows, p_filename: "till-oct.csv", p_source: "bank" });
+  const imp = r.data;
+  check("statement: 6 matched (incl. the receipt-less sale by amount/time/phone), 3 unmatched (two amount mismatches, one unknown), 1 duplicate in file",
+    imp?.result === "imported" && imp.matched === 6 && imp.unmatched === 3 && imp.duplicates === 1, imp);
+  const s3r = (await get(`vendor_sales?select=mpesa_receipt,reconciliation_status&id=eq.${s3.id}`))[0];
+  check("statement: the receipt-less sale gets its receipt from the statement", s3r.mpesa_receipt === "RA3NORC003" && s3r.reconciliation_status === "matched", s3r);
+  check("statement: the fee is recorded on the sale as MeatSoko's expense, not in the ledger", Number((await get(`vendor_sales?select=collection_fee_kes&id=eq.${s2.id}`))[0].collection_fee_kes) === 5 &&
+    Number((await get(`vendor_balances?select=payable_kes&event_vendor_id=eq.${A.pv.id}`))[0].payable_kes) === 1097.5);
+  const b1r = (await get(`vendor_sales?select=reconciliation_status,reconciliation_note&id=eq.${b1.id}`))[0];
+  check("statement: a different amount marks the sale as a discrepancy", b1r.reconciliation_status === "discrepancy" && /350/.test(b1r.reconciliation_note), b1r);
+  r = await admin.c.rpc("admin_import_mpesa_statement", { p_rows: rows.slice(0, 3), p_filename: "overlap.csv" });
+  check("statement: re-importing the same receipts skips them", r.data?.skipped === 3 && r.data?.matched === 0, r.data);
+  r = await A.u.c.from("mpesa_statement_lines").select("id").limit(1);
+  check("statement: vendors can't read statement lines", (r.data ?? []).length === 0, r.data);
+
+  // --- payouts: approve (partial), processing, paid ---
+  r = await admin.c.rpc("admin_decide_vendor_payout", { p_payout_id: po1.id, p_approve: true, p_amount_kes: 301, p_reason: null });
+  check("payout: approving more than requested is refused", r.data?.error === "invalid_amount", r.data);
+  r = await admin.c.rpc("admin_decide_vendor_payout", { p_payout_id: po1.id, p_approve: true, p_amount_kes: 250, p_reason: "Rest after the final count" });
+  const po1row = (await get(`vendor_payouts?select=*&id=eq.${po1.id}`))[0];
+  check("payout: approved KSh 250 of 300 (partial), payout number snapshotted", r.data?.result === "approved" && Number(po1row.approved_amount) === 250 && po1row.payout_phone === "254712400001", { r: r.data, po1row });
+  r = await admin.c.rpc("admin_update_vendor_payout", { p_payout_id: po1.id, p_status: "paid", p_reference: "" });
+  check("payout: paid needs the M-Pesa reference", r.data?.error === "reference_required", r.data);
+  await admin.c.rpc("admin_update_vendor_payout", { p_payout_id: po1.id, p_status: "processing", p_reference: null });
+  r = await admin.c.rpc("admin_update_vendor_payout", { p_payout_id: po1.id, p_status: "paid", p_reference: "SJK1234567", p_note: "Sent from the bank app" });
+  bal = (await get(`vendor_balances?select=*&event_vendor_id=eq.${A.pv.id}`))[0];
+  const poLed = await get(`vendor_ledger_entries?select=amount_kes&payout_id=eq.${po1.id}`);
+  check("payout paid: ledger -250 once, outstanding 847.50, verification manual",
+    r.data?.result === "paid" && poLed.length === 1 && Number(poLed[0].amount_kes) === -250 && Number(bal.paid_out_kes) === 250 && Number(bal.outstanding_kes) === 847.5 &&
+    (await get(`vendor_payouts?select=verification,status&id=eq.${po1.id}`))[0].verification === "manual", { r: r.data, bal });
+  r = await admin.c.rpc("admin_update_vendor_payout", { p_payout_id: po1.id, p_status: "paid", p_reference: "SJK7654321" });
+  check("payout: can't be paid twice", r.data?.error === "not_payable" && (await get(`vendor_ledger_entries?select=id&payout_id=eq.${po1.id}`)).length === 1, r.data);
+  r = await A.u.c.rpc("request_vendor_payout", { p_event_vendor_id: A.pv.id, p_amount_kes: 900 });
+  check("payout: the paid amount can't be requested again", r.data?.error === "exceeds_available" && Number(r.data?.available_kes) === 847.5, r.data);
+  const po2 = (await A.u.c.rpc("request_vendor_payout", { p_event_vendor_id: A.pv.id, p_amount_kes: 847.5 })).data?.payout;
+  await admin.c.rpc("admin_decide_vendor_payout", { p_payout_id: po2.id, p_approve: true, p_amount_kes: 847.5, p_reason: null });
+  r = await admin.c.rpc("admin_request_vendor_refund", { p_sale_id: s2.id, p_amount_kes: 10, p_reason: "Should still be possible" });
+  const po2pos = (await admin.c.rpc("admin_payout_overview", { p_event_id: ev.id })).data?.[A.pv.id]?.position;
+  check("payout: an approved payout is reserved (available 0 while it's open, a new refund reserves too)", Number(po2pos?.available_kes) === 0 && Number(po2pos?.payouts_in_progress_kes) === 847.5, po2pos);
+  await admin.c.rpc("admin_close_vendor_refund", { p_refund_id: r.data?.refund?.id, p_status: "cancelled", p_reason: "Not needed" });
+  r = await admin.c.rpc("admin_update_vendor_payout", { p_payout_id: po2.id, p_status: "paid", p_reference: "SJK1234567" });
+  check("payout: a payout reference can't be reused", r.data?.error === "reference_used", r.data);
+  r = await admin.c.rpc("admin_update_vendor_payout", { p_payout_id: po2.id, p_status: "failed", p_reference: null, p_note: "Wrong number on file" });
+  check("payout: a failed payout posts nothing", r.data?.result === "failed" && (await get(`vendor_ledger_entries?select=id&payout_id=eq.${po2.id}`)).length === 0, r.data);
+  const po3 = (await A.u.c.rpc("request_vendor_payout", { p_event_vendor_id: A.pv.id, p_amount_kes: 847.5 })).data?.payout;
+  r = await admin.c.rpc("admin_decide_vendor_payout", { p_payout_id: po3.id, p_approve: false, p_amount_kes: null, p_reason: "" });
+  check("payout: rejecting needs a reason", r.data?.error === "reason_required", r.data);
+  r = await admin.c.rpc("admin_decide_vendor_payout", { p_payout_id: po3.id, p_approve: false, p_amount_kes: null, p_reason: "Update your payout number first" });
+  check("payout: rejected with a reason, audited", r.data?.result === "rejected" && (await get(`admin_audit?select=id&action=eq.vendor_payout_rejected&subject_id=eq.${A.pv.id}`)).length === 1, r.data);
+
+  // --- B: discrepancy resolution ---
+  const bpo = (await B.u.c.rpc("request_vendor_payout", { p_event_vendor_id: B.pv.id, p_amount_kes: 100 })).data?.payout;
+  r = await admin.c.rpc("admin_decide_vendor_payout", { p_payout_id: bpo.id, p_approve: true, p_amount_kes: 100, p_reason: null });
+  check("payout B: blocked by the statement discrepancy", r.data?.error === "unresolved" && r.data.blockers.includes("unreconciled_sales"), r.data);
+  const bLine = (await get(`mpesa_statement_lines?select=id,match_status&receipt=eq.RB1AAAA001`))[0];
+  r = await admin.c.rpc("admin_resolve_reconciliation", { p_sale_id: b1.id, p_line_id: bLine.id, p_action: "link", p_reason: "Same payment per portal" });
+  check("reconcile: linking a line with a different amount is refused", r.data?.error === "amount_differs", r.data);
+  r = await admin.c.rpc("admin_resolve_reconciliation", { p_sale_id: b1.id, p_line_id: null, p_action: "resolve", p_reason: "Payer topped up KSh 50 by mistake; refunded separately" });
+  check("reconcile: an admin resolves the sale with a reason (logged)", r.data?.result === "resolved" && (await get(`vendor_sales?select=reconciliation_status&id=eq.${b1.id}`))[0].reconciliation_status === "resolved" &&
+    (await get(`reconciliation_resolutions?select=id&sale_id=eq.${b1.id}`)).length === 1, r.data);
+  r = await admin.c.rpc("admin_resolve_reconciliation", { p_sale_id: null, p_line_id: bLine.id, p_action: "ignore", p_reason: "Handled with the sale above" });
+  check("reconcile: the line is closed as ignored", r.data?.result === "resolved" && (await get(`mpesa_statement_lines?select=match_status&id=eq.${bLine.id}`))[0].match_status === "ignored", r.data);
+  r = await admin.c.rpc("admin_decide_vendor_payout", { p_payout_id: bpo.id, p_approve: true, p_amount_kes: 100, p_reason: null });
+  check("payout B: approved once resolved", r.data?.result === "approved", r.data);
+  r = await B.u.c.from("vendor_payouts").select("id,event_vendor_id");
+  check("isolation: B sees only its own payouts", (r.data ?? []).length === 1 && r.data![0].event_vendor_id === B.pv.id, r.data);
+  r = await fetch(`http://supabase.test/rest/v1/reconciliation_resolutions?sale_id=eq.${b1.id}`, { method: "DELETE", headers: svc });
+  check("reconcile: the resolution log is append-only", r.status >= 400, r.status);
+
+  // --- vendor dashboard ---
+  const dash = (await A.u.c.rpc("vendor_dashboard")).data;
+  const de = dash?.events?.find((e: any) => e.event_vendor_id === A.pv.id);
+  check("dashboard: payouts with statuses and references, position and refunded amounts",
+    de?.payouts?.length === 3 && de.payouts.some((p: any) => p.status === "paid" && p.payout_reference === "SJK1234567") && Number(de.position.available_kes) === 847.5 &&
+    dash.sales.find((x: any) => x.id === s1.id)?.refunded_kes == 1000 && Array.isArray(de.blockers), de);
+  for (const k of ["DARAJA_SALES_SHORTCODE", "DARAJA_SALES_PASSKEY", "DARAJA_SALES_TILL_NUMBER", "VENDOR_SALES"]) Deno.env.delete(k);
+}
+
+// 29. Statement CSV reader (src/lib/mpesa-statement.ts), as the admin page uses it
+console.log("\n--- statement csv reader ---");
+{
+  const { parseCsv, detect, toRows, parseTime } = await import("/src/lib/mpesa-statement.ts");
+  const csv = [
+    "Organisation Name,MEATSOKO GROUP",
+    "Time Period,From 17-10-2026 00:00:00 To 18-10-2026 06:00:00",
+    "",
+    "Receipt No.,Completion Time,Initiation Time,Details,Transaction Status,Paid In,Withdrawn,Balance,Balance Confirmed,Reason Type,Other Party Info,Linked Transaction ID,A/C No.",
+    'TJH1AAAA01,17-10-2026 14:03:22,17-10-2026 14:03:10,"Pay Bill from 2547****001 - JANE, D",Completed,"1,250.00",,"1,250.00",true,Pay Bill Online,2547****001 - JANE D,,MEATSOKO01',
+    "TJH1CHG001,17-10-2026 14:03:22,,Pay Bill Charge,Completed,,12.50,1237.50,true,Pay Bill Charge,,TJH1AAAA01,",
+    "TJH1FAIL01,17-10-2026 15:00:00,,Pay Bill from 2547****002,Failed,500.00,,,,Pay Bill Online,2547****002,,",
+    "TJH1BBBB02,2026-10-17 21:15:00,,Pay Bill from 2547****003,Completed,300.00,,,,Pay Bill Online,2547****003,,",
+  ].join("\r\n");
+  const d = detect(parseCsv(csv));
+  const out = d ? toRows(d.sheet, d.map) : null;
+  check("csv: header found below the portal's metadata lines", d?.sheet.headerRow === 2 && d.map.receipt === 0 && d.map.amount === 5, d?.map);
+  check("csv: incoming completed payments only (charge and failed rows skipped), quoted commas and thousands read",
+    out?.rows.length === 2 && out.skipped === 2 && out.rows[0].amount_kes === 1250 && out.rows[0].receipt === "TJH1AAAA01" && out.problems.length === 0, out);
+  check("csv: the linked charge becomes the receipt's fee", out?.rows[0].fee_kes === 12.5 && out?.rows[1].fee_kes === undefined, out?.rows);
+  check("csv: statement times are Nairobi time", out?.rows[0].completed_at === "2026-10-17T11:03:22.000Z" && parseTime("17/10/2026 9:15:00 PM") === "2026-10-17T18:15:00.000Z", out?.rows[0]);
+  check("csv: an unrecognised file asks for the columns", detect(parseCsv("a,b,c\n1,2,3")) === null);
+}
+
 console.log(failures ? `\n${failures} FAILED` : "\nall passed");
 Deno.exit(failures ? 1 : 0);

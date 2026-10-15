@@ -11,7 +11,7 @@ and vendors are paid out after the event.
 | Phase | Scope | State |
 |---|---|---|
 | **A** (before NyamaFest, 17 Oct) | vendor accounts, booth QR, pay page, sales ledger + commission, vendor dashboard, admin Cashless section | Live. Taking real money needs the bank paybill secrets (§7) |
-| **B** (after the event) | payout requests and approval, refunds, M-Pesa statement import and reconciliation, ledger adjustments, the remaining reports | Not built |
+| **B** (after the event) | payout requests and approval, refunds, M-Pesa statement import and reconciliation, ledger adjustments, the remaining reports | Live since 2026-10-15 (§11), after phase A took real payments |
 
 ## 1. How it works
 
@@ -302,3 +302,67 @@ till), so a payment still being confirmed when you switch is checked against the
 sent it. While the ticket till is used, ticket and booth money share its statement: when
 reconciling, ticket payments appear as lines that are not vendor sales (ignore them).
 Prompts show the sale reference (`VS…`) as the account reference.
+## 11. Phase B — settlements (migration `20261015190000_vendor_settlements.sql`; deployed 2026-10-15)
+
+Nothing in phase B moves money: Safaricom's Reversal, Transaction Status and B2C APIs
+aren't available on the collection account. People send refunds and payouts from the
+bank or M-Pesa portal; the system **records** them with their reference, and every payout
+says "recorded manually — not verified by Safaricom".
+
+**Refunds** (Transactions → Refund…, then Refunds tab). Requested → completed (reversal
+reference, required and unique) / failed / cancelled. One refund in progress per sale; the
+total can't exceed what's left on the sale. Completing posts `refund −R` and `commission_reversal
++round(R × rate, 2)`; the refund that empties a sale reverses exactly the commission left,
+so a fully refunded sale nets to zero. A refund in progress is held back from payouts.
+
+**Flagged payments** (Transactions). *Credit vendor* (goods were handed over; posted like a
+normal sale at its own rate) or *Returned to payer* (reversal reference; never the vendor's).
+A payment whose amount differs from the sale can only be returned.
+
+**Adjustments** (Payouts tab). ± amount with a reason; append-only, audited.
+
+**Reconciliation** (Reconciliation tab). Import the paybill statement as CSV. The M-Pesa
+portal export is recognised automatically (metadata lines, "Receipt No.", "Paid In",
+"Withdrawn", "Linked Transaction ID"); for a bank's export, choose the columns. Only
+incoming completed payments are read; a charge row linked to a receipt becomes that sale's
+`collection_fee_kes` (MeatSoko's expense). Times without a zone are read as Nairobi time.
+- Match by receipt; a sale with no receipt (callback lost) matches one line with the same
+  amount, a time within 15 min and the payer's last 3 digits.
+- Different amount → the sale is a *discrepancy*; no sale → the line is *unmatched*; a
+  receipt twice in the file → *duplicate*; a receipt imported before → skipped.
+- Successful sales paid inside the statement's period that no line matched → *missing from
+  statement*.
+- An admin links a line to a sale (same amount), ignores a line (not a vendor sale), or marks
+  a sale reconciled with a reason. Every decision goes to an append-only log and the audit log.
+- *Possible duplicates*: the same payer, booth and amount within 10 minutes.
+
+**Payouts** (vendor dashboard, or an admin on the vendor's behalf). Only after the event
+ends; one in progress per vendor; never above *available* = outstanding − refunds in
+progress − payouts approved/sending. Approval (full or partial) is refused while the vendor
+has pending or flagged payments, sales not matched to a statement, or a refund in progress
+— there is no override. Approved → "Sending now" → Paid (reference, unique; posts `payout −amount`
+once) or Failed (posts nothing). Rejections need a reason the vendor sees. The payout
+number is snapshotted at approval.
+
+**Reports** (Reports tab, CSV): event sales, vendor sales, transaction reconciliation,
+commission, refunds, payouts, outstanding liabilities — from verified sales and the ledger.
+
+**Functions** (admin unless noted; `{ result }` or `{ error }`; `42501` for the wrong role):
+`admin_request_vendor_refund`, `admin_complete_vendor_refund`, `admin_close_vendor_refund`,
+`admin_record_vendor_adjustment`, `admin_resolve_flagged_sale`, `admin_import_mpesa_statement`,
+`admin_resolve_reconciliation`, `admin_possible_duplicate_sales`, `admin_payout_overview`,
+`admin_decide_vendor_payout`, `admin_update_vendor_payout`, `request_vendor_payout` (vendor
+for its own participation, or admin), and `vendor_dashboard()` now includes payouts, the
+payout position and what's blocking approval.
+
+**Tests:** harness 569/569 (2026-10-14): 61 settlement checks (refund caps, partial and
+duplicate refunds, exact commission reversal, failed refunds, adjustments, flagged credit
+and return, duplicates report, payout before the event / above available / by another
+vendor / approved or paid by a vendor, approval blocked until reconciled, statement
+matching including the receipt-less sale and fees, invalid file rejected whole, re-import
+skipped, partial approval, paid once, reference reuse, failed and rejected payouts,
+discrepancy resolution, isolation) and 5 CSV reader checks. Lint, `tsc` and the build are clean.
+
+**Deploying phase B** (done 2026-10-15):
+`supabase db push --linked` (one migration; it replaces `vendor_dashboard()`), merge
+`feat/cashless-settlements` to `main`. No Edge Functions change.
