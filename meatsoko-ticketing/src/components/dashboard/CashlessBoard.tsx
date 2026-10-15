@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
+import { BulkAddVendors, VendorLogin } from "@/components/dashboard/CashlessOnboarding";
+import { SendPrompt } from "@/components/cashless/VendorTools";
 
 // Dashboard → Events & tickets → Cashless (migration 20261014150000).
 // Vendors: create, assign to the event, approve / reject / pause / suspend,
@@ -15,7 +17,7 @@ import { invokeFn } from "@/lib/invoke";
 export type CashlessData = {
   eventId: string;
   events: { id: string; name: string; starts_at: string; ends_at: string; status: string; vendor_commission_bps: number }[];
-  vendors: { id: string; name: string; phone: string; email: string; payout_phone: string | null; status: "active" | "suspended"; user_id: string | null; application_id: string | null; admin_note: string | null; created_at: string }[];
+  vendors: { id: string; name: string; phone: string; email: string | null; login_method: string | null; payout_phone: string | null; status: "active" | "suspended"; user_id: string | null; application_id: string | null; admin_note: string | null; created_at: string }[];
   eventVendors: { id: string; event_id: string; vendor_id: string; status: "pending" | "active" | "inactive" | "suspended" | "rejected"; commission_bps: number | null; policy_bps_accepted: number | null; policy_accepted_at: string | null; status_reason: string | null; decided_at: string | null; created_at: string }[];
   qrs: { id: string; event_vendor_id: string; code: string; created_at: string }[];
   balances: { event_vendor_id: string; event_id: string; vendor_id: string; commission_bps: number; gross_kes: number; commission_kes: number; refunds_kes: number; commission_reversed_kes: number; adjustments_kes: number; paid_out_kes: number; payable_kes: number; outstanding_kes: number; successful_count: number; pending_count: number; failed_count: number; flagged_count: number }[];
@@ -52,6 +54,7 @@ export default function CashlessBoard({ data }: { data: CashlessData }) {
   const [reason, setReason] = useState("");
   const [rate, setRate] = useState("");
   const [addOpen, setAddOpen] = useState(false);
+  const [promptFor, setPromptFor] = useState<string | null>(null);
   const emptyForm = { app: "", existing: "", name: "", phone: "", email: "", payout: "" };
   const [f, setF] = useState(emptyForm);
   const event = data.events.find((e) => e.id === data.eventId) ?? null;
@@ -143,7 +146,9 @@ export default function CashlessBoard({ data }: { data: CashlessData }) {
           <p className="dash-muted">A change applies to new sales only, and each vendor must accept the new rate before their booth takes payments again.</p>
         </div>
 
+        <BulkAddVendors eventId={data.eventId} eventName={event!.name} knownPhones={new Map(data.vendors.map((v) => [v.phone, v.name]))} />
         {renderAddVendor(assigned)}
+        {rows.some((r) => r.qr) && <div><Link className="dash-btn" href={`/dashboard/cashless/qr/all?event=${data.eventId}`}>Print all booth posters</Link></div>}
 
         <div className="dash-card">
           <strong>Vendors at {event!.name}</strong>
@@ -158,11 +163,14 @@ export default function CashlessBoard({ data }: { data: CashlessData }) {
                       <tr key={ev.id}>
                         <td>
                           <strong>{vendor.name}</strong>
-                          <small><a href={`tel:+${vendor.phone}`}>{localPhone(vendor.phone)}</a> · <a href={`mailto:${vendor.email}`}>{vendor.email}</a></small>
+                          <small><a href={`tel:+${vendor.phone}`}>{localPhone(vendor.phone)}</a>{vendor.email && <> · <a href={`mailto:${vendor.email}`}>{vendor.email}</a></>}</small>
                           {vendor.payout_phone && <small>Payout: {localPhone(vendor.payout_phone)}</small>}
                           {vendor.status === "suspended" && <span className="dash-badge cl-suspended">Vendor suspended</span>}
-                          <small>{vendor.user_id ? "Has a sign-in account" : "No sign-in account yet"}{" "}
-                            <button type="button" className="dash-btn small ghost" disabled={busy} onClick={() => invite(vendor.id)}>{vendor.user_id ? "Resend invite" : "Invite"}</button></small>
+                          <small>{!vendor.user_id ? "No login yet" : vendor.login_method === "phone_password" ? "Signs in with phone + password" : "Signs in with email"}</small>
+                          <div className="dash-row-actions">
+                            {vendor.login_method !== "email" && <VendorLogin vendorId={vendor.id} name={vendor.name} phone={vendor.phone} hasLogin={!!vendor.user_id} method={vendor.login_method} />}
+                            {vendor.email && vendor.login_method !== "phone_password" && <button type="button" className="dash-btn small ghost" disabled={busy} onClick={() => invite(vendor.id)}>{vendor.user_id ? "Resend email invite" : "Email invite"}</button>}
+                          </div>
                           {pending?.kind === "vendor_status" && pending.id === vendor.id ? ask(pending, vendor.status === "active" ? "Suspend vendor" : "Reinstate", "reason")
                             : <button type="button" className="dash-btn small ghost" onClick={() => setPending({ kind: "vendor_status", id: vendor.id, to: vendor.status === "active" ? "suspended" : "active" })}>{vendor.status === "active" ? "Suspend everywhere…" : "Reinstate…"}</button>}
                         </td>
@@ -199,6 +207,10 @@ export default function CashlessBoard({ data }: { data: CashlessData }) {
                         <td>
                           <strong>{kes(bal?.gross_kes)}</strong><small>{bal?.successful_count ?? 0} paid · {bal?.pending_count ?? 0} pending · {bal?.flagged_count ?? 0} to check</small>
                           <small>Owed {kes(bal?.outstanding_kes)}</small>
+                          {ev.status === "active" && (promptFor === ev.id
+                            ? <><SendPrompt eventVendorId={ev.id} disabledReason={ev.policy_bps_accepted !== (ev.commission_bps ?? event!.vendor_commission_bps) ? "The vendor hasn't accepted the commission yet." : null} />
+                                <button type="button" className="dash-btn small ghost" onClick={() => setPromptFor(null)}>Close</button></>
+                            : <button type="button" className="dash-btn small ghost" onClick={() => setPromptFor(ev.id)}>Send M-Pesa prompt…</button>)}
                         </td>
                       </tr>
                     );
@@ -253,14 +265,14 @@ export default function CashlessBoard({ data }: { data: CashlessData }) {
             )}
             <div className="field-grid two">
               <label className="store-field"><span>Business name *</span><input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
-              <label className="store-field"><span>Sign-in email *</span><input type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></label>
+              <label className="store-field"><span>Email (optional)</span><input type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></label>
               <label className="store-field"><span>Phone *</span><input inputMode="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} /></label>
               <label className="store-field"><span>M-Pesa payout number (blank = phone)</span><input inputMode="tel" value={f.payout} onChange={(e) => setF({ ...f, payout: e.target.value })} /></label>
             </div>
           </>
         )}
         <div className="dash-row-actions">
-          <button type="button" className="dash-btn primary" disabled={busy || (!f.existing && (!f.name || !f.phone || !f.email))} onClick={save}>Add (awaiting approval)</button>
+          <button type="button" className="dash-btn primary" disabled={busy || (!f.existing && (!f.name || !f.phone))} onClick={save}>Add (awaiting approval)</button>
           <button type="button" className="dash-btn ghost" onClick={() => { setAddOpen(false); setF(emptyForm); }}>Cancel</button>
         </div>
       </div>

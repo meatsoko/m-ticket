@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import QrImage from "@/components/QrImage";
+import { ChangePassword, LiveUpdates, SendPrompt } from "@/components/cashless/VendorTools";
 
 // The vendor's own dashboard (vendor_dashboard(), migration 20261014150000).
 // Read-only except accepting the commission policy. Payout requests come in
@@ -21,11 +22,11 @@ type EventRow = {
 };
 type SaleRow = {
   id: string; reference: string; event_id: string; amount_kes: number; commission_bps: number; commission_kes: number | null;
-  status: "pending" | "success" | "failed" | "flagged"; reconciliation_status: string; payer: string; mpesa_receipt: string | null;
+  status: "pending" | "success" | "failed" | "flagged"; reconciliation_status: string; channel?: "qr" | "vendor_prompt" | "admin_prompt"; payer: string; mpesa_receipt: string | null;
   created_at: string; paid_at: string | null;
 };
 export type VendorDashboardData = {
-  vendor: { id: string; name: string; status: string; email: string; payout_phone_masked: string | null };
+  vendor: { id: string; name: string; status: string; email: string | null; login_method?: string | null; phone_masked?: string; payout_phone_masked: string | null };
   events: EventRow[]; sales: SaleRow[];
 };
 
@@ -61,6 +62,11 @@ export default function VendorDashboard({ data }: { data: VendorDashboardData })
   }
   const accepted = ev && ev.policy_bps_accepted === ev.commission_bps;
   const ended = ev ? Date.now() >= Date.parse(ev.event.ends_at) : false;
+  const started = ev ? Date.now() >= Date.parse(ev.event.starts_at) : false;
+  const promptBlocked = !ev ? "No event selected." : data.vendor.status !== "active" ? "Your account is suspended."
+    : ev.status !== "active" ? "Your booth isn't active for this event yet." : !accepted ? "Accept the commission policy above first."
+    : ended ? "This event has ended." : !started ? "You can send prompts once the event starts." : null;
+  const paidList = data.sales.filter((s) => s.status === "success").map((s) => ({ id: s.id, reference: s.reference, amount_kes: s.amount_kes, payer: s.payer, mpesa_receipt: s.mpesa_receipt }));
 
   return (
     <div className="dash-stack">
@@ -69,6 +75,8 @@ export default function VendorDashboard({ data }: { data: VendorDashboardData })
         <p>Every cashless payment made at your booth is collected into MeatSoko&apos;s M-Pesa account and recorded against your business. You&apos;re paid out after the event, once collections are reconciled.</p>
       </div>
       {data.vendor.status === "suspended" && <p className="dash-error">Your vendor account is suspended. Contact the MeatSoko team.</p>}
+      <LiveUpdates paid={paidList} />
+      {data.vendor.login_method === "phone_password" && <ChangePassword />}
 
       {data.events.length > 1 && (
         <div className="dash-chips">
@@ -106,6 +114,8 @@ export default function VendorDashboard({ data }: { data: VendorDashboardData })
               </details>
             )}
           </div>
+
+          <SendPrompt eventVendorId={ev.event_vendor_id} disabledReason={promptBlocked} />
 
           <div className="dash-kpis">
             <div className="dash-kpi"><span className="dash-kpi-label">Gross sales</span><div className="dash-kpi-row"><strong>{kes(b?.gross_kes)}</strong></div><small>{b?.successful_count ?? 0} successful payments</small></div>
@@ -160,7 +170,8 @@ export default function VendorDashboard({ data }: { data: VendorDashboardData })
                         <td>{when(s.paid_at ?? s.created_at)}</td>
                         <td>{kes(s.amount_kes)}</td>
                         <td>{s.commission_kes === null ? <span className="dash-muted">—</span> : <>{kes(s.commission_kes)}<small>{pct(s.commission_bps)}</small></>}</td>
-                        <td><span className={`dash-badge cl-sale-${s.status}`}>{STATUS[s.status]}</span>{s.status === "success" && s.reconciliation_status !== "unreconciled" && <small>{s.reconciliation_status}</small>}</td>
+                        <td><span className={`dash-badge cl-sale-${s.status}`}>{STATUS[s.status]}</span>{s.channel && s.channel !== "qr" && <small>{s.channel === "vendor_prompt" ? "Prompt you sent" : "Sent by MeatSoko"}</small>}
+                          {s.status === "success" && <a className="dash-btn small ghost" href={`/vendor/receipt/${s.id}`} target="_blank" rel="noopener noreferrer">Receipt</a>}{s.status === "success" && s.reconciliation_status !== "unreconciled" && <small>{s.reconciliation_status}</small>}</td>
                       </tr>
                     ))}
                   </tbody>
