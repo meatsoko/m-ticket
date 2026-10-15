@@ -110,11 +110,11 @@ async function fetchStatus(payheroReference: string): Promise<{ status: string; 
 }
 
 export type Ledger = {
-  id: string; reference: string; kind: PayheroKind; provider: "payhero" | "daraja"; account: DarajaAccount; status: "queued" | "success" | "failed"; outcome: string | null;
+  id: string; reference: string; kind: PayheroKind; provider: "payhero" | "daraja"; account: DarajaAccount; daraja_profile: DarajaAccount | null; status: "queued" | "success" | "failed"; outcome: string | null;
   order_id: string | null; vendor_application_id: string | null; merch_order_id: string | null; vendor_sale_id: string | null;
   amount_kes: number; payhero_reference: string | null; checkout_request_id: string | null; mpesa_receipt: string | null; created_at: string;
 };
-const LEDGER = "id,reference,kind,provider,account,status,outcome,order_id,vendor_application_id,merch_order_id,vendor_sale_id,amount_kes,payhero_reference,checkout_request_id,mpesa_receipt,created_at";
+const LEDGER = "id,reference,kind,provider,account,daraja_profile,status,outcome,order_id,vendor_application_id,merch_order_id,vendor_sale_id,amount_kes,payhero_reference,checkout_request_id,mpesa_receipt,created_at";
 
 export async function loadLedger(db: Db, reference: string): Promise<Ledger | null> {
   const { data } = await db.from("payhero_payments").select(LEDGER).eq("reference", reference).maybeSingle();
@@ -139,7 +139,8 @@ export async function verifyMpesa(db: Db, reference: string): Promise<{ status: 
   let s: { status: string; receipt: string | null; amount: number | null; desc: string | null };
   if (row.provider === "daraja") {
     if (!row.checkout_request_id) return { status: "queued" };   // STK not accepted yet
-    const q = await queryStk(row.checkout_request_id, row.account ?? "main");
+    // The credentials that sent this prompt (recorded since 20261015170000), else its account.
+    const q = await queryStk(row.checkout_request_id, row.daraja_profile ?? row.account ?? "main");
     // An STK prompt expires within minutes: still "pending" after 30 is a dead prompt.
     const expired = q.state === "pending" && Date.now() - Date.parse(row.created_at) > DARAJA_GIVE_UP_MS;
     s = { status: q.state === "success" ? "SUCCESS" : q.state === "failed" || expired ? "FAILED" : "QUEUED",

@@ -284,3 +284,21 @@ until `ends_at`. Set in Cashless → *Payments open from* (Save time / Open now 
 event start), admin only, reason required, audited (`admin_set_cashless_opens_at`). Used
 for the live KSh 1 test before NyamaFest opens; it never changes the event's public times
 or tickets. The Cashless page now defaults to the next live event that hasn't ended.
+
+## 14. Temporary route: booth sales through Daraja into the ticket till (migration `20261015170000`)
+
+While the PayHero merchant account waits for KYC (2026-10-15), booth payments can go
+through Daraja M-Pesa Express into the **ticket till**. It is an explicit opt-in, never a
+fallback:
+
+| To use | Secrets |
+|---|---|
+| Ticket till via Daraja (temporary) | `VENDOR_SALES_PROVIDER=daraja`, `DARAJA_SALES_USE_MAIN_TILL=on` |
+| **Switch back to PayHero / Equity** (once KYC is approved) | `VENDOR_SALES_PROVIDER=payhero` (and unset `DARAJA_SALES_USE_MAIN_TILL`) |
+
+No redeploy is needed to switch. Every sale is still recorded against its vendor; only the
+destination account differs. Each Daraja ledger row stores `daraja_profile` (`main` = ticket
+till), so a payment still being confirmed when you switch is checked against the till that
+sent it. While the ticket till is used, ticket and booth money share its statement: when
+reconciling, ticket payments appear as lines that are not vendor sales (ignore them).
+Prompts show the sale reference (`VS…`) as the account reference.

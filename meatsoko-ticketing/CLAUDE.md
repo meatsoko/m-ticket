@@ -197,7 +197,10 @@ Tickets stay on Daraja; `PAYHERO_PAYMENTS` stays off.
 Onboarding (DEPLOYED 2026-10-15 with the PayHero route: migration 20261015100000, vendor-pay,
 vendor-invite, site; `VENDOR_SALES_PROVIDER=payhero`, `PAYHERO_SALES_CHANNEL_ID=14056`, `VENDOR_SALES` still off): vendors
 by **phone number**, phone + password logins created by an admin, vendor-sent M-Pesa
-prompts, receipts — `CASHLESS_VENDORS.md` §12. Vendor sign-in needs Supabase Auth custom SMTP +
+prompts, receipts — `CASHLESS_VENDORS.md` §12.
+**Temporary (2026-10-15): booth sales via Daraja into the ticket till** while PayHero KYC is
+pending — `VENDOR_SALES_PROVIDER=daraja` + `DARAJA_SALES_USE_MAIN_TILL=on`; switch back with
+`VENDOR_SALES_PROVIDER=payhero` (§14). Vendor sign-in needs Supabase Auth custom SMTP +
 an OTP template.
 
 ## Dashboard (`/dashboard`, store theme)
