@@ -39,7 +39,13 @@ const PART: Record<EventRow["status"], string> = { pending: "Awaiting approval",
 
 export default function VendorDashboard({ data }: { data: VendorDashboardData }) {
   const router = useRouter();
-  const [eventId, setEventId] = useState(data.events[0]?.event.id ?? "");
+  // Open on the next event that hasn't ended (soonest first), not the latest-dated one:
+  // a vendor added to a December event must still land on this weekend's booth.
+  const [eventId, setEventId] = useState(() => {
+    const now = Date.now();
+    const current = data.events.filter((e) => Date.parse(e.event.ends_at) > now).sort((a, b) => Date.parse(a.event.starts_at) - Date.parse(b.event.starts_at))[0];
+    return (current ?? data.events[0])?.event.id ?? "";
+  });
   const [status, setStatus] = useState<"all" | SaleRow["status"]>("all");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
