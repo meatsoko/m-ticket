@@ -177,42 +177,34 @@ Dashboard → Events & tickets → Event orders. Migration `20261003100000_event
   customer-order`, merge to `main`, then an admin adds the menu in the dashboard and staff set
   themselves Available on `/orders`.
 
-## Cashless booth payments (DEPLOYED 2026-10-14: migration, functions, site; payments still closed)
+## Cashless booth payments (LIVE 2026-10-15)
 
-Full guide: **`CASHLESS_VENDORS.md`**. Attendees scan a vendor's booth QR (`/pay/<code>`)
-and pay by M-Pesa STK into a **separate vendor-sales till** (the user's choice; Daraja
-account `sales`, secrets `DARAJA_SALES_*`, switch `VENDOR_SALES=on`; never falls back to
-the ticket till). Migration `20261014150000` (vendors, event_vendors, vendor_qr_codes,
-vendor_sales, append-only vendor_ledger_entries, vendor_balances); kind `sale` in
-`payhero_payments`, confirmed only by `verifyMpesa()`. Commission per event (default 5 %)
-or per vendor, snapshotted on each sale; vendors must accept the current rate before
-their booth takes money. Vendors sign in with an email one-time code (`/vendor/login`,
-accounts only via the admin-only `vendor-invite`; vendors are never in `admin_users`).
-Admin: Dashboard → Events & tickets → **Cashless**. Phase B (after NyamaFest): payouts,
-refunds, statement reconciliation. The collection account is **Equity paybill 247247, account
-125385** (MeatSoko Limited); Daraja can't prompt to a bank's paybill, so booth prompts go
-through **PayHero's Equity bank channel** (branch `feat/cashless-payhero`, 2026-10-14):
-`VENDOR_SALES_PROVIDER=payhero` + `PAYHERO_SALES_CHANNEL_ID`, then `VENDOR_SALES=on`.
-Tickets stay on Daraja; `PAYHERO_PAYMENTS` stays off.
-Onboarding (DEPLOYED 2026-10-15 with the PayHero route: migration 20261015100000, vendor-pay,
-vendor-invite, site; `VENDOR_SALES_PROVIDER=payhero`, `PAYHERO_SALES_CHANNEL_ID=14056`, `VENDOR_SALES` still off): vendors
-by **phone number**, phone + password logins created by an admin, vendor-sent M-Pesa
-prompts, receipts — `CASHLESS_VENDORS.md` §12.
-**Temporary (2026-10-15): booth sales via Daraja into the ticket till** while PayHero KYC is
-pending — `VENDOR_SALES_PROVIDER=daraja` + `DARAJA_SALES_USE_MAIN_TILL=on`; switch back with
-`VENDOR_SALES_PROVIDER=payhero` (§14).
-**Live test passed 2026-10-15** (user confirmed): KSh 1 by admin prompt (VS-EE9PWQFZ, Ally, receipt
-UJFOEAL54A) and by QR (VS-BU9C8RH3, Harriet, UJFOWANCBW) via the ticket till; vendor dashboard
-shows them. NyamaFest `cashless_opens_at` was set to 2026-10-15 16:09 for the test — booths stay
-open until the event ends unless reset (Cashless → Payments open from → Back to event start).
-Settlements (phase B) merged and deployed the same day. Vendor sign-in needs Supabase Auth custom SMTP +
-Admin: Dashboard → Events & tickets → **Cashless**. Phase B (payouts, refunds, statement
-reconciliation, reports; migration `20261015190000`) was merged and deployed on 2026-10-15
-after the live test passed (§11). The sales account is a **bank paybill** (user,
-2026-10-14): `DARAJA_SALES_TRANSACTION_TYPE=CustomerPayBillOnline` is set; still to set:
-`DARAJA_SALES_SHORTCODE`, `DARAJA_SALES_PASSKEY`, `DARAJA_SALES_ACCOUNT_REFERENCE` (if the
-bank needs one), then `VENDOR_SALES=on`. Vendor sign-in needs Supabase Auth custom SMTP +
-an OTP template.
+Full guide: **`CASHLESS_VENDORS.md`**. Attendees pay a vendor by scanning its booth QR
+(`/pay/<code>`) or the vendor sends an M-Pesa prompt from its dashboard; every sale is
+recorded against the vendor with the commission snapshotted (default 5 %, per event or
+per vendor; the vendor must accept the current rate). Confirmation only by
+`verifyMpesa()` (provider status query), never a callback. Payouts after the event.
+
+- **Migrations** (all applied): `20261014150000` (vendors, QR, sales, append-only ledger),
+  `20261015100000` (vendors by phone, phone + password logins, vendor/admin prompts),
+  `20261015140000` (`events.cashless_opens_at`), `20261015170000` (`daraja_profile`),
+  `20261015190000` (settlements: refunds, adjustments, flagged sales, statement
+  reconciliation, payouts).
+- **Where the money goes right now:** the **ticket till via Daraja** (temporary, while the
+  PayHero merchant account's KYC is pending): `VENDOR_SALES=on`, `VENDOR_SALES_PROVIDER=daraja`,
+  `DARAJA_SALES_USE_MAIN_TILL=on`. Target: **PayHero channel 14056** (Equity Bank, account
+  0840284125389 — confirm it's MeatSoko's) with `VENDOR_SALES_PROVIDER=payhero`; switch
+  without a redeploy (§14). Daraja can't prompt into Equity's paybill 247247.
+- **Vendors** (NyamaFest Main): ally mutembei 0703777706 (has a login), peter thungutha
+  0712997774, roselyn makona 0722563789, harriet wanyoike 0790272814. Also added by mistake
+  to the Token Summit — pause those entries. Logins: Cashless → Create login (password
+  shown once). Email-code login needs Supabase Auth custom SMTP (not set).
+- **Live test passed 2026-10-15** (user confirmed): KSh 1 admin prompt (VS-EE9PWQFZ, Ally,
+  UJFOEAL54A) and QR (VS-BU9C8RH3, Harriet, UJFOWANCBW) via the ticket till.
+  NyamaFest `cashless_opens_at` = 2026-10-15 16:09, so booths stay open until the event
+  ends unless reset (Cashless → Payments open from → Back to event start).
+- Admin: Dashboard → Events & tickets → **Cashless** (Vendors, Transactions, Overview,
+  Payouts, Refunds, Reconciliation, Reports). Tickets stay on Daraja; `PAYHERO_PAYMENTS` off.
 
 ## Dashboard (`/dashboard`, store theme)
 
