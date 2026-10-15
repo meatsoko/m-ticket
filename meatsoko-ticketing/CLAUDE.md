@@ -194,7 +194,8 @@ refunds, statement reconciliation. The collection account is **Equity paybill 24
 through **PayHero's Equity bank channel** (branch `feat/cashless-payhero`, 2026-10-14):
 `VENDOR_SALES_PROVIDER=payhero` + `PAYHERO_SALES_CHANNEL_ID`, then `VENDOR_SALES=on`.
 Tickets stay on Daraja; `PAYHERO_PAYMENTS` stays off.
-Onboarding (branch `feat/cashless-onboarding`, built on the PayHero branch, 2026-10-15): vendors
+Onboarding (DEPLOYED 2026-10-15 with the PayHero route: migration 20261015100000, vendor-pay,
+vendor-invite, site; `VENDOR_SALES_PROVIDER=payhero`, `PAYHERO_SALES_CHANNEL_ID=14056`, `VENDOR_SALES` still off): vendors
 by **phone number**, phone + password logins created by an admin, vendor-sent M-Pesa
 prompts, receipts — `CASHLESS_VENDORS.md` §12. Vendor sign-in needs Supabase Auth custom SMTP +
 an OTP template.
