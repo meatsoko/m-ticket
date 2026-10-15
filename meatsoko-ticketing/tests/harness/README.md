@@ -7,7 +7,7 @@ confirmation and reconciliation, refunds, merchandise checkout and FX, vendors, 
 attendance, investors, Event Orders, lookups, and the RLS/permission lock-downs. Only Paystack, the FX
 feed and Resend are faked. **It never touches the live Supabase project.**
 
-Expect `ok: 548   FAIL: 0` (2026-10-15). Safaricom Daraja (both the ticket
+Expect `ok: 553   FAIL: 0` (2026-10-15). Safaricom Daraja (both the ticket
 till and the vendor-sales till) and the Supabase Auth admin API are faked too. `KEEP_LOG=1` keeps the full output in
 `last-run.log` (gitignored).
 

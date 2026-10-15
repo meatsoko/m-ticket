@@ -23,13 +23,15 @@
 //   daraja (default) — the DARAJA_SALES_* till/paybill. For a bank paybill,
 //            DARAJA_SALES_ACCOUNT_REFERENCE is the account number the bank needs
 //            (Daraja accepts at most 12 characters).
+//            With DARAJA_SALES_USE_MAIN_TILL=on (temporary, explicit), the
+//            prompt goes to the TICKET till with the main DARAJA_* credentials.
 //   payhero — PayHero channel PAYHERO_SALES_CHANNEL_ID (MeatSoko's Equity bank
 //            channel), same PayHero login as before. Confirmed only by PayHero's
 //            transaction-status API (verifyMpesa), never by its callback.
 // Neither ever falls back to the ticket till or the ticket PayHero channel.
 import { json, preflight } from "../_shared/cors.ts";
 import { clientIp, normalizePhone, rateLimit, serviceClient } from "../_shared/supabase.ts";
-import { darajaConfigured, darajaStkPush } from "../_shared/daraja-express.ts";
+import { darajaConfigured, darajaStkPush, salesDarajaProfile } from "../_shared/daraja-express.ts";
 import { newPayheroReference, payheroSalesConfigured, sendStkPush, verifyMpesa } from "../_shared/payhero.ts";
 
 const CODE = /^[a-z2-7]{16}$/;
@@ -46,7 +48,7 @@ const salesProvider = (): "daraja" | "payhero" | null => {
 function salesReady(): { ok: true } | { ok: false; missing: string[] } {
   const p = salesProvider();
   if (!p) return { ok: false, missing: ["VENDOR_SALES_PROVIDER (daraja|payhero)"] };
-  const c = p === "payhero" ? payheroSalesConfigured() : darajaConfigured("sales");
+  const c = p === "payhero" ? payheroSalesConfigured() : darajaConfigured(salesDarajaProfile());
   return c.ok ? { ok: true } : c;
 }
 
@@ -175,6 +177,7 @@ async function sendPrompt(db: any, r: any, phone: string, amount: number): Promi
   const reference = newPayheroReference();
   const { error: lErr } = await db.from("payhero_payments").insert({
     reference, kind: "sale", provider: salesProvider(), account: "sales", vendor_sale_id: sale.id, phone, amount_kes: amount,
+    daraja_profile: salesProvider() === "daraja" ? salesDarajaProfile() : null,
   });
   if (lErr) {
     console.error(JSON.stringify({ msg: "vendor sale ledger insert failed", sale: sale.reference, detail: lErr.message }));
@@ -196,11 +199,13 @@ async function sendPrompt(db: any, r: any, phone: string, amount: number): Promi
     console.log(JSON.stringify({ msg: "vendor sale prompt sent", provider: "payhero", channel: sale.channel, sale: sale.reference, amount }));
     return json(await view(db, sale.status_token));
   }
+  const profile = salesDarajaProfile();
   const stk = await darajaStkPush({
-    account: "sales", amountKes: amount, phone,
+    account: profile, amountKes: amount, phone,
     // A bank paybill routes on the account number: DARAJA_SALES_ACCOUNT_REFERENCE
     // (the bank's account reference for MeatSoko) when set, else the sale reference.
-    accountRef: (Deno.env.get("DARAJA_SALES_ACCOUNT_REFERENCE") ?? "").trim() || sale.reference.replace(/[^A-Za-z0-9]/g, "").slice(0, 12),
+    // (Only for the separate sales account; on the ticket till the sale reference is used.)
+    accountRef: (profile === "sales" ? (Deno.env.get("DARAJA_SALES_ACCOUNT_REFERENCE") ?? "").trim() : "") || sale.reference.replace(/[^A-Za-z0-9]/g, "").slice(0, 12),
     description: String(r.vendor_name ?? "Vendor").replace(/[^A-Za-z0-9 ]/g, "").slice(0, 13) || "Vendor",
   });
   if (!stk.ok) {
@@ -211,7 +216,7 @@ async function sendPrompt(db: any, r: any, phone: string, amount: number): Promi
   await db.from("payhero_payments").update({
     checkout_request_id: stk.checkoutRequestId, merchant_request_id: stk.merchantRequestId, updated_at: new Date().toISOString(),
   }).eq("reference", reference);
-  console.log(JSON.stringify({ msg: "vendor sale prompt sent", channel: sale.channel, sale: sale.reference, amount }));
+  console.log(JSON.stringify({ msg: "vendor sale prompt sent", provider: "daraja", till: profile, channel: sale.channel, sale: sale.reference, amount }));
   return json(await view(db, sale.status_token));
 }
 

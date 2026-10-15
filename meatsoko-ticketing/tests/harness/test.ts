@@ -2214,5 +2214,49 @@ console.log("\n--- cashless opening time ---");
   for (const k of ["VENDOR_SALES", "VENDOR_SALES_PROVIDER", "PAYHERO_SALES_CHANNEL_ID"]) Deno.env.delete(k);
 }
 
+// 27. Booth sales through Daraja into the TICKET till while PayHero waits for KYC (migration 20261015170000)
+console.log("\n--- booth sales via the ticket till ---");
+{
+  const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2.45.4");
+  const uid = crypto.randomUUID();
+  await fetch("http://supabase.test/rest/v1/rpc/test_make_user", { method: "POST", headers: svc, body: JSON.stringify({ p_id: uid }) });
+  await post("admin_users", { user_id: uid, role: "admin" });
+  const ak = await jwt({ role: "authenticated", sub: uid, exp: 4102444800 });
+  const admin = createClient("http://supabase.test", ak, { auth: { persistSession: false }, global: { headers: { Authorization: `Bearer ${ak}` } } });
+  const [ev] = await post("events", { name: "Till Fest", slug: "till-fest", starts_at: new Date(Date.now() - 3600_000).toISOString(), ends_at: new Date(Date.now() + 6 * 3600_000).toISOString(), status: "live", reservation_mode: "off" });
+  const row = (await admin.rpc("admin_bulk_add_vendors", { p_event_id: ev.id, p_rows: [{ phone: "0733800001", name: "Till Booth" }], p_policy_note: "Signed form" })).data.rows[0];
+  for (const [k, v] of Object.entries({ DARAJA_ENV: "sandbox", DARAJA_CONSUMER_KEY: "dk_test", DARAJA_CONSUMER_SECRET: "ds_test", DARAJA_PASSKEY: "pk_test",
+    DARAJA_SHORTCODE: "600100", DARAJA_TILL_NUMBER: "600200", VENDOR_SALES: "on", VENDOR_SALES_PROVIDER: "daraja", PAYHERO_SALES_CHANNEL_ID: "24680" })) Deno.env.set(k, v);
+  for (const k of ["DARAJA_SALES_SHORTCODE", "DARAJA_SALES_PASSKEY", "DARAJA_SALES_TILL_NUMBER", "DARAJA_SALES_USE_MAIN_TILL", "DARAJA_SALES_TRANSACTION_TYPE", "DARAJA_SALES_ACCOUNT_REFERENCE"]) Deno.env.delete(k);
+  const pay = (amount: number, phone: string) => call("vpay", { action: "start", code: row.qr_code, amount, phone, idempotency_key: crypto.randomUUID() }, ip());
+  let r: any = await pay(1, "0733800090");
+  check("ticket till: without the explicit opt-in, Daraja booth sales stay closed (never a silent fallback)", r.status === 503 && r.body?.error === "payments_closed", r.body);
+  Deno.env.set("DARAJA_SALES_USE_MAIN_TILL", "on");
+  Deno.env.set("DARAJA_SALES_ACCOUNT_REFERENCE", "BANKREF001");   // must not leak onto the ticket till
+  const d0 = darajaSent.length, p0 = payheroSent.length;
+  r = await pay(1, "0733800091");
+  const stk = darajaSent.at(-1);
+  const sale = (await get(`vendor_sales?select=*&reference=eq.${r.body?.reference}`))[0];
+  const led = (await get(`payhero_payments?select=*&vendor_sale_id=eq.${sale?.id}`))[0];
+  check("ticket till: opted in -> Buy Goods to the ticket till (600100 signs, 600200 receives), sale reference on the prompt, PayHero untouched",
+    r.status === 200 && darajaSent.length === d0 + 1 && payheroSent.length === p0 && stk?.BusinessShortCode === "600100" && stk?.PartyB === "600200" && stk?.pwOk &&
+    stk?.TransactionType === "CustomerBuyGoodsOnline" && stk?.AccountReference === sale.reference.replace("-", ""), { r: r.body, stk });
+  check("ticket till: the ledger row records the ticket-till credentials", led?.provider === "daraja" && led?.account === "sales" && led?.daraja_profile === "main", led);
+  // switch back to PayHero while this payment is still waiting
+  Deno.env.set("VENDOR_SALES_PROVIDER", "payhero");
+  Deno.env.delete("DARAJA_SALES_USE_MAIN_TILL");
+  daraja.set(led.checkout_request_id, { state: "success" });
+  await call("stkres", { Body: { stkCallback: { MerchantRequestID: "m", CheckoutRequestID: led.checkout_request_id, ResultCode: 0, ResultDesc: "ok",
+    CallbackMetadata: { Item: [{ Name: "MpesaReceiptNumber", Value: "TKTILL0001" }] } } } });
+  const done = (await get(`vendor_sales?select=status,mpesa_receipt,commission_kes&id=eq.${sale.id}`))[0];
+  check("ticket till: a payment started before switching back to PayHero still confirms against the ticket till",
+    done.status === "success" && done.mpesa_receipt === "TKTILL0001" && (await get(`vendor_ledger_entries?select=id&sale_id=eq.${sale.id}`)).length >= 1, done);
+  const d1 = darajaSent.length, p1 = payheroSent.length;
+  r = await pay(1, "0733800092");
+  check("ticket till: after switching back, new booth sales go through PayHero (channel 24680)", r.status === 200 && payheroSent.length === p1 + 1 && darajaSent.length === d1 &&
+    payheroSent.at(-1)?.channel_id === 24680, r.body);
+  for (const k of ["VENDOR_SALES", "VENDOR_SALES_PROVIDER", "PAYHERO_SALES_CHANNEL_ID", "DARAJA_SALES_ACCOUNT_REFERENCE"]) Deno.env.delete(k);
+}
+
 console.log(failures ? `\n${failures} FAILED` : "\nall passed");
 Deno.exit(failures ? 1 : 0);
