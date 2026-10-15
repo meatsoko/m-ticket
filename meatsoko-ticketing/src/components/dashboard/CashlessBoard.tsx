@@ -16,7 +16,7 @@ import { SendPrompt } from "@/components/cashless/VendorTools";
 
 export type CashlessData = {
   eventId: string;
-  events: { id: string; name: string; starts_at: string; ends_at: string; status: string; vendor_commission_bps: number }[];
+  events: { id: string; name: string; starts_at: string; ends_at: string; status: string; vendor_commission_bps: number; cashless_opens_at: string | null }[];
   vendors: { id: string; name: string; phone: string; email: string | null; login_method: string | null; payout_phone: string | null; status: "active" | "suspended"; user_id: string | null; application_id: string | null; admin_note: string | null; created_at: string }[];
   eventVendors: { id: string; event_id: string; vendor_id: string; status: "pending" | "active" | "inactive" | "suspended" | "rejected"; commission_bps: number | null; policy_bps_accepted: number | null; policy_accepted_at: string | null; status_reason: string | null; decided_at: string | null; created_at: string }[];
   qrs: { id: string; event_vendor_id: string; code: string; created_at: string }[];
@@ -145,6 +145,7 @@ export default function CashlessBoard({ data }: { data: CashlessData }) {
           {ask({ kind: "event_commission" }, "Save rate", "rate")}
           <p className="dash-muted">A change applies to new sales only, and each vendor must accept the new rate before their booth takes payments again.</p>
         </div>
+        <OpensAt event={event!} />
 
         <BulkAddVendors eventId={data.eventId} eventName={event!.name} knownPhones={new Map(data.vendors.map((v) => [v.phone, v.name]))} />
         {renderAddVendor(assigned)}
@@ -278,6 +279,48 @@ export default function CashlessBoard({ data }: { data: CashlessData }) {
       </div>
     );
   }
+}
+
+/** When booths may start taking payments (default: the event start). Payments always stop at the event end. */
+function OpensAt({ event }: { event: CashlessData["events"][number] }) {
+  const router = useRouter();
+  const [editing, setEditing] = useState(false);
+  const [at, setAt] = useState("");
+  const [reason, setReason] = useState("");
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  const opens = event.cashless_opens_at ?? event.starts_at;
+  const openNow = Date.now() >= Date.parse(opens) && Date.now() < Date.parse(event.ends_at);
+  async function save(value: string | null) {
+    if (reason.trim().length < 3) { setMsg("Add a reason (3+ characters)."); return; }
+    setBusy(true); setMsg("");
+    const { data, error } = await createClient().rpc("admin_set_cashless_opens_at", { p_event_id: event.id, p_opens_at: value, p_reason: reason });
+    setBusy(false);
+    const out: any = data;
+    if (error || out?.error) { setMsg(out?.error === "after_event_end" ? "That's after the event ends." : error?.code === "42501" ? "Only admins can do that." : "Couldn't save."); return; }
+    setEditing(false); setReason(""); setAt("");
+    router.refresh();
+  }
+  return (
+    <div className="dash-card">
+      <div className="dash-card-head">
+        <div><strong>Payments open from</strong><small className="dash-muted"> · booths take payments from this time until the event ends ({when(event.ends_at)})</small></div>
+        <span><b>{when(opens)}</b>{!event.cashless_opens_at && <small className="dash-muted"> (event start)</small>} <span className={`dash-badge ${openNow ? "cl-active" : "cl-inactive"}`}>{openNow ? "Open now" : "Not open"}</span></span>
+      </div>
+      {!editing ? <div className="dash-row-actions"><button type="button" className="dash-btn small" onClick={() => setEditing(true)}>Change…</button></div> : (
+        <div className="dash-inline-confirm">
+          <input type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} aria-label="Opens at (Nairobi time)" />
+          <input placeholder="Reason * (e.g. KSh 1 test before doors open)" value={reason} onChange={(e) => setReason(e.target.value)} />
+          <button type="button" className="dash-btn small primary" disabled={busy || !at} onClick={() => save(new Date(`${at}:00+03:00`).toISOString())}>Save time</button>
+          <button type="button" className="dash-btn small" disabled={busy} onClick={() => save(new Date().toISOString())}>Open now</button>
+          {event.cashless_opens_at && <button type="button" className="dash-btn small ghost" disabled={busy} onClick={() => save(null)}>Back to event start</button>}
+          <button type="button" className="dash-btn small ghost" onClick={() => { setEditing(false); setMsg(""); }}>Cancel</button>
+        </div>
+      )}
+      {msg && <p className="dash-error">{msg}</p>}
+      <p className="dash-muted">Times are Nairobi time. Payments also need cashless switched on for the whole site.</p>
+    </div>
+  );
 }
 
 function TransactionsTab({ data, vendorById }: { data: CashlessData; vendorById: Map<string, CashlessData["vendors"][number]> }) {

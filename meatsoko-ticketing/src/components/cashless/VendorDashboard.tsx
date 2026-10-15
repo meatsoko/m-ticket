@@ -16,7 +16,7 @@ type Balance = {
 };
 type EventRow = {
   event_vendor_id: string; status: "pending" | "active" | "inactive" | "suspended"; status_reason: string | null;
-  event: { id: string; name: string; venue: string | null; starts_at: string; ends_at: string; status: string };
+  event: { id: string; name: string; venue: string | null; starts_at: string; ends_at: string; status: string; cashless_opens_at?: string };
   commission_bps: number; policy_bps_accepted: number | null; policy_accepted_at: string | null;
   qr_code: string | null; balance: Balance | null; by_day: { day: string; count: number; amount_kes: number }[];
 };
@@ -62,10 +62,10 @@ export default function VendorDashboard({ data }: { data: VendorDashboardData })
   }
   const accepted = ev && ev.policy_bps_accepted === ev.commission_bps;
   const ended = ev ? Date.now() >= Date.parse(ev.event.ends_at) : false;
-  const started = ev ? Date.now() >= Date.parse(ev.event.starts_at) : false;
+  const started = ev ? Date.now() >= Date.parse(ev.event.cashless_opens_at ?? ev.event.starts_at) : false;
   const promptBlocked = !ev ? "No event selected." : data.vendor.status !== "active" ? "Your account is suspended."
     : ev.status !== "active" ? "Your booth isn't active for this event yet." : !accepted ? "Accept the commission policy above first."
-    : ended ? "This event has ended." : !started ? "You can send prompts once the event starts." : null;
+    : ended ? "This event has ended." : !started ? "You can send prompts once cashless payments open for this event." : null;
   const paidList = data.sales.filter((s) => s.status === "success").map((s) => ({ id: s.id, reference: s.reference, amount_kes: s.amount_kes, payer: s.payer, mpesa_receipt: s.mpesa_receipt }));
 
   return (

@@ -2180,5 +2180,39 @@ console.log("\n--- vendor onboarding & prompts ---");
   for (const k of ["VENDOR_SALES", "VENDOR_SALES_PROVIDER", "PAYHERO_SALES_CHANNEL_ID"]) Deno.env.delete(k);
 }
 
+// 26. Cashless payments open before the event starts (migration 20261015140000)
+console.log("\n--- cashless opening time ---");
+{
+  const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2.45.4");
+  const mk = async (role: "admin" | "staff") => { const uid = crypto.randomUUID();
+    await fetch("http://supabase.test/rest/v1/rpc/test_make_user", { method: "POST", headers: svc, body: JSON.stringify({ p_id: uid }) });
+    await post("admin_users", { user_id: uid, role }); const k = await jwt({ role: "authenticated", sub: uid, exp: 4102444800 });
+    return { uid, k, c: createClient("http://supabase.test", k, { auth: { persistSession: false }, global: { headers: { Authorization: `Bearer ${k}` } } }) }; };
+  const admin = await mk("admin"), staff = await mk("staff");
+  const [ev] = await post("events", { name: "Saturday Fest", slug: "sat-fest", starts_at: new Date(Date.now() + 2 * 864e5).toISOString(), ends_at: new Date(Date.now() + 3 * 864e5).toISOString(), status: "live", reservation_mode: "off" });
+  const row = (await admin.c.rpc("admin_bulk_add_vendors", { p_event_id: ev.id, p_rows: [{ phone: "0733900001", name: "Early Booth" }], p_policy_note: "Signed form" })).data.rows[0];
+  Deno.env.set("VENDOR_SALES", "on"); Deno.env.set("VENDOR_SALES_PROVIDER", "payhero"); Deno.env.set("PAYHERO_SALES_CHANNEL_ID", "24680");
+  const pay = () => call("vpay", { action: "start", code: row.qr_code, amount: 1, phone: "0733900099", idempotency_key: crypto.randomUUID() }, ip());
+  let r: any = await pay();
+  check("opens: before the event starts, payments are refused", r.status === 409 && r.body?.error === "event_not_started", r.body);
+  r = await staff.c.rpc("admin_set_cashless_opens_at", { p_event_id: ev.id, p_opens_at: new Date().toISOString(), p_reason: "test" });
+  check("opens: staff can't change the opening time", r.error?.code === "42501", r.error);
+  r = await admin.c.rpc("admin_set_cashless_opens_at", { p_event_id: ev.id, p_opens_at: new Date().toISOString(), p_reason: "" });
+  check("opens: a reason is required", r.data?.error === "reason_required", r.data);
+  r = await admin.c.rpc("admin_set_cashless_opens_at", { p_event_id: ev.id, p_opens_at: new Date(Date.now() + 4 * 864e5).toISOString(), p_reason: "typo" });
+  check("opens: can't open after the event ends", r.data?.error === "after_event_end", r.data);
+  r = await admin.c.rpc("admin_set_cashless_opens_at", { p_event_id: ev.id, p_opens_at: new Date(Date.now() - 1000).toISOString(), p_reason: "KSh 1 test before doors open" });
+  check("opens: admin opens payments now (audited)", r.data?.result === "saved" && (await get(`admin_audit?select=id&subject_id=eq.${ev.id}&action=eq.cashless_opens_at`)).length === 1, r.data);
+  r = await call("vpay", { action: "info", code: row.qr_code }, ip());
+  check("opens: the pay page says open", r.body?.open === true, r.body);
+  r = await pay();
+  check("opens: a payment starts before the event's own start time", r.status === 200 && r.body?.status === "pending", r.body);
+  check("opens: the event's own start time is unchanged", (await get(`events?select=starts_at&id=eq.${ev.id}`))[0].starts_at === ev.starts_at);
+  await admin.c.rpc("admin_set_cashless_opens_at", { p_event_id: ev.id, p_opens_at: null, p_reason: "Test done" });
+  r = await call("vpay", { action: "start", code: row.qr_code, amount: 1, phone: "0733900098", idempotency_key: crypto.randomUUID() }, ip());
+  check("opens: back to the event start -> closed again", r.body?.error === "event_not_started", r.body);
+  for (const k of ["VENDOR_SALES", "VENDOR_SALES_PROVIDER", "PAYHERO_SALES_CHANNEL_ID"]) Deno.env.delete(k);
+}
+
 console.log(failures ? `\n${failures} FAILED` : "\nall passed");
 Deno.exit(failures ? 1 : 0);
