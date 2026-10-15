@@ -200,7 +200,12 @@ by **phone number**, phone + password logins created by an admin, vendor-sent M-
 prompts, receipts — `CASHLESS_VENDORS.md` §12.
 **Temporary (2026-10-15): booth sales via Daraja into the ticket till** while PayHero KYC is
 pending — `VENDOR_SALES_PROVIDER=daraja` + `DARAJA_SALES_USE_MAIN_TILL=on`; switch back with
-`VENDOR_SALES_PROVIDER=payhero` (§14). Vendor sign-in needs Supabase Auth custom SMTP +
+`VENDOR_SALES_PROVIDER=payhero` (§14).
+**Live test passed 2026-10-15** (user confirmed): KSh 1 by admin prompt (VS-EE9PWQFZ, Ally, receipt
+UJFOEAL54A) and by QR (VS-BU9C8RH3, Harriet, UJFOWANCBW) via the ticket till; vendor dashboard
+shows them. NyamaFest `cashless_opens_at` was set to 2026-10-15 16:09 for the test — booths stay
+open until the event ends unless reset (Cashless → Payments open from → Back to event start).
+Settlements (phase B) on `feat/cashless-settlements` can now be merged once the user says so. Vendor sign-in needs Supabase Auth custom SMTP +
 an OTP template.
 
 ## Dashboard (`/dashboard`, store theme)
