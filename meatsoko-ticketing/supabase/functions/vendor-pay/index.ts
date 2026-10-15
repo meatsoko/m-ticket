@@ -65,7 +65,7 @@ Deno.serve(async (req) => {
     const rl = await rateLimit(db, `vendor-pay:info:${ip}`, 120, 600);
     if (!rl.allowed) return json({ error: "rate_limited", retry_after: rl.retryAfter }, 429);
     const { data: qr }: any = await db.from("vendor_qr_codes")
-      .select("active,event_vendors(status,commission_bps,policy_bps_accepted,vendors(name,status),events(name,venue,status,starts_at,ends_at,vendor_commission_bps))")
+      .select("active,event_vendors(status,commission_bps,policy_bps_accepted,vendors(name,status),events(name,venue,status,starts_at,ends_at,cashless_opens_at,vendor_commission_bps))")
       .eq("code", code).maybeSingle();
     if (!qr) return json({ error: "unknown_code" }, 404);
     const ev = qr.event_vendors, e = ev?.events;
@@ -222,7 +222,7 @@ function closedReason(qr: any, ev: any, e: any): { open: boolean; reason?: strin
   if (ev?.vendors?.status !== "active") return { open: false, reason: "vendor_suspended" };
   if (ev?.status !== "active") return { open: false, reason: "vendor_not_active" };
   if (e?.status !== "live" || now >= Date.parse(e.ends_at)) return { open: false, reason: "event_closed" };
-  if (now < Date.parse(e.starts_at)) return { open: false, reason: "event_not_started" };
+  if (now < Date.parse(e.cashless_opens_at ?? e.starts_at)) return { open: false, reason: "event_not_started" };
   if (ev.policy_bps_accepted !== (ev.commission_bps ?? e.vendor_commission_bps)) return { open: false, reason: "vendor_not_active" };
   if (!salesOpen() || !salesReady().ok) return { open: false, reason: "payments_closed" };
   return { open: true };

@@ -30,7 +30,7 @@ const CLOSED: Record<string, string> = {
   vendor_suspended: "This vendor can't take cashless payments right now.",
   vendor_not_active: "This vendor isn't set up for cashless payments yet.",
   event_closed: "Cashless payments for this event have closed.",
-  event_not_started: "Cashless payments open when the event starts.",
+  event_not_started: "Cashless payments for this event haven't opened yet.",
   payments_closed: "Cashless payments aren't open at the moment. Please pay the vendor another way.",
 };
 const ERRORS: Record<string, string> = {

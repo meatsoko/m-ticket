@@ -276,3 +276,11 @@ PayHero status, paused booth, QR path unchanged).
 `20261015100000`; this branch also carries the PayHero change, no migration), deploy
 `vendor-pay` and `vendor-invite`, merge to `main`. Then set `VENDOR_SALES_PROVIDER=payhero`,
 `PAYHERO_SALES_CHANNEL_ID`, and `VENDOR_SALES=on` after a KSh 1 test.
+
+## 13. Payments open from (migration `20261015140000`)
+
+`events.cashless_opens_at` (null = the event start): booths take payments from this time
+until `ends_at`. Set in Cashless → *Payments open from* (Save time / Open now / Back to
+event start), admin only, reason required, audited (`admin_set_cashless_opens_at`). Used
+for the live KSh 1 test before NyamaFest opens; it never changes the event's public times
+or tickets. The Cashless page now defaults to the next live event that hasn't ended.
