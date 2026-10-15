@@ -189,10 +189,14 @@ or per vendor, snapshotted on each sale; vendors must accept the current rate be
 their booth takes money. Vendors sign in with an email one-time code (`/vendor/login`,
 accounts only via the admin-only `vendor-invite`; vendors are never in `admin_users`).
 Admin: Dashboard → Events & tickets → **Cashless**. Phase B (after NyamaFest): payouts,
-refunds, statement reconciliation. The sales account is a **bank paybill** (user,
-2026-10-14): `DARAJA_SALES_TRANSACTION_TYPE=CustomerPayBillOnline` is set; still to set:
-`DARAJA_SALES_SHORTCODE`, `DARAJA_SALES_PASSKEY`, `DARAJA_SALES_ACCOUNT_REFERENCE` (if the
-bank needs one), then `VENDOR_SALES=on`. Vendor sign-in needs Supabase Auth custom SMTP +
+refunds, statement reconciliation. The collection account is **Equity paybill 247247, account
+125385** (MeatSoko Limited); Daraja can't prompt to a bank's paybill, so booth prompts go
+through **PayHero's Equity bank channel** (branch `feat/cashless-payhero`, 2026-10-14):
+`VENDOR_SALES_PROVIDER=payhero` + `PAYHERO_SALES_CHANNEL_ID`, then `VENDOR_SALES=on`.
+Tickets stay on Daraja; `PAYHERO_PAYMENTS` stays off.
+Onboarding (branch `feat/cashless-onboarding`, built on the PayHero branch, 2026-10-15): vendors
+by **phone number**, phone + password logins created by an admin, vendor-sent M-Pesa
+prompts, receipts — `CASHLESS_VENDORS.md` §12. Vendor sign-in needs Supabase Auth custom SMTP +
 an OTP template.
 
 ## Dashboard (`/dashboard`, store theme)

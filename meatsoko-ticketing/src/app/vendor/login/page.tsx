@@ -2,8 +2,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { vendorLoginEmail } from "@/lib/vendor-login";
+import { PHONE_HINT } from "@/lib/phone";
 
-// Vendor sign-in by email one-time code (migration 20261014150000). Accounts are
+// Vendor sign-in. Default: phone number + the password MeatSoko gave the vendor
+// (migration 20261015100000). Alternative: email one-time code (20261014150000) for
+// vendors set up with an email. Accounts are
 // created only by an admin (vendor-invite); shouldCreateUser is off, so typing an
 // unknown address creates nothing. The reply is the same either way, so the form
 // can't be used to find out which emails are vendors.
@@ -14,7 +18,9 @@ export default function VendorLoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
-  const [step, setStep] = useState<"email" | "code">("email");
+  const [step, setStep] = useState<"phone" | "email" | "code">("phone");
+  const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
@@ -25,6 +31,18 @@ export default function VendorLoginPage() {
     if (error?.status === 429) { setErr("Too many codes requested. Wait a few minutes and try again."); return; }
     // Unknown addresses fail quietly on purpose (same screen as a real one).
     setStep("code");
+  }
+
+  async function phoneSignIn() {
+    const email = vendorLoginEmail(phone);
+    if (!email) { setErr(PHONE_HINT); return; }
+    setBusy(true); setErr("");
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    setBusy(false);
+    if (error?.status === 429) { setErr("Too many attempts. Wait a few minutes and try again."); return; }
+    if (error) { setErr("That phone number and password don't match. Check them, or ask MeatSoko for a new password."); return; }
+    router.push("/vendor/dashboard");
+    router.refresh();
   }
 
   async function verify() {
@@ -43,7 +61,27 @@ export default function VendorLoginPage() {
           <img className="login-logo" src="/images/brand/meatsoko-logo.png" alt="MeatSoko Ecosystem" width={720} height={325} />
         </div>
         <h1>Vendor sign in</h1>
-        {step === "email" ? (
+        {step === "phone" ? (
+          <>
+            <p className="login-sub">Your cashless sales, MeatSoko&apos;s commission and what you&apos;re owed. Sign in with your phone number and the password MeatSoko gave you.</p>
+            <form className="login-form" onSubmit={(e) => { e.preventDefault(); if (phone && password && !busy) phoneSignIn(); }}>
+              <label className="store-field">
+                <span>Phone number</span>
+                <input id="vendor-phone" type="tel" inputMode="tel" autoComplete="username" placeholder="07XX XXX XXX"
+                  value={phone} onChange={(e) => setPhone(e.target.value)} />
+              </label>
+              <label className="store-field">
+                <span>Password</span>
+                <input id="vendor-password" type="password" autoComplete="current-password"
+                  value={password} onChange={(e) => setPassword(e.target.value)} />
+              </label>
+              {err && <p className="login-error" role="alert">{err}</p>}
+              <button type="submit" className="store-button login-submit" disabled={busy || !phone || !password}>{busy ? "Signing in…" : "Sign in"}</button>
+            </form>
+            <p className="login-sub">Forgot your password? Ask the MeatSoko team for a new one.</p>
+            <button type="button" className="login-link" onClick={() => { setStep("email"); setErr(""); }}>Sign in with an email code instead</button>
+          </>
+        ) : step === "email" ? (
           <>
             <p className="login-sub">Your cashless sales, MeatSoko&apos;s commission and what you&apos;re owed. Use the email MeatSoko registered for your business.</p>
             <form className="login-form" onSubmit={(e) => { e.preventDefault(); if (email && !busy) sendCode(); }}>
@@ -55,6 +93,7 @@ export default function VendorLoginPage() {
               {err && <p className="login-error" role="alert">{err}</p>}
               <button type="submit" className="store-button login-submit" disabled={busy || !email}>{busy ? "Sending…" : "Email me a sign-in code"}</button>
             </form>
+            <button type="button" className="login-link" onClick={() => { setStep("phone"); setErr(""); }}>← Sign in with phone and password</button>
           </>
         ) : (
           <>

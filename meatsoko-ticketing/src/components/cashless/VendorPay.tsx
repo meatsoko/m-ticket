@@ -176,6 +176,7 @@ export default function VendorPay({ code }: { code: string }) {
             </p>
           )}
           {sale.status === "success" && <p className="small">Show this screen to the vendor. Confirmed by M-Pesa.</p>}
+          {sale.status === "success" && <a className="btn btn-ghost btn-block" href={`/pay/receipt/${sale.status_token}`}>Keep this receipt</a>}
           {sale.status === "failed" && <p className="small">{sale.failure ?? "The payment wasn't completed."} Nothing was taken from your M-Pesa.</p>}
           {sale.status === "flagged" && <p className="small">Your money reached us but needs a quick check by MeatSoko staff. Keep your M-Pesa message and show this reference to the vendor or an organiser.</p>}
           {sale.status === "pending" && stalled && (
