@@ -227,3 +227,52 @@ success says nothing about production readiness.
 3. Set the secrets in §7, `VENDOR_SALES` last.
 4. Merge to `main` (Vercel deploys).
 5. Onboard one vendor, then a KSh 1 live test (§6).
+
+## 12. Onboarding by phone, vendor-sent prompts, receipts (branch `feat/cashless-onboarding`, migration `20261015100000`)
+
+**Vendors are identified by phone number** (unique); email is optional. The user's first
+vendors: ally mutembei 0703777706, peter thungutha 0712997774, roselyn makona 0722563789,
+harriet wanyoike 0790272814 (none has a tent registration).
+
+**Add them** — Cashless → *Add vendors by phone number*: paste `phone - name` lines, preview,
+*Add & approve*. Each vendor is created (or found by phone), added to the event, approved,
+given a booth QR, and — if ticked — their commission acceptance is recorded with a note
+(otherwise they accept on first sign-in and the booth stays closed until then).
+`admin_bulk_add_vendors(event, rows, policy_note)`; everything audited.
+
+**Logins (custom: phone + password)** — *Create login* / *Reset password* on each vendor.
+`vendor-invite` with `method: "phone_password"` creates the Supabase Auth user with an
+internal address `v<phone>@vendors.meatsokogroup.com` (never emailed) and a random
+10-character password, shown to the admin **once** with a ready message (copy / WhatsApp).
+The vendor signs in at `/vendor/login` with phone + password and can change it from the
+dashboard. A forgotten password = *Reset password*. Email-code login still works for
+vendors set up with an email.
+
+**Vendor-sent M-Pesa prompt** (QR fails, or no smartphone) — dashboard *Send M-Pesa prompt*:
+amount + customer's number → the PIN prompt on any phone. `vendor-pay` action `charge`
+with the vendor's session; `start_vendor_prompt_sale()` lets a vendor charge only into its
+own participation (admins into any, from Cashless → *Send M-Pesa prompt…*). Same checks
+as a QR payment, one prompt per customer phone at a time, 20 prompts per login per 10 min.
+`vendor_sales.channel` = `qr` | `vendor_prompt` | `admin_prompt`, `initiated_by` = the login.
+
+**Tracking** — the vendor dashboard refreshes every 10 s while open, shows a *New payment*
+banner (optional beep) with a Print receipt button, and labels prompt sales.
+
+**Receipts** — the payer's Paid screen links to `/pay/receipt/<status token>`; vendors and
+admins reprint any paid sale at `/vendor/receipt/<sale id>` (RLS: own sales / admin).
+Both print on 80 mm receipt paper (`@page` set only on those pages). The M-Pesa SMS stays
+the official proof.
+
+**Posters** — now show the vendor's phone ending and "No smartphone? Ask us to send an
+M-Pesa prompt to your phone."; *Print all booth posters* prints every active vendor's
+poster, one per A4 page (`/dashboard/cashless/qr/all?event=`).
+
+**Tests:** harness 539/539 (23 new: bulk add incl. bad and duplicate numbers, phone lookup,
+phone uniqueness, login creation/reset/audit and staff refusal, vendor isolation, prompt
+auth (none / other vendor / staff / admin), idempotent prompt, pending guard, paid via
+PayHero status, paused booth, QR path unchanged).
+
+**Deploy** (with the user's go-ahead): `supabase db push --linked` (migrations
+`20261015100000`; this branch also carries the PayHero change, no migration), deploy
+`vendor-pay` and `vendor-invite`, merge to `main`. Then set `VENDOR_SALES_PROVIDER=payhero`,
+`PAYHERO_SALES_CHANNEL_ID`, and `VENDOR_SALES=on` after a KSh 1 test.
