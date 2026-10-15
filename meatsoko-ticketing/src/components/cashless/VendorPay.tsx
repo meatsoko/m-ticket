@@ -166,7 +166,7 @@ export default function VendorPay({ code }: { code: string }) {
           <dl className="pay-facts">
             <div><dt>Reference</dt><dd className="num">{sale.reference}</dd></div>
             {sale.mpesa_receipt && <div><dt>M-Pesa receipt</dt><dd className="num">{sale.mpesa_receipt}</dd></div>}
-            <div><dt>{sale.paid_at ? "Paid" : "Started"}</dt><dd>{when(sale.paid_at ?? sale.created_at)}</dd></div>
+            {sale.paid_at && <div><dt>Paid</dt><dd>{when(sale.paid_at)}</dd></div>}
           </dl>
           {sale.status === "pending" && (
             <p className="small">
