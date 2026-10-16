@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { requireVendor } from "@/lib/require-staff";
 import SaleReceipt from "@/components/cashless/SaleReceipt";
-import { PrintBar, ReceiptPaper } from "@/components/cashless/PayReceipt";
+import ReceiptPrint from "@/components/cashless/ReceiptPrint";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Receipt · MeatSoko", robots: { index: false, follow: false } };
@@ -24,13 +24,12 @@ export default async function VendorReceiptPage({ params }: { params: { id: stri
   const { data: evAdmin }: any = ev ? { data: null } : await supabase.from("events").select("name,venue").eq("id", s.event_id).maybeSingle();
   return (
     <div className="receipt-page">
-      <ReceiptPaper />
       <SaleReceipt r={{
         vendor_name: v?.name ?? "", vendor_phone_end: v?.phone ? String(v.phone).slice(-3) : null,
         event_name: ev?.name ?? evAdmin?.name ?? "", venue: ev?.venue ?? evAdmin?.venue ?? null,
         amount_kes: Number(s.amount_kes), reference: s.reference, mpesa_receipt: s.mpesa_receipt, paid_at: s.paid_at, channel: s.channel,
       }} />
-      <PrintBar />
+      <ReceiptPrint />
     </div>
   );
 }
