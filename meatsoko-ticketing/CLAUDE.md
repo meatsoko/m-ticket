@@ -50,6 +50,16 @@ Edge Functions) · Paystack · Resend · Vercel (+ Vercel Analytics).
   `/images/events/maic-token-summit-poster-2.jpg` (cropped).
 - `nyamafest` (27 Sep) and `nyamafest-launch` (6 Sep) are closed.
 
+## Online attendance on Google Meet (2026-10-16)
+
+Migration `20261016090000`: `events.meeting_url` (Google Meet links only), set in Event
+settings → "Google Meet link". Online registrants' private watch pages (`/watch/<code>`)
+show **Join on Google Meet** from the event's start (like the YouTube stream). Event
+settings → **Email the Meet link to online attendees** (Edge Function `online-announce`,
+admins only): preview the count, optional message, send; `meeting_emailed_at` stops
+double-sends unless "send again" is ticked. NyamaFest Main had 6 active online
+registrants on 2026-10-16.
+
 ## Investors (`/investors`)
 
 - Investors' visit: **Friday 16 October 2026, from 4:00 PM, Thika Greens Golf Resort** (program

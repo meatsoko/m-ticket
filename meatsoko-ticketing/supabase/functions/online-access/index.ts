@@ -3,7 +3,7 @@
 //
 // 404 invalid, 410 revoked; otherwise event info and a state computed from the
 // event's own timestamps: before (countdown) | live (from the start time) | ended.
-// The YouTube stream ID is returned ONLY while live: it is never in the page
+// The YouTube stream ID and the Google Meet link are returned ONLY while live: it is never in the page
 // source before then, and never published anywhere else on the site.
 import { json, preflight } from "../_shared/cors.ts";
 import { clientIp, rateLimit, serviceClient } from "../_shared/supabase.ts";
@@ -22,7 +22,7 @@ Deno.serve(async (req) => {
   if (!byIp.allowed) return json({ error: "rate_limited", retry_after: byIp.retryAfter }, 429);
 
   const { data: r } = await db.from("online_registrations")
-    .select("id,name,registration_number,status,access_count,events(name,tagline,starts_at,ends_at,stream_youtube_id,contact_phone,online_enabled,status)")
+    .select("id,name,registration_number,status,access_count,events(name,tagline,starts_at,ends_at,stream_youtube_id,meeting_url,contact_phone,online_enabled,status)")
     .eq("access_code", code).maybeSingle();
   if (!r) return json({ error: "invalid" }, 404);
   if (r.status !== "active") return json({ error: "revoked", registration_number: r.registration_number }, 410);
@@ -43,6 +43,9 @@ Deno.serve(async (req) => {
     registration_number: r.registration_number,
     event: { name: ev.name, tagline: ev.tagline, starts_at: ev.starts_at, ends_at: ev.ends_at, contact_phone: ev.contact_phone },
     stream_youtube_id: state === "live" ? (ev.stream_youtube_id || null) : null,
+    // The Google Meet link (migration 20261016090000): like the stream, only from the start.
+    meeting_url: state === "live" ? (ev.meeting_url || null) : null,
+    has_meeting: !!ev.meeting_url,
     server_time: new Date(now).toISOString(),
   });
 });

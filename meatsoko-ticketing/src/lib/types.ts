@@ -20,6 +20,7 @@ export type Event = {
   online_enabled?: boolean;
   /** YouTube Live video/stream ID embedded on watch pages while live. */
   stream_youtube_id?: string | null;
+  meeting_url?: string | null;
   /** Reserved for paid online tickets; null/0 = free. */
   online_price_kes?: number | null;
   /** False while M-Pesa provisioning is pending: preorders show but can't be bought. */

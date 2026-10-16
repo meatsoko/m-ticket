@@ -145,7 +145,7 @@ globalThis.fetch = async (input: any, init?: any) => {
 const handlers: Record<string, (r: Request) => Promise<Response>> = {};
 let loading = "";
 (Deno as any).serve = (h: any) => { handlers[loading] = h; return { finished: Promise.resolve() }; };
-for (const [name, path] of [["checkout", "merch-checkout"], ["order", "merch-order"], ["webhook", "paystack-webhook"], ["fx", "merch-fx-refresh"], ["reconcile", "paystack-reconcile"], ["reserve", "reserve"], ["reslookup", "reservation-lookup"], ["lookup", "lookup"], ["verify", "paystack-verify"], ["upgrade", "upgrade-reservation"], ["bytoken", "reservation-by-token"], ["vendor", "vendor-apply"], ["oreg", "online-register"], ["oacc", "online-access"], ["addon", "platter-addon"], ["inv", "investor-register"], ["receipt", "event-order-receipt"], ["cust", "customer-order"], ["cel", "celebration-request"], ["phpay", "payhero-pay"], ["phcb", "payhero-callback"], ["phst", "payhero-status"], ["phrec", "payhero-reconcile"], ["stkres", "stk-result"], ["darcb", "daraja-callback"], ["stkpush", "stk-push"], ["ostatus", "order-status"], ["rstatus", "reservation-status"], ["vpay", "vendor-pay"], ["vinv", "vendor-invite"]]) {
+for (const [name, path] of [["checkout", "merch-checkout"], ["order", "merch-order"], ["webhook", "paystack-webhook"], ["fx", "merch-fx-refresh"], ["reconcile", "paystack-reconcile"], ["reserve", "reserve"], ["reslookup", "reservation-lookup"], ["lookup", "lookup"], ["verify", "paystack-verify"], ["upgrade", "upgrade-reservation"], ["bytoken", "reservation-by-token"], ["vendor", "vendor-apply"], ["oreg", "online-register"], ["oacc", "online-access"], ["addon", "platter-addon"], ["inv", "investor-register"], ["receipt", "event-order-receipt"], ["cust", "customer-order"], ["cel", "celebration-request"], ["phpay", "payhero-pay"], ["phcb", "payhero-callback"], ["phst", "payhero-status"], ["phrec", "payhero-reconcile"], ["stkres", "stk-result"], ["darcb", "daraja-callback"], ["stkpush", "stk-push"], ["ostatus", "order-status"], ["rstatus", "reservation-status"], ["vpay", "vendor-pay"], ["vinv", "vendor-invite"], ["oann", "online-announce"]]) {
   loading = name; await import(`/fns/${path}/index.ts`);
 }
 const call = async (name: string, body: unknown, headers: Record<string, string> = {}) => {
@@ -2527,6 +2527,47 @@ console.log("\n--- statement csv reader ---");
   check("csv: the linked charge becomes the receipt's fee", out?.rows[0].fee_kes === 12.5 && out?.rows[1].fee_kes === undefined, out?.rows);
   check("csv: statement times are Nairobi time", out?.rows[0].completed_at === "2026-10-17T11:03:22.000Z" && parseTime("17/10/2026 9:15:00 PM") === "2026-10-17T18:15:00.000Z", out?.rows[0]);
   check("csv: an unrecognised file asks for the columns", detect(parseCsv("a,b,c\n1,2,3")) === null);
+}
+
+// 30. Online attendance on Google Meet (migration 20261016090000)
+console.log("\n--- online google meet ---");
+{
+  const mk = async (role: "admin" | "staff") => { const uid = crypto.randomUUID();
+    await fetch("http://supabase.test/rest/v1/rpc/test_make_user", { method: "POST", headers: svc, body: JSON.stringify({ p_id: uid }) });
+    await post("admin_users", { user_id: uid, role }); return { uid, k: await jwt({ role: "authenticated", sub: uid, exp: 4102444800 }) }; };
+  const admin = await mk("admin"), staff = await mk("staff");
+  const [ev] = await post("events", { name: "Meet Fest", slug: "meet-fest", starts_at: new Date(Date.now() + 864e5).toISOString(), ends_at: new Date(Date.now() + 2 * 864e5).toISOString(), status: "live", reservation_mode: "off", online_enabled: true });
+  const bad = await fetch(`http://supabase.test/rest/v1/events?id=eq.${ev.id}`, { method: "PATCH", headers: svc, body: JSON.stringify({ meeting_url: "https://zoom.us/j/123" }) });
+  check("meet: only a Google Meet link is accepted", bad.status >= 400, bad.status);
+  const regs = await post("online_registrations", [1, 2, 3].map((i) => ({ event_id: ev.id, registration_number: `ONL-MEET0${i}`, name: `Online Person${i}`, email: `online${i}@example.test`, country: "KE", access_code: crypto.randomUUID().replaceAll("-", "") })));
+  await patch(`online_registrations?id=eq.${regs[2].id}`, { status: "revoked" });
+  let r: any = await call("oann", { event_id: ev.id, preview: true }, { authorization: `Bearer ${admin.k}` });
+  check("meet: can't email before a Meet link is saved", r.status === 409 && r.body?.error === "no_meeting_link", r.body);
+  await patch(`events?id=eq.${ev.id}`, { meeting_url: "https://meet.google.com/abc-defg-hij" });
+  r = await call("oacc", { code: regs[0].access_code }, ip());
+  check("meet: before the start the watch page knows there's a meeting but doesn't reveal the link", r.body?.state === "before" && r.body?.has_meeting === true && r.body?.meeting_url === null, r.body);
+  r = await call("oann", { event_id: ev.id, preview: true }, { authorization: `Bearer ${staff.k}` });
+  check("meet: staff (not admin) can't send", r.status === 403, r.body);
+  r = await call("oann", { event_id: ev.id, preview: true });
+  check("meet: no session can't send", r.status === 401, r.body);
+  r = await call("oann", { event_id: ev.id, preview: true }, { authorization: `Bearer ${admin.k}` });
+  check("meet: preview counts 2 active registrants (revoked excluded) and sends nothing", r.body?.recipients === 2 && r.body?.total === 2 && r.body?.meeting_url === "https://meet.google.com/abc-defg-hij", r.body);
+  sentEmails.length = 0;
+  r = await call("oann", { event_id: ev.id, note: "Starts 7 PM Nairobi time" }, { authorization: `Bearer ${admin.k}` });
+  const m0 = sentEmails.find((m: any) => m.to?.[0] === "online1@example.test");
+  check("meet: each active registrant gets their own email with the Meet link, their watch link and the note",
+    r.body?.sent === 2 && sentEmails.length === 2 && !sentEmails.some((m: any) => m.to?.[0] === "online3@example.test") &&
+    m0?.text?.includes("https://meet.google.com/abc-defg-hij") && m0?.text?.includes(`/watch/${regs[0].access_code}`) && m0?.text?.includes("Starts 7 PM") &&
+    !m0?.text?.includes(regs[1].access_code), { r: r.body, n: sentEmails.length });
+  r = await call("oann", { event_id: ev.id }, { authorization: `Bearer ${admin.k}` });
+  check("meet: pressing send again reaches nobody new", r.body?.sent === 0 && r.body?.skipped_already_emailed === 2, r.body);
+  r = await call("oann", { event_id: ev.id, resend: true }, { authorization: `Bearer ${admin.k}` });
+  check("meet: 'send again' resends to everyone active, and it's audited", r.body?.sent === 2 && (await get(`admin_audit?select=id&subject_id=eq.${ev.id}&action=eq.online_meeting_emailed`)).length === 3, r.body);
+  await patch(`events?id=eq.${ev.id}`, { starts_at: new Date(Date.now() - 60_000).toISOString() });
+  r = await call("oacc", { code: regs[0].access_code }, ip());
+  check("meet: from the start the watch page shows the Meet link", r.body?.state === "live" && r.body?.meeting_url === "https://meet.google.com/abc-defg-hij", r.body);
+  r = await call("oacc", { code: regs[2].access_code }, ip());
+  check("meet: a revoked registration gets no link", r.status === 410 && !r.body?.meeting_url, r.body);
 }
 
 console.log(failures ? `\n${failures} FAILED` : "\nall passed");

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { ReservationMode } from "@/lib/types";
+import { invokeFn } from "@/lib/invoke";
 
 const KE = "Africa/Nairobi";
 
@@ -57,6 +58,7 @@ export default function EventSettings({ event }: { event: any }) {
     hero_image_url: event.hero_image_url ?? "",
     online_enabled: event.online_enabled === true,
     stream_youtube_id: event.stream_youtube_id ?? "",
+    meeting_url: event.meeting_url ?? "",
     starts_at: toLocalInput(event.starts_at),
     ends_at: toLocalInput(event.ends_at),
     doors_open_at: toLocalInput(event.doors_open_at),
@@ -76,6 +78,8 @@ export default function EventSettings({ event }: { event: any }) {
   const set = (k: keyof typeof f, v: any) => setF({ ...f, [k]: v });
 
   async function save() {
+    const meet = meetUrl(f.meeting_url);
+    if (f.meeting_url.trim() && !meet) { setMsg("The Google Meet link should look like https://meet.google.com/abc-defg-hij"); return; }
     setBusy(true); setMsg("");
     const { error } = await supabase.from("events").update({
       name: f.name.trim(),
@@ -92,6 +96,7 @@ export default function EventSettings({ event }: { event: any }) {
       online_enabled: f.online_enabled,
       // Accept a full YouTube URL or the bare ID; store the ID.
       stream_youtube_id: youtubeId(f.stream_youtube_id) || null,
+      meeting_url: meet,
       starts_at: fromLocalInput(f.starts_at),
       ends_at: fromLocalInput(f.ends_at),
       doors_open_at: fromLocalInput(f.doors_open_at),
@@ -177,6 +182,14 @@ export default function EventSettings({ event }: { event: any }) {
                   onChange={(e) => set("stream_youtube_id", e.target.value)} />
                 <span className="small">Use an unlisted YouTube Live stream. It plays only on attendees&apos; private watch pages, from the event&apos;s start time (a countdown runs until then).</span>
               </label>
+
+              <label className="field">
+                <span>Google Meet link</span>
+                <input placeholder="https://meet.google.com/abc-defg-hij" value={f.meeting_url}
+                  onChange={(e) => set("meeting_url", e.target.value)} />
+                <span className="small">Shown as &ldquo;Join on Google Meet&rdquo; on attendees&apos; private watch pages from the event&apos;s start time. Save first, then email it to them below. In Google Meet, set access so guests can join or knock.</span>
+              </label>
+              {event.meeting_url && <MeetAnnounce eventId={event.id} />}
 
               <span className="eyebrow">Reservation rules</span>
               <div className="row" style={{ gap: 8 }}>
@@ -337,6 +350,54 @@ export default function EventSettings({ event }: { event: any }) {
 }
 
 /** Accept "dQw4w9WgXcQ", youtu.be/…, youtube.com/watch?v=…, /live/…, /embed/… — return the 11-char ID. */
+/** A Google Meet link in its canonical form, or null. Accepts the bare code too. */
+function meetUrl(input: string): string | null {
+  const m = input.trim().toLowerCase().match(/^(?:https?:\/\/)?(?:meet\.google\.com\/)?([a-z]{3}-[a-z]{4}-[a-z]{3})(?:[/?#].*)?$/);
+  return m ? `https://meet.google.com/${m[1]}` : null;
+}
+
+/** Email the saved Meet link to the event's online registrants (online-announce). Preview first, then send. */
+function MeetAnnounce({ eventId }: { eventId: string }) {
+  const supabase = createClient();
+  const [preview, setPreview] = useState<{ recipients: number; already_emailed: number; total: number; meeting_url: string } | null>(null);
+  const [resend, setResend] = useState(false);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  async function check(r = resend) {
+    setBusy(true); setMsg("");
+    const out = await invokeFn<any>(supabase, "online-announce", { event_id: eventId, preview: true, resend: r });
+    setBusy(false);
+    if (out.data?.recipients !== undefined) setPreview(out.data); else setMsg(out.errorCode === "forbidden" ? "Only admins can send this." : "Couldn't check the list. Try again.");
+  }
+  async function send() {
+    setBusy(true); setMsg("");
+    const out = await invokeFn<any>(supabase, "online-announce", { event_id: eventId, resend, note: note.trim() || null });
+    setBusy(false);
+    if (out.data?.sent !== undefined) { setMsg(`Sent to ${out.data.sent}${out.data.failed ? `, ${out.data.failed} failed (check the email setup)` : ""}.`); setPreview(null); }
+    else setMsg(out.errorCode === "no_meeting_link" ? "Save the Google Meet link first." : "Couldn't send. Try again.");
+  }
+  return (
+    <div className="card quiet">
+      <strong>Email the Meet link to online attendees</strong>
+      {!preview ? (
+        <button type="button" className="btn-ghost" disabled={busy} onClick={() => check()}>{busy ? "Checking…" : "Check who will get it"}</button>
+      ) : (
+        <>
+          <p className="small"><strong>{preview.recipients}</strong> of {preview.total} active online registrants will get {preview.meeting_url} with their private watch link.
+            {preview.already_emailed > 0 && !resend ? ` ${preview.already_emailed} already have it.` : ""}</p>
+          <label className="small" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input type="checkbox" checked={resend} style={{ width: 18, height: 18 }} onChange={(e) => { setResend(e.target.checked); check(e.target.checked); }} /> Send again to people who already have it
+          </label>
+          <textarea placeholder="Optional message (e.g. the session starts at 7 PM Nairobi time)" value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} />
+          <button type="button" className="btn-primary" disabled={busy || preview.recipients === 0} onClick={send}>{busy ? "Sending…" : `Send to ${preview.recipients}`}</button>
+        </>
+      )}
+      {msg && <p className="small">{msg}</p>}
+    </div>
+  );
+}
+
 function youtubeId(input: string): string {
   const t = input.trim();
   if (/^[A-Za-z0-9_-]{11}$/.test(t)) return t;

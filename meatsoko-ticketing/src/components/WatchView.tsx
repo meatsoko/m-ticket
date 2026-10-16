@@ -13,6 +13,8 @@ type Access = {
   state: "before" | "live" | "ended"; name: string; registration_number: string;
   event: { name: string; tagline: string | null; starts_at: string; ends_at: string | null; contact_phone: string | null };
   stream_youtube_id: string | null; server_time: string;
+  /** Google Meet (migration 20261016090000): the link only while live; whether there is one at all. */
+  meeting_url?: string | null; has_meeting?: boolean;
 };
 
 export default function WatchView({ code }: { code: string }) {
@@ -71,6 +73,13 @@ export default function WatchView({ code }: { code: string }) {
     return (
       <div className="stack watch-live">
         <div className="watch-head"><span className="pill ok">● Live</span><h1>{a.event.name}</h1></div>
+        {a.meeting_url && (
+          <div className="card" style={{ textAlign: "center" }}>
+            <strong>This session is on Google Meet</strong>
+            <a className="btn btn-primary btn-block" href={a.meeting_url} target="_blank" rel="noopener noreferrer">Join on Google Meet</a>
+            <p className="small">Join with your Google account or as a guest. The host may need to let you in.</p>
+          </div>
+        )}
         {a.stream_youtube_id ? (
           <div className="watch-player">
             <iframe
@@ -80,7 +89,7 @@ export default function WatchView({ code }: { code: string }) {
               allowFullScreen
             />
           </div>
-        ) : (
+        ) : a.meeting_url ? null : (
           <div className="card" style={{ textAlign: "center" }}><strong>The stream is about to start.</strong><p className="small">Stay on this page — it will appear here. <button type="button" className="btn-ghost" onClick={load}>Refresh</button></p></div>
         )}
         <div className="card">
@@ -104,7 +113,9 @@ export default function WatchView({ code }: { code: string }) {
       <div className="watch-countdown" aria-label="Time until the stream opens">
         {["Days", "Hours", "Min", "Sec"].map((l, i) => <span key={l}><b>{String(parts[i]).padStart(2, "0")}</b><small>{l}</small></span>)}
       </div>
-      <p className="small">The live stream appears right here when the event starts — keep this page or the link in your email.</p>
+      <p className="small">{a.has_meeting
+        ? "The Google Meet link appears right here when the event starts — it's also in your email."
+        : "The live stream appears right here when the event starts — keep this page or the link in your email."}</p>
       <p className="small">Registered as <strong>{a.name}</strong> · {a.registration_number}</p>
     </div>
   );

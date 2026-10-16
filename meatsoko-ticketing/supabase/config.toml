@@ -122,3 +122,8 @@ verify_jwt = false
 # check inside, gateway JWT on.
 [functions.vendor-invite]
 verify_jwt = true
+
+# Emails the event's Google Meet link to online registrants. Admins only:
+# requireStaff() + role check inside, gateway JWT on.
+[functions.online-announce]
+verify_jwt = true

@@ -42,3 +42,32 @@ export async function sendOnlineEmail(db: Db, registrationId: string, appUrl: st
     `Questions? Call or WhatsApp ${help}.`].join("\n");
   return sendEmail({ to: r.email, subject: `You're registered to watch ${ev.name ?? "NyamaFest"} online`, html, text });
 }
+
+/**
+ * The Google Meet invitation (migration 20261016090000): the registrant's own watch
+ * link plus the event's Meet link. Sent only by online-announce (an admin's action).
+ */
+export async function sendMeetingEmail(r: { name: string; email: string; registration_number: string; access_code: string },
+  ev: { name: string | null; starts_at: string | null; contact_phone: string | null; meeting_url: string }, appUrl: string, note: string | null) {
+  const link = `${appUrl.replace(/\/+$/, "")}/watch/${r.access_code}`;
+  const when = ev.starts_at ? nairobiWhen(ev.starts_at) : "";
+  const help = ev.contact_phone || SUPPORT.display;
+  const first = r.name.split(" ")[0];
+  const name = ev.name ?? "NyamaFest";
+  const html = `<div style="font-family:system-ui,-apple-system,sans-serif;max-width:520px;color:#1A1513">
+  <h2 style="margin:0 0 4px">${esc(name)} — join online</h2>
+  <p style="margin:0 0 16px;color:#6E615A">${esc(when)}</p>
+  <p>Hi ${esc(first)}, you're registered to attend online (${esc(r.registration_number)}). We'll be meeting on Google Meet.</p>
+  ${note ? `<p>${esc(note)}</p>` : ""}
+  <div style="border:1px solid #E3D9D2;border-radius:12px;padding:16px;margin:16px 0;text-align:center">
+    <p style="margin:0"><a href="${esc(ev.meeting_url)}" style="background:#1a73e8;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:700;display:inline-block">Join on Google Meet</a></p>
+    <p style="margin:12px 0 0;font-size:13px;color:#6E615A">${esc(ev.meeting_url)}</p>
+  </div>
+  <p style="font-size:14px">The link also appears on <a href="${esc(link)}" style="color:#D1481F">your private watch page</a> when the event starts. Join with your Google account or as a guest; the host may admit you.</p>
+  <p style="font-size:13px;color:#6E615A">Questions? Call or WhatsApp ${esc(help)}.</p>
+</div>`;
+  const text = [`${name} — join online`, when, "", `Hi ${first}, you're registered to attend online (${r.registration_number}). We'll be meeting on Google Meet.`,
+    ...(note ? ["", note] : []), "", `Join on Google Meet: ${ev.meeting_url}`, `Your private watch page: ${link}`, "",
+    `Questions? Call or WhatsApp ${help}.`].join("\n");
+  return sendEmail({ to: r.email, subject: `Your Google Meet link — ${name}`, html, text });
+}
