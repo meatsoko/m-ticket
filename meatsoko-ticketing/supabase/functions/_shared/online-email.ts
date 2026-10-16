@@ -12,7 +12,7 @@ export const nairobiWhen = (iso: string) =>
 
 export async function sendOnlineEmail(db: Db, registrationId: string, appUrl: string) {
   const { data: r } = await db.from("online_registrations")
-    .select("name,email,registration_number,access_code,status,events(name,starts_at,contact_phone)")
+    .select("name,email,registration_number,access_code,status,events(name,starts_at,contact_phone,meeting_url)")
     .eq("id", registrationId).maybeSingle();
   if (!r) return { sent: false, reason: "not_found" };
   if (r.status !== "active") return { sent: false, reason: "revoked" };
@@ -20,6 +20,14 @@ export async function sendOnlineEmail(db: Db, registrationId: string, appUrl: st
   const link = `${appUrl.replace(/\/+$/, "")}/watch/${r.access_code}`;
   const when = ev.starts_at ? nairobiWhen(ev.starts_at) : "";
   const help = ev.contact_phone || SUPPORT.display;
+  // When the event has a Google Meet link (migration 20261016090000), new
+  // registrants get it right here, automatically; online-announce covers earlier ones.
+  const meet: string | null = ev.meeting_url || null;
+  const meetHtml = meet ? `<div style="border:1px solid #E3D9D2;border-radius:12px;padding:16px;margin:16px 0;text-align:center">
+    <p style="margin:0 0 8px;font-weight:700">This session is on Google Meet</p>
+    <p style="margin:0"><a href="${esc(meet)}" style="background:#1a73e8;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:700;display:inline-block">Join on Google Meet</a></p>
+    <p style="margin:12px 0 0;font-size:13px;color:#6E615A">${esc(meet)}</p>
+  </div>` : "";
   const html = `<div style="font-family:system-ui,-apple-system,sans-serif;max-width:520px;color:#1A1513">
   <h2 style="margin:0 0 4px">${esc(ev.name ?? "NyamaFest")} — online</h2>
   <p style="margin:0 0 16px;color:#6E615A">${esc(when)}</p>
@@ -29,18 +37,23 @@ export async function sendOnlineEmail(db: Db, registrationId: string, appUrl: st
     <div style="color:#6E615A;font-size:14px;margin-top:4px">Online attendance</div>
     <p style="margin:16px 0 0"><a href="${esc(link)}" style="background:#D1481F;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:700;display:inline-block">Open my watch page</a></p>
   </div>
+  ${meetHtml}
   <p style="font-size:14px"><strong>How it works</strong><br>
-  Open your link any time — it shows a countdown until the event starts, then the live stream plays right there.
+  ${meet ? "Use the Google Meet button above when the event starts. Your private link shows a countdown until then, and the Meet button appears there too." : "Open your link any time — it shows a countdown until the event starts, then the live stream plays right there."}
   The link is personal: please don't share it. It works on phones, tablets and computers.</p>
   <p style="font-size:13px;color:#6E615A">If the button doesn't work, open: <a href="${esc(link)}" style="color:#D1481F">${esc(link)}</a><br>
   Questions? Call or WhatsApp ${esc(help)}.</p>
 </div>`;
   const text = [`${ev.name ?? "NyamaFest"} — online`, when, "",
     `Hi ${r.name.split(" ")[0]}, you're registered to attend online (${r.registration_number}).`, "",
+    ...(meet ? [`Join on Google Meet: ${meet}`] : []),
     `Your private watch page: ${link}`,
-    "It shows a countdown until the event starts, then the live stream. Please don't share this link.", "",
+    meet ? "It shows a countdown until the event starts, then the Google Meet button. Please don't share this link." : "It shows a countdown until the event starts, then the live stream. Please don't share this link.", "",
     `Questions? Call or WhatsApp ${help}.`].join("\n");
-  return sendEmail({ to: r.email, subject: `You're registered to watch ${ev.name ?? "NyamaFest"} online`, html, text });
+  const out = await sendEmail({ to: r.email, subject: `You're registered to watch ${ev.name ?? "NyamaFest"} online`, html, text });
+  // Recorded so "Email the Meet link" doesn't send this person a second copy.
+  if (out.sent && meet) await db.from("online_registrations").update({ meeting_emailed_at: new Date().toISOString() }).eq("id", registrationId);
+  return out;
 }
 
 /**
