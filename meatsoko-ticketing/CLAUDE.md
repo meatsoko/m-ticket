@@ -57,7 +57,9 @@ settings → "Google Meet link". Online registrants' private watch pages (`/watc
 show **Join on Google Meet** from the event's start (like the YouTube stream). Event
 settings → **Email the Meet link to online attendees** (Edge Function `online-announce`,
 admins only): preview the count, optional message, send; `meeting_emailed_at` stops
-double-sends unless "send again" is ticked. NyamaFest Main had 6 active online
+double-sends unless "send again" is ticked. **New registrants get the Meet link automatically** in their
+registration confirmation once a link is saved (`_shared/online-email.ts`), and are marked as
+emailed. NyamaFest Main had 6 active online
 registrants on 2026-10-16.
 
 ## Investors (`/investors`)

@@ -2570,5 +2570,28 @@ console.log("\n--- online google meet ---");
   check("meet: a revoked registration gets no link", r.status === 410 && !r.body?.meeting_url, r.body);
 }
 
+// 31. New online registrants get the Google Meet link automatically (2026-10-16)
+console.log("\n--- online meet link on registration ---");
+{
+  const [ev] = await post("events", { name: "Auto Meet Fest", slug: "auto-meet", starts_at: new Date(Date.now() + 864e5).toISOString(), ends_at: new Date(Date.now() + 2 * 864e5).toISOString(), status: "live", reservation_mode: "off", online_enabled: true });
+  sentEmails.length = 0;
+  let r: any = await call("oreg", { event_id: ev.id, name: "Before Meet", email: "before.meet@example.test", country: "KE" }, ip());
+  const m1 = sentEmails.find((m: any) => m.to?.[0] === "before.meet@example.test");
+  check("auto meet: without a Meet link the confirmation is the usual one", r.status === 200 && !!m1 && !m1.text.includes("meet.google.com") &&
+    (await get(`online_registrations?select=meeting_emailed_at&email=eq.before.meet@example.test`))[0]?.meeting_emailed_at === null, r.body);
+  await patch(`events?id=eq.${ev.id}`, { meeting_url: "https://meet.google.com/xyz-abcd-efg" });
+  sentEmails.length = 0;
+  r = await call("oreg", { event_id: ev.id, name: "After Meet", email: "after.meet@example.test", country: "GB" }, ip());
+  const m2 = sentEmails.find((m: any) => m.to?.[0] === "after.meet@example.test");
+  check("auto meet: once the Meet link is saved, a new registrant's confirmation includes it, and it's recorded",
+    r.status === 200 && sentEmails.length === 1 && m2?.text.includes("Join on Google Meet: https://meet.google.com/xyz-abcd-efg") && m2?.html.includes("https://meet.google.com/xyz-abcd-efg") &&
+    !!(await get(`online_registrations?select=meeting_emailed_at&email=eq.after.meet@example.test`))[0]?.meeting_emailed_at, { r: r.body, text: m2?.text });
+  const uid = crypto.randomUUID();
+  await fetch("http://supabase.test/rest/v1/rpc/test_make_user", { method: "POST", headers: svc, body: JSON.stringify({ p_id: uid }) });
+  await post("admin_users", { user_id: uid, role: "admin" });
+  r = await call("oann", { event_id: ev.id, preview: true }, { authorization: `Bearer ${await jwt({ role: "authenticated", sub: uid, exp: 4102444800 })}` });
+  check("auto meet: the send button then only counts the person who registered before the link", r.body?.recipients === 1 && r.body?.total === 2, r.body);
+}
+
 console.log(failures ? `\n${failures} FAILED` : "\nall passed");
 Deno.exit(failures ? 1 : 0);
