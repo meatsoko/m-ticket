@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
 import SaleReceipt, { type ReceiptData } from "@/components/cashless/SaleReceipt";
+import ReceiptPrint from "@/components/cashless/ReceiptPrint";
 
 export default function PayReceipt({ token }: { token: string }) {
   const [data, setData] = useState<(ReceiptData & { status: string }) | null>(null);
@@ -19,25 +20,10 @@ export default function PayReceipt({ token }: { token: string }) {
         <p>{data.status === "pending" ? "This payment is still waiting for M-Pesa. Refresh in a moment." : "This payment wasn't completed, so there is no receipt."}</p>
       ) : (
         <>
-          <ReceiptPaper />
           <SaleReceipt r={data} />
-          <PrintBar />
+          <ReceiptPrint />
         </>
       )}
-    </div>
-  );
-}
-
-/** Receipt paper size, for the page that renders it only (not site-wide). */
-export function ReceiptPaper() {
-  return <style>{"@media print { @page { size: 80mm auto; margin: 3mm; } }"}</style>;
-}
-
-export function PrintBar() {
-  return (
-    <div className="receipt-actions">
-      <button type="button" onClick={() => window.print()}>Print receipt</button>
-      <span>Receipt printer: paper 80 mm, scale 100%, headers and footers off.</span>
     </div>
   );
 }

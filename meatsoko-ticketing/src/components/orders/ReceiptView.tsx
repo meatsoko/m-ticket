@@ -136,6 +136,7 @@ export default function ReceiptView({ token }: { token: string }) {
       <p className="small" style={{ textAlign: "center", margin: 0 }}>
         {ORDER_STATUS[r.order_status].label} · Nothing is charged online — pay the staff member. Thank you for eating with MeatSoko.
       </p>
+      <a className="btn btn-ghost btn-block" href={`/receipt/${token}/print`} target="_blank" rel="noopener noreferrer">Print receipt</a>
     </article>
   );
 }

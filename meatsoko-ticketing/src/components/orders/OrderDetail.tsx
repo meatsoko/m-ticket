@@ -111,6 +111,7 @@ export default function OrderDetail({ order, eventName, me, isAdmin, names }: {
         {open && accepted && balance > 0 && !isAdmin && <p className="small" style={{ margin: 0 }}>Hand-over unlocks once the order is fully paid.</p>}
         <a className="btn btn-pay" href={`https://wa.me/${order.customer_phone}?text=${encodeURIComponent(share)}`} target="_blank" rel="noopener noreferrer">Share receipt</a>
         <a className="btn btn-ghost" href={`/receipt/${order.receipt_token}`} target="_blank" rel="noopener noreferrer">Open receipt</a>
+        <a className="btn btn-ghost" href={`/receipt/${order.receipt_token}/print`} target="_blank" rel="noopener noreferrer">Print receipt</a>
       </div>
     </div>
   );

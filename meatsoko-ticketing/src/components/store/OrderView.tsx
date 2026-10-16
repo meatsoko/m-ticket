@@ -109,6 +109,7 @@ export default function OrderView({ reference, token }: { reference?: string; to
           <div className="summary-row"><span>{order.delivery.label}</span><span>{Number(order.delivery_fee_usd) ? usd(order.delivery_fee_usd) : "Free"}</span></div>
           <div className="summary-row total"><span>Total</span><strong>{usd(order.total_usd)}</strong></div>
           {status !== "pending" && status !== "failed" && <p className="order-charged">Charged by Paystack as {kes(order.total_kes)}</p>}
+          {status === "paid" && <a className="store-button" href={`/order/${order.access_token}/print`} target="_blank" rel="noopener noreferrer">Print receipt</a>}
         </section>
         <section className="order-card">
           <h3>Delivery</h3>

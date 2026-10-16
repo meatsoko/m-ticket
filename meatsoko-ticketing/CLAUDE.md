@@ -50,6 +50,16 @@ Edge Functions) · Paystack · Resend · Vercel (+ Vercel Analytics).
   `/images/events/maic-token-summit-poster-2.jpg` (cropped).
 - `nyamafest` (27 Sep) and `nyamafest-launch` (6 Sep) are closed.
 
+## Receipt printing (2026-10-16)
+
+Thermal receipts at 80 mm or **58 mm** (Noryox NB60 handheld, built-in 58 mm printer); the
+choice is remembered per device (`src/components/cashless/ReceiptPrint.tsx`, sets `@page` on
+receipt pages only). Printable pages: vendor sales `/pay/receipt/<token>` and
+`/vendor/receipt/<id>`; event orders `/receipt/<token>/print` (links on the staff order and
+the customer receipt); merchandise `/order/<token>/print` (paid orders). Printer test pages:
+`/print-test/qr-receipt-58mm.html`, `qr-receipt-80mm.html`, `qr-a4.html`. Printing goes
+through Android's print service (built-in service or RawBT) from Chrome.
+
 ## Online attendance on Google Meet (2026-10-16)
 
 Migration `20261016090000`: `events.meeting_url` (Google Meet links only), set in Event
