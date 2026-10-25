@@ -3,19 +3,20 @@ import Image from "next/image";
 import { StoreShell } from "@/components/StoreChrome";
 import MerchandiseCard from "@/components/MerchandiseCard";
 import HeroCarousel from "@/components/store/HeroCarousel";
-import { merchandiseCategories } from "@/lib/merchandise";
+import { loadCatalogue } from "@/lib/catalogue";
 import { createClient } from "@/lib/supabase/server";
 import { toTicketEvent, type TicketEvent } from "@/lib/ticket-event";
 
-const featuredProducts = [
-  merchandiseCategories[0].products[0],
-  merchandiseCategories[1].products[0],
-  merchandiseCategories[2].products[0],
-  merchandiseCategories[3].products[1],
-];
-
 export default async function Home() {
   const supabase = createClient();
+  const { categories: merchandiseCategories } = await loadCatalogue();
+  // First hoodie, polo and tee, and the second headwear piece (as the page always showed).
+  const featuredProducts = [
+    merchandiseCategories[0]?.products[0],
+    merchandiseCategories[1]?.products[0],
+    merchandiseCategories[2]?.products[0],
+    merchandiseCategories[3]?.products[1] ?? merchandiseCategories[3]?.products[0],
+  ].filter((p): p is NonNullable<typeof p> => !!p);
   const now = new Date().toISOString();
   const { data: currentEvent } = await supabase.from("events")
     .select("id, slug, name, venue, starts_at, ends_at, banner_url, time_note")

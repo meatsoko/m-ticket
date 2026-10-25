@@ -1,11 +1,11 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { getProduct, type MerchandiseProduct } from "@/lib/merchandise";
+import type { MerchandiseProduct } from "@/lib/merchandise";
+import { useCatalogue } from "@/components/store/CatalogueProvider";
 
-// The merchandise bag lives in the browser only (localStorage). There is no
-// merchandise order table yet; when checkout is wired to a backend, the server
-// must re-price every line from its own catalogue — nothing here is trusted.
+// The merchandise bag lives in the browser only (localStorage). merch-checkout
+// re-prices every line from the database — nothing here is trusted.
 
 export type BagLine = { slug: string; size: string; qty: number };
 export type ResolvedLine = BagLine & { product: MerchandiseProduct };
@@ -46,6 +46,7 @@ export default function BagProvider({ children }: { children: React.ReactNode })
   const [raw, setRaw] = useState<BagLine[]>([]);
   const [ready, setReady] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const { getProduct } = useCatalogue();
 
   useEffect(() => {
     setRaw(read());
@@ -96,7 +97,7 @@ export default function BagProvider({ children }: { children: React.ReactNode })
       openDrawer: () => setDrawerOpen(true),
       closeDrawer: () => setDrawerOpen(false),
     };
-  }, [raw, ready, drawerOpen, add, setQty, remove, clear]);
+  }, [raw, ready, drawerOpen, add, setQty, remove, clear, getProduct]);
 
   return <BagContext.Provider value={value}>{children}</BagContext.Provider>;
 }

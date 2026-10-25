@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { DELIVERY_OPTIONS, STANDARD_FROM_USD, formatPrice, type MerchandiseProduct } from "@/lib/merchandise";
+import { deliveryFeeLabel, type MerchandiseProduct } from "@/lib/merchandise";
+import { useCatalogue } from "@/components/store/CatalogueProvider";
 
 const TABS = [
   { id: "description", label: "Description" },
@@ -13,6 +14,7 @@ type TabId = (typeof TABS)[number]["id"];
 
 export default function ProductTabs({ product }: { product: MerchandiseProduct }) {
   const [tab, setTab] = useState<TabId>("description");
+  const { delivery } = useCatalogue();
 
   // The trust strip links to #delivery-returns — open that tab when it's targeted.
   useEffect(() => {
@@ -61,8 +63,8 @@ export default function ProductTabs({ product }: { product: MerchandiseProduct }
             <div>
               <h3>Delivery options</h3>
               <ul className="delivery-list">
-                {DELIVERY_OPTIONS.map((o) => (
-                  <li key={o.id}><strong>{o.label}</strong><span>{o.blurb}</span><em>{o.feeUsd === 0 ? "Free" : o.feeUsd != null ? formatPrice(o.feeUsd) : o.id === "standard" ? `From ${formatPrice(STANDARD_FROM_USD)}` : "Fee confirmed at checkout"}</em></li>
+                {delivery.options.map((o) => (
+                  <li key={o.id}><strong>{o.label}</strong><span>{o.blurb}</span><em>{deliveryFeeLabel(o, delivery.zones)}</em></li>
                 ))}
               </ul>
             </div>

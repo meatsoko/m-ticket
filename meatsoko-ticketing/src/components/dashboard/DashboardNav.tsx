@@ -6,6 +6,7 @@ const I = {
   overview: "M4 13h6V4H4v9Zm0 7h6v-5H4v5Zm10 0h6v-9h-6v9Zm0-16v5h6V4h-6Z",
   orders: "M5 8h14l-1 12H6L5 8Zm4 0V6a3 3 0 0 1 6 0v2",
   inventory: "M4 7l8-4 8 4v10l-8 4-8-4V7Zm0 0 8 4 8-4M12 11v10",
+  sales: "M4 19V5M4 19h16M8 15l3-4 3 2 5-6",
   tickets: "M3 9a2 2 0 0 0 0 6v3a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-3a2 2 0 0 0 0-6V6a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v3ZM14 5v14",
   vendors: "M3 10l2-6h14l2 6M3 10v10h18V10M3 10c0 1.7 1.3 3 3 3s3-1.3 3-3c0 1.7 1.3 3 3 3s3-1.3 3-3c0 1.7 1.3 3 3 3s3-1.3 3-3",
   eventOrders: "M6 3h12v18l-3-2-3 2-3-2-3 2ZM9 8h6M9 12h6M9 16h3",
@@ -25,6 +26,7 @@ export default function DashboardNav({ toFulfil }: { toFulfil: number }) {
     { href: "/dashboard", label: "Overview", icon: I.overview, exact: true },
     { href: "/dashboard/orders", label: "Orders", icon: I.orders, badge: toFulfil },
     { href: "/dashboard/inventory", label: "Inventory", icon: I.inventory },
+    { href: "/dashboard/sales", label: "Sales", icon: I.sales },
   ];
   // Events & tickets: two options, like a sub-menu.
   const eventsGroup = [

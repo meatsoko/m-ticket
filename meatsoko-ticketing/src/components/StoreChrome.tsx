@@ -1,5 +1,7 @@
 import Link from "next/link";
 import BagProvider from "@/components/store/BagProvider";
+import CatalogueProvider from "@/components/store/CatalogueProvider";
+import { loadCatalogue } from "@/lib/catalogue";
 import BagDrawer, { BagButton } from "@/components/store/BagDrawer";
 import StoreSearch from "@/components/store/StoreSearch";
 import { SUPPORT } from "@/lib/support";
@@ -69,16 +71,19 @@ export function StoreFooter() {
   );
 }
 
-/** Every storefront page: announcement, header, the bag (context + drawer), footer. */
-export function StoreShell({ children }: { children: React.ReactNode }) {
+/** Every storefront page: header, the catalogue and bag (contexts + drawer), footer. */
+export async function StoreShell({ children }: { children: React.ReactNode }) {
+  const catalogue = await loadCatalogue();
   return (
-    <BagProvider>
-      <div className="storefront">
-        <StoreHeader />
-        {children}
-        <StoreFooter />
-        <BagDrawer />
-      </div>
-    </BagProvider>
+    <CatalogueProvider catalogue={catalogue}>
+      <BagProvider>
+        <div className="storefront">
+          <StoreHeader />
+          {children}
+          <StoreFooter />
+          <BagDrawer />
+        </div>
+      </BagProvider>
+    </CatalogueProvider>
   );
 }

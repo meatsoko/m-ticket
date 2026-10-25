@@ -3,18 +3,22 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatPrice } from "@/lib/merchandise";
+import type { InvGroup } from "@/lib/inventory";
+import ReturnForm from "@/components/dashboard/ReturnForm";
 
 export type DashOrder = {
   id: string; order_number: string; created_at: string; paid_at: string | null;
   first_name: string; last_name: string; phone: string; email: string;
   delivery_code: string; delivery_address: string | null; delivery_town: string | null;
   delivery_sacco: string | null; notes: string | null;
-  total_usd: number; total_kes: number;
+  total_usd: number; total_kes: number; delivery_fee_kes: number; refunded_kes: number; paid_with: "paystack" | "mpesa";
   payment_status: "pending" | "paid" | "failed" | "refunded" | "flagged";
   fulfilment_status: string; refund_reason: string | null;
   merch_delivery_options: { label: string } | null;
   merch_delivery_zones: { name: string } | null;
-  merch_order_items: { product_name: string; color: string; size: string; qty: number; unit_price_usd: number }[];
+  merch_order_items: { id: string; product_name: string; color: string; size: string; qty: number; unit_price_usd: number; unit_price_kes: number; line_total_kes: number }[];
+  merch_returns: { id: string; return_number: string; created_at: string; reason: string; refund_kes: number; delivery_refund_kes: number;
+    merch_return_lines: { direction: string; order_item_id: string | null; product_name: string; size: string; qty: number; refund_kes: number }[] }[];
 };
 
 const DONE = ["delivered", "collected", "cancelled"];
@@ -40,14 +44,14 @@ const when = (iso: string) => new Intl.DateTimeFormat("en-KE", {
 }).format(new Date(iso));
 const localPhone = (p: string) => p.startsWith("254") ? `0${p.slice(3)}` : p;
 
-export default function OrdersBoard({ orders }: { orders: DashOrder[] }) {
+export default function OrdersBoard({ orders, groups }: { orders: DashOrder[]; groups: InvGroup[] }) {
   const [filter, setFilter] = useState<Filter>("todo");
   const [q, setQ] = useState("");
   const [open, setOpen] = useState<string | null>(null);
 
   const paid = orders.filter((o) => o.payment_status === "paid");
   const todo = paid.filter((o) => !DONE.includes(o.fulfilment_status));
-  const revenue = paid.reduce((s, o) => s + Number(o.total_kes), 0);
+  const revenue = paid.reduce((s, o) => s + Number(o.total_kes) - Number(o.refunded_kes ?? 0), 0);
   const flagged = orders.filter((o) => o.payment_status === "flagged").length;
 
   const shown = useMemo(() => {
@@ -72,7 +76,7 @@ export default function OrdersBoard({ orders }: { orders: DashOrder[] }) {
       <div className="dash-stats">
         <div><span>To fulfil</span><strong>{todo.length}</strong></div>
         <div><span>Paid orders</span><strong>{paid.length}</strong></div>
-        <div><span>Revenue (paid)</span><strong>{kes(revenue)}</strong></div>
+        <div><span>Revenue (paid, after refunds)</span><strong>{kes(revenue)}</strong></div>
         <div className={flagged ? "warn" : undefined}><span>Need a look</span><strong>{flagged}</strong></div>
       </div>
 
@@ -94,7 +98,7 @@ export default function OrdersBoard({ orders }: { orders: DashOrder[] }) {
       ) : (
         <ul className="dash-list">
           {shown.map((o) => (
-            <OrderRow key={o.id} order={o} open={open === o.id} onToggle={() => setOpen(open === o.id ? null : o.id)} />
+            <OrderRow key={o.id} order={o} groups={groups} open={open === o.id} onToggle={() => setOpen(open === o.id ? null : o.id)} />
           ))}
         </ul>
       )}
@@ -110,13 +114,13 @@ function exportCsv(rows: DashOrder[]) {
     // Quote everything; neutralise leading =,+,-,@ so a spreadsheet never runs it as a formula.
     return `"${(/^[=+\-@]/.test(t) ? `'${t}` : t).replace(/"/g, '""')}"`;
   };
-  const head = ["Order", "Placed", "Paid", "First name", "Last name", "Phone", "Email", "Items", "Delivery", "Area / address / town", "Total USD", "Total KSh", "Payment", "Fulfilment", "Notes"];
+  const head = ["Order", "Placed", "Paid", "First name", "Last name", "Phone", "Email", "Items", "Delivery", "Area / address / town", "Total USD", "Total KSh", "Refunded KSh", "Payment", "Fulfilment", "Notes"];
   const lines = rows.map((o) => [
     o.order_number, o.created_at, o.paid_at ?? "", o.first_name, o.last_name, localPhone(o.phone), o.email,
     o.merch_order_items.map((i) => `${i.qty} x ${i.product_name} (${i.color}, ${i.size})`).join("; "),
     o.merch_delivery_options?.label ?? o.delivery_code,
     [o.merch_delivery_zones?.name, o.delivery_address, o.delivery_town, o.delivery_sacco].filter(Boolean).join(" · "),
-    o.total_usd, o.total_kes, o.payment_status, STATUS_LABEL[o.fulfilment_status] ?? o.fulfilment_status, o.notes ?? "",
+    o.total_usd, o.total_kes, o.refunded_kes ?? 0, o.payment_status, STATUS_LABEL[o.fulfilment_status] ?? o.fulfilment_status, o.notes ?? "",
   ].map(cell).join(","));
   const blob = new Blob([[head.map(cell).join(","), ...lines].join("\r\n")], { type: "text/csv;charset=utf-8" });
   const a = document.createElement("a");
@@ -126,7 +130,7 @@ function exportCsv(rows: DashOrder[]) {
   URL.revokeObjectURL(a.href);
 }
 
-function OrderRow({ order: o, open, onToggle }: { order: DashOrder; open: boolean; onToggle: () => void }) {
+function OrderRow({ order: o, groups, open, onToggle }: { order: DashOrder; groups: InvGroup[]; open: boolean; onToggle: () => void }) {
   const router = useRouter();
   const supabase = createClient();
   const [busy, setBusy] = useState(false);
@@ -135,6 +139,15 @@ function OrderRow({ order: o, open, onToggle }: { order: DashOrder; open: boolea
   const [reason, setReason] = useState("");
   const [ref, setRef] = useState("");
   const [restock, setRestock] = useState(true);
+  const [returning, setReturning] = useState(false);
+  const refunded = Number(o.refunded_kes ?? 0);
+  // What earlier returns already took back, per item (merch_record_return caps on it too).
+  const backIn = (itemId: string) => (o.merch_returns ?? []).flatMap((r) => r.merch_return_lines).filter((l) => l.direction === "in" && l.order_item_id === itemId);
+  const returnItems = o.merch_order_items.map((i) => ({
+    id: i.id, name: i.product_name, color: i.color, size: i.size, qty: i.qty, unit_kes: Number(i.unit_price_kes), line_total: Number(i.line_total_kes),
+    returned: backIn(i.id).reduce((n, l) => n + l.qty, 0), refunded: backIn(i.id).reduce((n, l) => n + Number(l.refund_kes), 0),
+  }));
+  const deliveryLeft = Number(o.delivery_fee_kes ?? 0) - (o.merch_returns ?? []).reduce((s, r) => s + Number(r.delivery_refund_kes), 0);
 
   const steps = stepsFor(o.delivery_code);
   const at = steps.indexOf(o.fulfilment_status);
@@ -173,6 +186,7 @@ function OrderRow({ order: o, open, onToggle }: { order: DashOrder; open: boolea
         <span className="dash-order-badges">
           {pay !== "paid" && <span className={`dash-badge pay-${pay}`}>{pay === "flagged" ? "Needs a look" : pay[0].toUpperCase() + pay.slice(1)}</span>}
           {pay === "paid" && <span className={`dash-badge ful-${o.fulfilment_status}`}>{STATUS_LABEL[o.fulfilment_status] ?? o.fulfilment_status}</span>}
+          {pay === "paid" && refunded > 0 && <span className="dash-badge pay-flagged">Part refunded</span>}
         </span>
       </button>
 
@@ -195,6 +209,14 @@ function OrderRow({ order: o, open, onToggle }: { order: DashOrder; open: boolea
               <p>{where || "—"}</p>
               {o.notes && <p className="dash-note">“{o.notes}”</p>}
               {o.refund_reason && <p className="dash-note">Refunded: {o.refund_reason}</p>}
+              {(o.merch_returns ?? []).length > 0 && (<>
+                <h3>Returns &amp; refunds</h3>
+                <ul className="dash-items">
+                  {o.merch_returns.map((r) => (
+                    <li key={r.id}><span>{r.return_number} <small>{when(r.created_at)} · {r.reason}{r.merch_return_lines.some((l) => l.direction === "out") ? " · exchange" : ""}</small></span><span>−{kes(r.refund_kes)}</span></li>
+                  ))}
+                </ul>
+              </>)}
             </section>
           </div>
 
@@ -206,8 +228,13 @@ function OrderRow({ order: o, open, onToggle }: { order: DashOrder; open: boolea
                   {steps.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
                 </select>
               </label>
-              {!refunding && <button type="button" className="dash-btn ghost" onClick={() => setRefunding(true)}>Record a refund</button>}
+              {!refunding && !returning && <button type="button" className="dash-btn" onClick={() => setReturning(true)}>Return, refund or exchange</button>}
+              {!refunding && !returning && <button type="button" className="dash-btn ghost" onClick={() => setRefunding(true)}>Refund the whole order</button>}
             </div>
+          )}
+          {returning && (
+            <ReturnForm source="web" saleId={o.id} items={returnItems} refundable={Number(o.total_kes) - refunded} deliveryLeft={deliveryLeft}
+              defaultMethod={o.paid_with} groups={groups} onDone={() => setReturning(false)} />
           )}
           {pay === "flagged" && !refunding && (
             <div className="dash-actions">
@@ -218,9 +245,9 @@ function OrderRow({ order: o, open, onToggle }: { order: DashOrder; open: boolea
 
           {refunding && (
             <div className="dash-refund">
-              <p>First refund the payment in the <a href="https://dashboard.paystack.com/#/transactions" target="_blank" rel="noopener noreferrer">Paystack dashboard</a>, then record it here.</p>
+              <p>First refund {refunded > 0 ? `the remaining ${kes(Number(o.total_kes) - refunded)}` : "the payment"} in the {o.paid_with === "mpesa" ? "M-Pesa portal" : <a href="https://dashboard.paystack.com/#/transactions" target="_blank" rel="noopener noreferrer">Paystack dashboard</a>}, then record it here.</p>
               <label>Reason *<input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Wrong size, customer returned it" /></label>
-              <label>Paystack refund reference<input value={ref} onChange={(e) => setRef(e.target.value)} placeholder="Optional" /></label>
+              <label>Refund reference<input value={ref} onChange={(e) => setRef(e.target.value)} placeholder="Optional" /></label>
               {pay === "paid" && <label className="dash-check"><input type="checkbox" checked={restock} onChange={(e) => setRestock(e.target.checked)} /> Put the items back in stock</label>}
               <div className="dash-actions">
                 <button type="button" className="dash-btn danger" disabled={busy} onClick={recordRefund}>Record refund</button>

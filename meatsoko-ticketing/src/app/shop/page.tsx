@@ -2,11 +2,13 @@ import Link from "next/link";
 import { StoreShell } from "@/components/StoreChrome";
 import MerchandiseCard from "@/components/MerchandiseCard";
 import CategoryFocus from "@/components/store/CategoryFocus";
-import { merchandiseCategories, searchProducts, allProducts } from "@/lib/merchandise";
+import { allProductsOf, searchProducts } from "@/lib/merchandise";
+import { loadCatalogue } from "@/lib/catalogue";
 
-export default function ShopPage({ searchParams }: { searchParams?: { q?: string } }) {
+export default async function ShopPage({ searchParams }: { searchParams?: { q?: string } }) {
+  const { categories: merchandiseCategories } = await loadCatalogue();
   const q = (searchParams?.q ?? "").trim().slice(0, 80);
-  const results = q ? searchProducts(q, allProducts.length) : [];
+  const results = q ? searchProducts(merchandiseCategories, q, allProductsOf(merchandiseCategories).length) : [];
 
   return (
     <StoreShell>

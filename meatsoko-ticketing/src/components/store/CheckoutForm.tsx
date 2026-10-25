@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useBag } from "./BagProvider";
-import { DELIVERY_OPTIONS, DELIVERY_ZONES, STANDARD_FROM_USD, formatPrice, type DeliveryOption } from "@/lib/merchandise";
+import { deliveryFeeLabel, formatPrice } from "@/lib/merchandise";
+import { useCatalogue } from "@/components/store/CatalogueProvider";
 import { looksLikeEmail, normalizePhone, PHONE_HINT } from "@/lib/phone";
 import { createClient } from "@/lib/supabase/client";
 import { invokeFn } from "@/lib/invoke";
@@ -64,8 +65,10 @@ const EMPTY: Fields = { firstName: "", lastName: "", phone: "", email: "", zone:
 
 export default function CheckoutForm() {
   const { lines, subtotal, ready, clear } = useBag();
+  // Delivery options, fees and areas as merch_delivery_options / _zones say.
+  const { delivery: { options: deliveryOptions, zones: deliveryZones } } = useCatalogue();
   const [f, setF] = useState<Fields>(EMPTY);
-  const [delivery, setDelivery] = useState<DeliveryOption["id"]>("event");
+  const [delivery, setDelivery] = useState<string>(deliveryOptions[0]?.id ?? "pickup");
   const [agree, setAgree] = useState(false);
   const [touched, setTouched] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -74,7 +77,7 @@ export default function CheckoutForm() {
   const router = useRouter();
 
 
-  const option = DELIVERY_OPTIONS.find((o) => o.id === delivery)!;
+  const option = deliveryOptions.find((o) => o.id === delivery) ?? deliveryOptions[0];
   const set = (k: keyof Fields) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setF((prev) => ({ ...prev, [k]: e.target.value }));
 
@@ -92,7 +95,7 @@ export default function CheckoutForm() {
 
   // Standard delivery is priced by area; everything else has one fee.
   const fee = delivery === "standard"
-    ? DELIVERY_ZONES.find((z) => z.name === f.zone)?.feeUsd ?? null
+    ? deliveryZones.find((z) => z.name === f.zone)?.feeUsd ?? null
     : option.feeUsd;
   const feeLabel = fee === 0 ? "Free" : fee != null ? formatPrice(fee) : delivery === "standard" ? "Choose your area" : "TBC";
   const total = subtotal != null && fee != null ? subtotal + fee : null;
@@ -187,11 +190,11 @@ export default function CheckoutForm() {
           <fieldset className="checkout-card">
             <legend>Delivery method</legend>
             <div className="delivery-options" role="radiogroup">
-              {DELIVERY_OPTIONS.map((o) => (
+              {deliveryOptions.map((o) => (
                 <label key={o.id} className={`delivery-option${delivery === o.id ? " active" : ""}`}>
                   <input type="radio" name="delivery" value={o.id} checked={delivery === o.id} onChange={() => setDelivery(o.id)} />
                   <span><strong>{o.label}</strong><small>{o.blurb}</small></span>
-                  <em>{o.feeUsd === 0 ? "Free" : o.feeUsd != null ? formatPrice(o.feeUsd) : o.id === "standard" ? `From ${formatPrice(STANDARD_FROM_USD)}` : "Fee TBC"}</em>
+                  <em>{deliveryFeeLabel(o, deliveryZones, "Fee TBC")}</em>
                 </label>
               ))}
             </div>
@@ -199,7 +202,7 @@ export default function CheckoutForm() {
             {delivery === "standard" && (
               <div className="field-grid two delivery-fields">
                 <label className="store-field"><span>Area *</span>
-                  <select value={f.zone} onChange={set("zone")}><option value="">Select your area</option>{DELIVERY_ZONES.map((z) => <option key={z.name} value={z.name}>{z.name} — {formatPrice(z.feeUsd)}</option>)}</select>{err("zone")}
+                  <select value={f.zone} onChange={set("zone")}><option value="">Select your area</option>{deliveryZones.map((z) => <option key={z.name} value={z.name}>{z.name} — {z.feeUsd != null ? formatPrice(z.feeUsd) : "Fee TBC"}</option>)}</select>{err("zone")}
                 </label>
                 <label className="store-field"><span>Street address or landmark *</span><input value={f.street} onChange={set("street")} autoComplete="street-address" placeholder="House, street, estate" />{err("street")}</label>
               </div>

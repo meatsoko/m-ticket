@@ -167,8 +167,12 @@ check("second quote within 6 h reuses it (no refetch, despite a 20 h-old feed ti
 // 2. refusals
 r = await call("checkout", { customer: { ...customer, phone: "12345" }, delivery: { code: "event" }, lines: [{ slug: "green-hoodie", size: "M", qty: 1 }] });
 check("bad phone -> 400 invalid_phone", r.status === 400 && r.body?.error === "invalid_phone", r);
+// Every catalogue piece is priced since 20261025090000; unprice the cap for this check.
+const setCapPrice = (price: number | null) => fetch(`http://supabase.test/rest/v1/merch_products?slug=eq.white-cap`, { method: "PATCH", headers: { apikey: SERVICE_KEY, authorization: `Bearer ${SERVICE_KEY}`, "content-type": "application/json" }, body: JSON.stringify({ price_usd: price }) });
+await setCapPrice(null);
 r = await call("checkout", { customer, delivery: { code: "event" }, lines: [{ slug: "white-cap", size: "One size", qty: 1 }] });
 check("unpriced cap -> 409 unpriced", r.status === 409 && r.body?.error === "unpriced", r);
+await setCapPrice(12);
 r = await call("checkout", { customer, delivery: { code: "event" }, lines: [{ slug: "green-hoodie", size: "XXXL", qty: 1 }] });
 check("unknown size -> 409 unavailable_item", r.status === 409 && r.body?.error === "unavailable_item", r);
 r = await call("checkout", { customer, delivery: { code: "standard", zone: "Nairobi CBD", address: "Moi Avenue" }, lines: [{ slug: "red-t-shirt", size: "L", qty: 1 }] });
@@ -593,7 +597,7 @@ console.log("\n--- dashboard overview ---");
   check("overview: revenue = paid merch + paid tickets (KSh)", Math.round(revenue.value) === Math.round(expMerch + expTix) && revenue.value > 0, { got: revenue.value, expMerch, expTix });
   check("overview: daily series sums to the same revenue", Math.round(o.series.reduce((s: number, p: any) => s + p.merch + p.tickets, 0)) === Math.round(revenue.value) && o.series.length === 30, o.series.length);
   const paidMerch = (await get("merch_orders?select=id&payment_status=eq.paid")).length;
-  check("overview: merch orders KPI counts paid orders", o.kpis.find((k: any) => k.label === "Merch orders").value === paidMerch, paidMerch);
+  check("overview: merch sales KPI counts paid orders (no manual sales yet)", o.kpis.find((k: any) => k.label === "Merch sales").value === paidMerch, paidMerch);
   check("overview: best sellers come from paid merch items", o.bestSellers.length > 0 && o.bestSellers.every((b: any) => b.sold > 0), o.bestSellers);
   check("overview: event bookings KPI counts non-cancelled bookings", o.kpis.find((k: any) => k.label === "Event bookings").value > 0);
   check("overview: next live event attendance with tickets by type", !!o.attendance && o.attendance.expected > 0 && o.attendance.byType.length > 0, o.attendance);
@@ -2591,6 +2595,259 @@ console.log("\n--- online meet link on registration ---");
   await post("admin_users", { user_id: uid, role: "admin" });
   r = await call("oann", { event_id: ev.id, preview: true }, { authorization: `Bearer ${await jwt({ role: "authenticated", sub: uid, exp: 4102444800 })}` });
   check("auto meet: the send button then only counts the person who registered before the link", r.body?.recipients === 1 && r.body?.total === 2, r.body);
+}
+
+// 32. Merchandise catalogue sync + inventory (20261025090000 … 20261025100000)
+console.log("\n--- merch catalogue + inventory ---");
+{
+  // Catalogue: the database now says what the website said.
+  const prods: any[] = await get("merch_products?select=slug,price_usd,sold_out,image_fit,position,style_name,merch_variants(size)");
+  const bySlug = new Map(prods.map((p) => [p.slug, p]));
+  check("catalogue: 26 products, as on the website", prods.length === 26, prods.length);
+  check("catalogue: Kenya edition at its website address", bySlug.has("bmb-hoodie-black-kenya-edition") && !bySlug.has("bmb-hoodie-kenya-edition"));
+  check("catalogue: both Hustle Game 21 hoodies at $20 with S–2XL", ["hustle-game-21-hoodie-model", "hustle-game-21-hoodie-views"].every((s) => Number(bySlug.get(s)?.price_usd) === 20 && bySlug.get(s)?.merch_variants.length === 5));
+  check("catalogue: Executive Polo shown sold out at $19.50", bySlug.get("executive-polo")?.sold_out === true && Number(bySlug.get("executive-polo")?.price_usd) === 19.5);
+  check("catalogue: Buja hoodie whole photo, after the Hustle Game hoodies", bySlug.get("buja-hoodie-green")?.image_fit === "whole" && bySlug.get("buja-hoodie-green")?.position === 8);
+  check("catalogue: caps, beanies, overall and BMB tee priced as on the site", Number(bySlug.get("green-beanie")?.price_usd) === 12 && Number(bySlug.get("meatsoko-overall")?.price_usd) === 22 && Number(bySlug.get("bmb-t-shirt-blue")?.price_usd) === 15);
+  check("catalogue: every product has a display style name", prods.every((p) => !!p.style_name) && bySlug.get("bmb-hoodie-blue")?.style_name === "BMB Hoodie");
+  {
+    // The shop's loader (src/lib/catalogue-data.ts) with the public anon key, as the site reads it.
+    const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2.45.4");
+    const { fetchCatalogue } = await import("/src/lib/catalogue-data.ts");
+    const asAnon = createClient("http://supabase.test", anonKey, { auth: { persistSession: false } });
+    const cat: any = await fetchCatalogue(asAnon as any);
+    const all = cat.categories.flatMap((c: any) => c.products);
+    const p = (slug: string) => all.find((x: any) => x.slug === slug);
+    check("shop catalogue: six categories in order, 26 products, as the website listed them",
+      cat.categories.map((c: any) => c.id).join(",") === "hoodies,polos,t-shirts,headwear,workwear,partnerships" && all.length === 26, cat.categories.map((c: any) => [c.id, c.products.length]));
+    check("shop catalogue: polos keep their order with the Executive Polo last, shown sold out",
+      cat.categories[1].products.map((x: any) => x.slug).join(",") === "red-polo,white-polo,green-polo,executive-polo" && p("executive-polo")?.outOfStock === true && p("executive-polo")?.priceUsd === 19.5);
+    check("shop catalogue: partnerships in the website's order",
+      cat.categories[5].products.map((x: any) => x.slug).join(",") === "bmb-hoodie-black,bmb-hoodie-black-kenya-edition,bmb-hoodie-blue,fuel-your-soul-water-bottle,bmb-t-shirt-blue,hustle-game-21-hoodie-model,hustle-game-21-hoodie-views,buja-hoodie-green",
+      cat.categories[5].products.map((x: any) => x.slug));
+    check("shop catalogue: style names, sizes, swatches and photo fit carried over",
+      p("green-hoodie")?.style === "NyamaFest Hoodie" && p("green-hoodie")?.sizes.join(",") === "S,M,L,XL,2XL" && p("white-cap")?.sizes.join(",") === "One size" &&
+      p("bmb-hoodie-black-kenya-edition")?.swatch.startsWith("linear-gradient") && p("buja-hoodie-green")?.fit === "whole" && p("bmb-hoodie-blue")?.partner === "Brian Munyolo Boxing");
+    check("shop catalogue: delivery options and areas as checkout charges them",
+      cat.delivery.options.map((o: any) => o.id).join(",") === "event,pickup,standard,matatu" && cat.delivery.options[3].feeUsd === 3 && cat.delivery.options[2].needsZone === true &&
+      cat.delivery.zones.map((z: any) => `${z.name}:${z.feeUsd}`).join(",") === "Nairobi CBD:2,Greater Nairobi:3,Major towns:5,Rest of Kenya:7", cat.delivery);
+  }
+  let r: any = await call("checkout", { customer: { ...customer, phone: "0722000301" }, delivery: { code: "event" }, lines: [{ slug: "executive-polo", size: "M", qty: 1 }] }, ip());
+  check("catalogue: a sold-out piece can't be bought (409 sold_out)", r.status === 409 && r.body?.error === "sold_out", r.body);
+  r = await call("checkout", { customer: { ...customer, phone: "0722000302" }, delivery: { code: "event" }, lines: [{ slug: "bmb-hoodie-black-kenya-edition", size: "L", qty: 1 }] }, ip());
+  check("catalogue: the Kenya edition can now be bought", r.status === 200 && !!r.body?.reference, r.body);
+
+  // Who may do what.
+  const adminUid = crypto.randomUUID(), staffUid = crypto.randomUUID();
+  for (const [uid, role] of [[adminUid, "admin"], [staffUid, "staff"]]) {
+    await fetch("http://supabase.test/rest/v1/rpc/test_make_user", { method: "POST", headers: svc, body: JSON.stringify({ p_id: uid }) });
+    await post("admin_users", { user_id: uid, role });
+  }
+  const adminKey = await jwt({ role: "authenticated", sub: adminUid, exp: 4102444800 });
+  const staffKey = await jwt({ role: "authenticated", sub: staffUid, exp: 4102444800 });
+  const A = (fn: string, body: unknown) => rpc(fn, body, adminKey);
+  const nobody = crypto.randomUUID();
+  const fns: [string, unknown][] = [
+    ["merch_stock_apply", { p_kind: "receive", p_lines: [] }], ["merch_stock_confirm", { p_batch_id: nobody }],
+    ["merch_stock_discard", { p_batch_id: nobody }], ["merch_stock_reverse", { p_batch_id: nobody, p_reason: "x" }],
+    ["merch_record_manual_sale", { p_sale: {} }], ["merch_void_manual_sale", { p_sale_id: nobody, p_reason: "x" }],
+    ["merch_record_return", { p_return: {} }], ["merch_report", { p_from: null, p_to: null }],
+    ["merch_sales_lines", {}], ["merch_stock_check", {}],
+  ];
+  for (const [fn, body] of fns) {
+    const a = await rpc(fn, body);
+    check(`inventory: anon -> ${fn}: permission denied`, a.body?.code === "42501", a.body);
+  }
+  for (const [fn, body] of [
+    ["merch_move_stock", { p_variant_id: nobody, p_delta: 5, p_reason: "restock" }], ["merch_apply_return", { p: {} }],
+    ["merch_take_order_stock", { p_order_id: nobody }], ["merch_void_sale_internal", { p_sale_id: nobody, p_reason: "x" }],
+    ["merch_gen_number", { p_prefix: "X", p_table: "merch_orders", p_column: "order_number" }],
+  ] as [string, unknown][]) {
+    const a = await rpc(fn, body, adminKey);
+    check(`inventory: internal ${fn} is closed even to admins`, a.body?.code === "42501", a.body);
+  }
+  r = await rpc("merch_stock_apply", { p_kind: "receive", p_lines: [{ variant_id: nobody, qty: 1 }] }, staffKey);
+  check("inventory: gate staff can't change stock (forbidden)", r.body?.result === "forbidden", r.body);
+  r = await rpc("merch_record_manual_sale", { p_sale: { payment_method: "cash", lines: [] } }, staffKey);
+  check("inventory: gate staff can't record sales (forbidden)", r.body?.result === "forbidden", r.body);
+  r = await rpc("merch_sales_lines", {}, staffKey);
+  check("inventory: gate staff can't read the sales lines (42501)", r.body?.code === "42501", r.body);
+
+  const variant = async (slug: string, size: string) =>
+    (await get(`merch_variants?select=id,sku,stock_on_hand,merch_products!inner(slug)&merch_products.slug=eq.${slug}&size=eq.${size}`))[0];
+  const stock = async (v: any) => (await get(`merch_variants?select=stock_on_hand&id=eq.${v.id}`))[0].stock_on_hand;
+  const wpS = await variant("white-polo", "S"), wpM = await variant("white-polo", "M"), wpL = await variant("white-polo", "L");
+  const gpM = await variant("green-polo", "M");
+
+  // Opening counts: a draft first, then confirmed.
+  r = await A("merch_stock_apply", { p_kind: "count", p_lines: [{ variant_id: wpS.id, counted: 3, expected: 0 }] });
+  check("stock: a stock-take needs a tracked size (untracked)", r.body?.result === "untracked" && r.body?.skus?.[0] === wpS.sku, r.body);
+  r = await A("merch_adjust_stock", { p_variant_id: wpS.id, p_delta: 5, p_reason: "restock" });
+  check("stock: the old single-size restock no longer starts tracking", r.body?.result === "untracked", r.body);
+  r = await A("merch_stock_apply", { p_kind: "opening", p_lines: [{ variant_id: wpS.id, counted: 5 }, { variant_id: wpM.id, counted: 0 }], p_meta: { note: "Opening count, store room" }, p_draft: true });
+  const draft = r.body?.batch_id;
+  check("opening: draft saved, nothing tracked yet", r.body?.result === "draft_saved" && /^SB-/.test(r.body?.batch_number) && (await stock(wpS)) === null, r.body);
+  check("opening: a draft writes no movements", (await get(`merch_stock_movements?select=id&batch_id=eq.${draft}`)).length === 0);
+  r = await A("merch_stock_confirm", { p_batch_id: draft });
+  check("opening: confirmed -> tracked at the counted numbers (5 and 0)", r.body?.result === "confirmed" && (await stock(wpS)) === 5 && (await stock(wpM)) === 0, r.body);
+  const opening = await get(`merch_stock_movements?select=delta,reason,balance&batch_id=eq.${draft}&order=delta`);
+  check("opening: one 'opening' movement per size, including the zero", opening.length === 2 && opening.every((m: any) => m.reason === "opening") && opening[0].delta === 0, opening);
+  r = await A("merch_stock_confirm", { p_batch_id: draft });
+  check("opening: can't be confirmed twice", r.body?.result === "not_draft", r.body);
+  r = await A("merch_stock_apply", { p_kind: "opening", p_lines: [{ variant_id: wpS.id, counted: 9 }] });
+  check("opening: a tracked size can't be opened again (already_tracked)", r.body?.result === "already_tracked", r.body);
+  r = await A("merch_stock_apply", { p_kind: "opening", p_lines: [{ variant_id: wpL.id, counted: 4 }], p_draft: true });
+  const d2 = r.body?.batch_id;
+  r = await A("merch_stock_discard", { p_batch_id: d2 });
+  check("opening: a draft can be discarded; the size stays untracked", r.body?.result === "discarded" && (await stock(wpL)) === null, r.body);
+  r = await A("merch_stock_apply", { p_kind: "receive", p_lines: [{ variant_id: wpS.id, qty: 1 }], p_draft: true });
+  check("opening: only opening counts can be drafts", r.body?.result === "draft_opening_only", r.body);
+
+  // Deliveries, removals, stock-takes, reversals.
+  r = await A("merch_stock_apply", { p_kind: "receive", p_lines: [{ variant_id: wpM.id, qty: 10, unit_cost_kes: 850 }], p_meta: { supplier: "Thika Prints", reference: "DN-0042" } });
+  const recv = r.body?.batch_id;
+  check("receive: +10 with supplier, delivery note and unit cost", r.body?.result === "applied" && (await stock(wpM)) === 10 &&
+    (await get(`merch_stock_batches?select=supplier,reference&id=eq.${recv}`))[0]?.reference === "DN-0042" &&
+    Number((await get(`merch_stock_batch_lines?select=unit_cost_kes&batch_id=eq.${recv}`))[0]?.unit_cost_kes) === 850, r.body);
+  r = await A("merch_stock_apply", { p_kind: "issue", p_lines: [{ variant_id: wpM.id, qty: 3 }] });
+  check("remove: needs a reason", r.body?.result === "issue_reason_required", r.body);
+  r = await A("merch_stock_apply", { p_kind: "issue", p_lines: [{ variant_id: wpM.id, qty: 3 }], p_meta: { issue_reason: "other" } });
+  check("remove: 'other' needs a note", r.body?.result === "note_required", r.body);
+  r = await A("merch_stock_apply", { p_kind: "issue", p_lines: [{ variant_id: wpM.id, qty: 11 }], p_meta: { issue_reason: "lost" } });
+  check("remove: never below zero (insufficient, nothing changed)", r.body?.result === "insufficient" && (await stock(wpM)) === 10, r.body);
+  r = await A("merch_stock_apply", { p_kind: "issue", p_lines: [{ variant_id: wpM.id, qty: 3 }], p_meta: { issue_reason: "damaged", note: "Ink smudge" } });
+  const issued = r.body?.batch_id;
+  check("remove: 3 damaged -> 7, recorded as 'damaged'", r.body?.result === "applied" && (await stock(wpM)) === 7 &&
+    (await get(`merch_stock_movements?select=reason&batch_id=eq.${issued}`))[0]?.reason === "damaged", r.body);
+  r = await A("merch_stock_apply", { p_kind: "count", p_lines: [{ variant_id: wpS.id, counted: 4, expected: 5 }, { variant_id: wpM.id, counted: 6, expected: 99 }] });
+  check("stock-take: the matching line applies, the stale one is set aside for a recount",
+    r.body?.result === "applied" && r.body?.applied === 1 && r.body?.conflicts?.[0]?.sku === wpM.sku && (await stock(wpS)) === 4 && (await stock(wpM)) === 7, r.body);
+  r = await A("merch_stock_apply", { p_kind: "count", p_lines: [{ variant_id: wpS.id, counted: 4, expected: 4 }] });
+  check("stock-take: nothing to apply when the count matches", r.body?.result === "nothing_to_apply" && r.body?.unchanged === 1, r.body);
+  r = await A("merch_stock_apply", { p_kind: "receive", p_lines: [{ variant_id: wpS.id, qty: 1 }, { variant_id: wpS.id, qty: 2 }] });
+  check("stock: each size once per batch", r.body?.result === "bad_lines", r.body);
+  r = await A("merch_stock_reverse", { p_batch_id: issued, p_reason: "Wrong shirts" });
+  check("reverse: the removal is undone with a reversal batch (7 -> 10)", r.body?.result === "reversed" && (await stock(wpM)) === 10, r.body);
+  r = await A("merch_stock_reverse", { p_batch_id: issued, p_reason: "again" });
+  check("reverse: only once", r.body?.result === "already_reversed", r.body);
+  r = await A("merch_stock_reverse", { p_batch_id: draft, p_reason: "x" });
+  check("reverse: opening counts are corrected with a stock-take, not reversed", r.body?.result === "not_reversible", r.body);
+  const mv = await fetch(`http://supabase.test/rest/v1/merch_stock_movements?batch_id=eq.${recv}`, { method: "PATCH", headers: svc, body: JSON.stringify({ delta: 99 }) });
+  check("ledger: movements can't be edited, even with the service role", mv.status >= 400 && (await mv.json())?.code === "42501");
+  const del = await fetch(`http://supabase.test/rest/v1/merch_stock_batches?id=eq.${recv}`, { method: "DELETE", headers: svc });
+  check("ledger: batches can't be deleted", del.status >= 400);
+  const direct = await fetch("http://supabase.test/rest/v1/merch_manual_sales", { method: "POST", headers: { apikey: adminKey, authorization: `Bearer ${adminKey}`, "content-type": "application/json" }, body: JSON.stringify({ sale_number: "MM-XXXXXX", sold_at: new Date().toISOString(), payment_method: "cash", subtotal_kes: 1 }) });
+  check("ledger: even an admin can't write a sale row directly", direct.status >= 400);
+
+  // Manual sales.
+  r = await A("merch_record_manual_sale", { p_sale: { payment_method: "cash", location: "NyamaFest stand", lines: [{ variant_id: wpS.id, qty: 2, unit_price_kes: 2500 }, { variant_id: gpM.id, qty: 1, unit_price_kes: 2400 }] } });
+  const sale1 = r.body;
+  check("manual sale: recorded (MM-), S 4 -> 2", r.body?.result === "recorded" && /^MM-/.test(r.body?.sale_number) && Number(r.body?.total_kes) === 7400 && (await stock(wpS)) === 2, r.body);
+  const items1 = await get(`merch_manual_sale_items?select=sku,stock_tracked&sale_id=eq.${sale1.sale_id}&order=sku`);
+  check("manual sale: an untracked size is recorded without moving stock", items1.find((i: any) => i.sku === gpM.sku)?.stock_tracked === false && (await stock(gpM)) === null &&
+    (await get(`merch_stock_movements?select=id&manual_sale_id=eq.${sale1.sale_id}`)).length === 1, items1);
+  r = await A("merch_record_manual_sale", { p_sale: { payment_method: "mpesa", lines: [{ variant_id: wpM.id, qty: 1, unit_price_kes: 2500 }] } });
+  check("manual sale: M-Pesa needs its transaction code", r.body?.result === "mpesa_code_required", r.body);
+  r = await A("merch_record_manual_sale", { p_sale: { payment_method: "mpesa", mpesa_code: " ufk1abc234 ", lines: [{ variant_id: wpM.id, qty: 1, unit_price_kes: 2500 }] } });
+  check("manual sale: M-Pesa code stored in capitals", r.body?.result === "recorded" && (await get(`merch_manual_sales?select=mpesa_code&id=eq.${r.body?.sale_id}`))[0]?.mpesa_code === "UFK1ABC234", r.body);
+  r = await A("merch_record_manual_sale", { p_sale: { payment_method: "mpesa", mpesa_code: "UFK1ABC234", lines: [{ variant_id: wpM.id, qty: 1, unit_price_kes: 2500 }] } });
+  check("manual sale: one M-Pesa code pays for one sale", r.body?.result === "mpesa_code_used" && (await stock(wpM)) === 9, r.body);
+  r = await A("merch_record_manual_sale", { p_sale: { payment_method: "cash", lines: [{ variant_id: wpM.id, qty: 1, unit_price_kes: -5 }] } });
+  check("manual sale: a price must be positive", r.body?.result === "bad_lines", r.body);
+  r = await A("merch_record_manual_sale", { p_sale: { payment_method: "cash", sold_at: new Date(Date.now() + 864e5).toISOString(), lines: [{ variant_id: wpM.id, qty: 1, unit_price_kes: 100 }] } });
+  check("manual sale: can't be dated in the future", r.body?.result === "bad_sold_at", r.body);
+
+  // Web checkout holds: the stand can't sell what a web buyer is paying for.
+  r = await call("checkout", { customer: { ...customer, phone: "0722000303", email: "hold.buyer@example.test" }, delivery: { code: "event" }, lines: [{ slug: "white-polo", size: "S", qty: 2 }] }, ip());
+  const holdRef = r.body?.reference;
+  check("holds: a web checkout holds the last 2 S", r.status === 200 && !!holdRef, r.body);
+  r = await A("merch_record_manual_sale", { p_sale: { payment_method: "cash", lines: [{ variant_id: wpS.id, qty: 1, unit_price_kes: 2500 }] } });
+  check("holds: the manual sale is refused (available 0)", r.body?.result === "insufficient" && r.body?.lines?.[0]?.available === 0 && (await stock(wpS)) === 2, r.body);
+  r = await call("checkout", { customer: { ...customer, phone: "0722000304", email: "late.buyer@example.test" }, delivery: { code: "event" }, lines: [{ slug: "white-polo", size: "S", qty: 1 }] }, ip());
+  check("holds: and so is another web checkout (409 sold_out)", r.status === 409 && r.body?.error === "sold_out", r.body);
+  r = await call("order", { reference: holdRef });
+  check("web sale: payment takes the stock (S 2 -> 0, one 'sale' movement)", r.body?.payment_status === "paid" && (await stock(wpS)) === 0, r.body);
+  const holdOrder = (await get(`merch_orders?select=id,total_kes,delivery_fee_kes,merch_order_items(id,line_total_kes)&paystack_reference=eq.${holdRef}`))[0];
+  r = await call("order", { reference: holdRef });
+  check("web sale: confirming again takes nothing more", (await stock(wpS)) === 0 && (await get(`merch_stock_movements?select=id&order_id=eq.${holdOrder.id}`)).length === 1, r.body);
+
+  // Corrections: void + re-enter, atomically; the void frees the stock first.
+  r = await A("merch_record_manual_sale", { p_sale: { payment_method: "cash", replaces_sale_id: sale1.sale_id, lines: [{ variant_id: wpS.id, qty: 1, unit_price_kes: 2500 }] } });
+  check("correction: needs a reason", r.body?.result === "void_reason_required", r.body);
+  r = await A("merch_record_manual_sale", { p_sale: { payment_method: "cash", replaces_sale_id: sale1.sale_id, void_reason: "Wrong quantity", lines: [{ variant_id: wpS.id, qty: 3, unit_price_kes: 2500 }] } });
+  check("correction: refused when the new sale doesn't fit — and the old sale is left as it was", r.body?.result === "insufficient" &&
+    (await get(`merch_manual_sales?select=status&id=eq.${sale1.sale_id}`))[0]?.status === "recorded" && (await stock(wpS)) === 0, r.body);
+  r = await A("merch_record_manual_sale", { p_sale: { payment_method: "cash", replaces_sale_id: sale1.sale_id, void_reason: "Wrong quantity", lines: [{ variant_id: wpS.id, qty: 1, unit_price_kes: 2500 }] } });
+  const sale2 = r.body;
+  check("correction: old sale voided, new one recorded and linked (S 0 -> +2 -> 1)", r.body?.result === "recorded" && r.body?.voided === sale1.sale_number && (await stock(wpS)) === 1 &&
+    (await get(`merch_manual_sales?select=status,void_reason&id=eq.${sale1.sale_id}`))[0]?.status === "voided" &&
+    (await get(`merch_manual_sales?select=replaces_sale_id&id=eq.${sale2.sale_id}`))[0]?.replaces_sale_id === sale1.sale_id, r.body);
+  r = await A("merch_void_manual_sale", { p_sale_id: sale1.sale_id, p_reason: "again" });
+  check("void: a voided sale can't be voided again", r.body?.result === "already_voided", r.body);
+  r = await A("merch_void_manual_sale", { p_sale_id: sale2.sale_id, p_reason: "Sale didn't happen" });
+  check("void: the sale's unit goes back (S 1 -> 2)", r.body?.result === "voided" && (await stock(wpS)) === 2, r.body);
+
+  // Returns on a manual sale: partial refund with restock, then an exchange.
+  r = await A("merch_record_manual_sale", { p_sale: { payment_method: "cash", lines: [{ variant_id: wpS.id, qty: 2, unit_price_kes: 2500 }] } });
+  const sale3 = r.body;
+  const s3item = (await get(`merch_manual_sale_items?select=id&sale_id=eq.${sale3.sale_id}`))[0];
+  r = await A("merch_record_return", { p_return: { source: "manual", sale_id: sale3.sale_id, reason: "Too small", refund_method: "cash", lines: [{ item_id: s3item.id, qty: 1, refund_kes: 2500, restock: true }] } });
+  check("return: 1 of 2 back on the shelf and refunded (S 0 -> 1, sale refunded 2,500)", r.body?.result === "recorded" && /^MR-/.test(r.body?.return_number) && (await stock(wpS)) === 1 &&
+    Number((await get(`merch_manual_sales?select=refunded_kes&id=eq.${sale3.sale_id}`))[0]?.refunded_kes) === 2500, r.body);
+  r = await A("merch_record_return", { p_return: { source: "manual", sale_id: sale3.sale_id, reason: "x", refund_method: "cash", lines: [{ item_id: s3item.id, qty: 2, refund_kes: 0, restock: true }] } });
+  check("return: can't return more than was sold", r.body?.result === "exceeds_sold", r.body);
+  r = await A("merch_record_return", { p_return: { source: "manual", sale_id: sale3.sale_id, reason: "x", lines: [{ item_id: s3item.id, qty: 0, refund_kes: 100 }] } });
+  check("return: a refund needs its method", r.body?.result === "refund_method_required", r.body);
+  r = await A("merch_record_return", { p_return: { source: "manual", sale_id: sale3.sale_id, reason: "Swapped for a medium", lines: [{ item_id: s3item.id, qty: 1, refund_kes: 0, restock: true }], exchange: [{ variant_id: wpM.id, qty: 1 }], extra_paid_kes: 100, extra_method: "mpesa", extra_ref: "UFK9XYZ123" } });
+  check("exchange: S back (1 -> 2), M out (9 -> 8), top-up recorded", r.body?.result === "recorded" && r.body?.exchanged_units === 1 && (await stock(wpS)) === 2 && (await stock(wpM)) === 8, r.body);
+  r = await A("merch_void_manual_sale", { p_sale_id: sale3.sale_id, p_reason: "x" });
+  check("void: a sale with returns can't be voided", r.body?.result === "has_returns", r.body);
+
+  // Returns on a website order: partial, then the dashboard's whole-order refund.
+  const hItem = holdOrder.merch_order_items[0];
+  const unit = Number(hItem.line_total_kes) / 2;
+  r = await A("merch_record_return", { p_return: { source: "web", order_id: holdOrder.id, reason: "One shirt faulty", refund_method: "paystack", refund_ref: "RF-1", lines: [{ item_id: hItem.id, qty: 1, refund_kes: unit, restock: false }] } });
+  let o = (await get(`merch_orders?select=payment_status,refunded_kes&id=eq.${holdOrder.id}`))[0];
+  check("web return: partial refund keeps the order paid; faulty shirt not restocked", r.body?.result === "recorded" && o.payment_status === "paid" && Number(o.refunded_kes) === unit && (await stock(wpS)) === 2, { r: r.body, o });
+  r = await A("merch_refund_order", { p_order_id: holdOrder.id, p_reason: "Customer cancelled", p_restock: true, p_refund_ref: "RF-2" });
+  o = (await get(`merch_orders?select=payment_status,refunded_kes,total_kes&id=eq.${holdOrder.id}`))[0];
+  check("web refund: the rest refunded -> order 'refunded', 1 shirt restocked (S 2 -> 3)", r.body?.result === "refunded" && r.body?.restocked_units === 1 && o.payment_status === "refunded" &&
+    Number(o.refunded_kes) === Number(o.total_kes) && (await stock(wpS)) === 3, { r: r.body, o });
+  r = await A("merch_record_return", { p_return: { source: "web", order_id: holdOrder.id, reason: "x", refund_method: "paystack", lines: [{ item_id: hItem.id, qty: 0, refund_kes: 1 }] } });
+  check("web return: a fully refunded order takes no more returns", r.body?.result === "not_returnable", r.body);
+
+  // Reporting: one model over web orders, manual sales and returns.
+  const from = new Date(Date.now() - 3600_000).toISOString(), to = new Date(Date.now() + 3600_000).toISOString();
+  r = await A("merch_report", { p_from: from, p_to: to, p_source: "manual" });
+  const t = r.body?.totals;
+  // Manual: sale1 voided (out); mpesaSale 2,500; sale2 voided (out); sale3 5,000. Returns: −2,500 refund, exchange top-up +100.
+  check("report: manual totals = recorded sales − refunds + top-ups", r.body?.result === "ok" && Number(t?.gross_kes) === 7500 && Number(t?.refunds_kes) === 2500 && Number(t?.topups_kes) === 100 &&
+    Number(t?.net_kes) === 5100 && t?.manual_sales === 2 && t?.units_sold === 3 && t?.units_returned === 2 && t?.units_exchanged === 1, t);
+  r = await A("merch_report", { p_from: from, p_to: to, p_source: "web", p_product_id: (await get("merch_products?select=id&slug=eq.white-polo"))[0].id });
+  check("report: the web order and its refunds net to zero for the product", Number(r.body?.totals?.gross_kes) === Number(hItem.line_total_kes) && Number(r.body?.totals?.net_kes) === 0 && r.body?.by_product?.length === 1, r.body?.totals);
+  r = await A("merch_report", { p_from: from, p_to: to });
+  check("report: per-day series and products add up to the total", Math.round(r.body?.by_day.reduce((s: number, d: any) => s + Number(d.web_kes) + Number(d.manual_kes), 0)) === Math.round(Number(r.body?.totals?.net_kes)) && r.body?.by_product.length > 0, r.body?.by_day);
+  r = await A("merch_report", { p_from: to, p_to: from });
+  check("report: a backwards range is refused", r.body?.result === "bad_range", r.body);
+  r = await A("merch_sales_lines", { p_source: "web" });
+  const kinds = new Set((r.body ?? []).map((l: any) => l.kind));
+  check("sales lines: web sales and returns appear as their own kinds", Array.isArray(r.body) && kinds.has("sale") && kinds.has("return"), [...kinds]);
+  check("sales lines: no customer contact details", !JSON.stringify(r.body).includes("example.test") && !JSON.stringify(r.body).includes("254712"));
+  r = await A("merch_stock_check", {});
+  check("ledger: every tracked size equals the sum of its movements", Array.isArray(r.body) && r.body.length === 0, r.body);
+  {
+    // The Overview's merchandise line is the same net model (manual sales and refunds included).
+    const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2.45.4");
+    const { loadOverview } = await import("/src/lib/dashboard-data.ts");
+    const asAdmin = createClient("http://supabase.test", adminKey, { auth: { persistSession: false }, global: { headers: { Authorization: `Bearer ${adminKey}` } } });
+    const o: any = await loadOverview(asAdmin as any, 7);
+    const merchNet = o.series.reduce((s: number, p: any) => s + p.merch, 0);
+    const rep = await A("merch_report", { p_from: new Date(Date.now() - 7 * 864e5).toISOString(), p_to: new Date(Date.now() + 60_000).toISOString() });
+    check("overview: merchandise revenue = the Sales report's net (web + manual − refunds)", Math.round(merchNet) === Math.round(Number(rep.body?.totals?.net_kes)), { merchNet, net: rep.body?.totals?.net_kes });
+    check("overview: best sellers include manual sales", o.bestSellers.some((b: any) => b.name === "NyamaFest Polo"), o.bestSellers);
+  }
+  const staffSales = await (await fetch("http://supabase.test/rest/v1/merch_manual_sales?select=id", { headers: { apikey: staffKey, authorization: `Bearer ${staffKey}` } })).json();
+  check("inventory: gate staff see no manual sales (admins only)", Array.isArray(staffSales) && staffSales.length === 0, staffSales);
 }
 
 console.log(failures ? `\n${failures} FAILED` : "\nall passed");
