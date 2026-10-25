@@ -10,14 +10,31 @@ export type InvVariant = {
   held: number;
   /** Units on paid website orders not yet handed over. */
   committed: number;
+  /** A hidden "Mixed sizes" count for a product counted without sizes (20261026090000). */
+  is_bucket: boolean;
 };
 export type InvProduct = {
   id: string; name: string; color: string; slug: string; position: number;
   price_usd: number | null; is_active: boolean; sold_out: boolean; variants: InvVariant[];
+  /** Another product whose mixed-sizes count this one sells from (a second listing of the same item). */
+  stock_product_id: string | null;
 };
 export type InvGroup = { id: string; name: string; position: number; products: InvProduct[] };
 
 export const DEFAULT_LOW = 3;
+
+/**
+ * Where a sale of this size comes off — the same rule as merch_stock_target():
+ * the size if it is counted, else its product's mixed-sizes count, else the
+ * linked product's; null = not counted (sells without moving stock).
+ */
+export function stockTargets(groups: InvGroup[]) {
+  const products = new Map(groups.flatMap((g) => g.products).map((p) => [p.id, p]));
+  const bucketOf = (productId: string | null) =>
+    productId ? products.get(productId)?.variants.find((v) => v.is_bucket && v.stock_on_hand != null) ?? null : null;
+  return (p: InvProduct, v: InvVariant): InvVariant | null =>
+    v.stock_on_hand != null ? v : bucketOf(p.id) ?? bucketOf(p.stock_product_id);
+}
 export const isLow = (v: InvVariant) => v.stock_on_hand != null && v.stock_on_hand <= (v.low_stock_at ?? DEFAULT_LOW);
 export const available = (v: InvVariant) => (v.stock_on_hand == null ? null : Math.max(0, v.stock_on_hand - v.held));
 

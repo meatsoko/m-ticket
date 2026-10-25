@@ -593,11 +593,14 @@ console.log("\n--- dashboard overview ---");
   const o: any = await loadOverview(asAdmin as any, 30);
   const expMerch = (await get("merch_orders?select=total_kes&payment_status=eq.paid")).reduce((s: number, r: any) => s + Number(r.total_kes), 0);
   const expTix = (await get("orders?select=amount_kes&status=eq.paid")).reduce((s: number, r: any) => s + Number(r.amount_kes), 0);
+  // Manual sales count too (20261025100000); the stock-sheet migration recorded two.
+  const manualRows = await get("merch_manual_sales?select=subtotal_kes,refunded_kes&status=eq.recorded");
+  const expManual = manualRows.reduce((s: number, r: any) => s + Number(r.subtotal_kes) - Number(r.refunded_kes), 0);
   const revenue = o.kpis.find((k: any) => k.label === "Revenue");
-  check("overview: revenue = paid merch + paid tickets (KSh)", Math.round(revenue.value) === Math.round(expMerch + expTix) && revenue.value > 0, { got: revenue.value, expMerch, expTix });
+  check("overview: revenue = paid merch + manual sales + paid tickets (KSh)", Math.round(revenue.value) === Math.round(expMerch + expManual + expTix) && revenue.value > 0, { got: revenue.value, expMerch, expManual, expTix });
   check("overview: daily series sums to the same revenue", Math.round(o.series.reduce((s: number, p: any) => s + p.merch + p.tickets, 0)) === Math.round(revenue.value) && o.series.length === 30, o.series.length);
   const paidMerch = (await get("merch_orders?select=id&payment_status=eq.paid")).length;
-  check("overview: merch sales KPI counts paid orders (no manual sales yet)", o.kpis.find((k: any) => k.label === "Merch sales").value === paidMerch, paidMerch);
+  check("overview: merch sales KPI counts paid orders + manual sales", o.kpis.find((k: any) => k.label === "Merch sales").value === paidMerch + manualRows.length, { paidMerch, manual: manualRows.length });
   check("overview: best sellers come from paid merch items", o.bestSellers.length > 0 && o.bestSellers.every((b: any) => b.sold > 0), o.bestSellers);
   check("overview: event bookings KPI counts non-cancelled bookings", o.kpis.find((k: any) => k.label === "Event bookings").value > 0);
   check("overview: next live event attendance with tickets by type", !!o.attendance && o.attendance.expected > 0 && o.attendance.byType.length > 0, o.attendance);
@@ -2601,7 +2604,8 @@ console.log("\n--- online meet link on registration ---");
 console.log("\n--- merch catalogue + inventory ---");
 {
   // Catalogue: the database now says what the website said.
-  const prods: any[] = await get("merch_products?select=slug,price_usd,sold_out,image_fit,position,style_name,merch_variants(size)");
+  // Website products only (the stock sheet added two stand-only caps, inactive); sizes without the hidden buckets.
+  const prods: any[] = await get("merch_products?select=slug,price_usd,sold_out,image_fit,position,style_name,merch_variants(size)&is_active=eq.true&merch_variants.is_bucket=eq.false");
   const bySlug = new Map(prods.map((p) => [p.slug, p]));
   check("catalogue: 26 products, as on the website", prods.length === 26, prods.length);
   check("catalogue: Kenya edition at its website address", bySlug.has("bmb-hoodie-black-kenya-edition") && !bySlug.has("bmb-hoodie-kenya-edition"));
@@ -2677,7 +2681,7 @@ console.log("\n--- merch catalogue + inventory ---");
     (await get(`merch_variants?select=id,sku,stock_on_hand,merch_products!inner(slug)&merch_products.slug=eq.${slug}&size=eq.${size}`))[0];
   const stock = async (v: any) => (await get(`merch_variants?select=stock_on_hand&id=eq.${v.id}`))[0].stock_on_hand;
   const wpS = await variant("white-polo", "S"), wpM = await variant("white-polo", "M"), wpL = await variant("white-polo", "L");
-  const gpM = await variant("green-polo", "M");
+  const gpM = await variant("bmb-hoodie-blue", "M");   // untracked, no bucket
 
   // Opening counts: a draft first, then confirmed.
   r = await A("merch_stock_apply", { p_kind: "count", p_lines: [{ variant_id: wpS.id, counted: 3, expected: 0 }] });
@@ -2818,11 +2822,11 @@ console.log("\n--- merch catalogue + inventory ---");
 
   // Reporting: one model over web orders, manual sales and returns.
   const from = new Date(Date.now() - 3600_000).toISOString(), to = new Date(Date.now() + 3600_000).toISOString();
-  r = await A("merch_report", { p_from: from, p_to: to, p_source: "manual" });
+  r = await A("merch_report", { p_from: from, p_to: to, p_source: "manual", p_product_id: (await get("merch_products?select=id&slug=eq.white-polo"))[0].id });
   const t = r.body?.totals;
   // Manual: sale1 voided (out); mpesaSale 2,500; sale2 voided (out); sale3 5,000. Returns: −2,500 refund, exchange top-up +100.
-  check("report: manual totals = recorded sales − refunds + top-ups", r.body?.result === "ok" && Number(t?.gross_kes) === 7500 && Number(t?.refunds_kes) === 2500 && Number(t?.topups_kes) === 100 &&
-    Number(t?.net_kes) === 5100 && t?.manual_sales === 2 && t?.units_sold === 3 && t?.units_returned === 2 && t?.units_exchanged === 1, t);
+  check("report: manual totals = recorded sales − refunds (white polo)", r.body?.result === "ok" && Number(t?.gross_kes) === 7500 && Number(t?.refunds_kes) === 2500 &&
+    Number(t?.net_kes) === 5000 && t?.manual_sales === 2 && t?.units_sold === 3 && t?.units_returned === 2 && t?.units_exchanged === 1, t);
   r = await A("merch_report", { p_from: from, p_to: to, p_source: "web", p_product_id: (await get("merch_products?select=id&slug=eq.white-polo"))[0].id });
   check("report: the web order and its refunds net to zero for the product", Number(r.body?.totals?.gross_kes) === Number(hItem.line_total_kes) && Number(r.body?.totals?.net_kes) === 0 && r.body?.by_product?.length === 1, r.body?.totals);
   r = await A("merch_report", { p_from: from, p_to: to });
@@ -2848,6 +2852,121 @@ console.log("\n--- merch catalogue + inventory ---");
   }
   const staffSales = await (await fetch("http://supabase.test/rest/v1/merch_manual_sales?select=id", { headers: { apikey: staffKey, authorization: `Bearer ${staffKey}` } })).json();
   check("inventory: gate staff see no manual sales (admins only)", Array.isArray(staffSales) && staffSales.length === 0, staffSales);
+}
+
+// 33. Real stock without changing the website: buckets, test orders, the 2026-10-25 sheet
+console.log("\n--- mixed-size buckets + stock sheet ---");
+{
+  const adminUid = crypto.randomUUID();
+  await fetch("http://supabase.test/rest/v1/rpc/test_make_user", { method: "POST", headers: svc, body: JSON.stringify({ p_id: adminUid }) });
+  await post("admin_users", { user_id: adminUid, role: "admin" });
+  const adminKey = await jwt({ role: "authenticated", sub: adminUid, exp: 4102444800 });
+  const A = (fn: string, body: unknown) => rpc(fn, body, adminKey);
+  const bySku = async (sku: string) => (await get(`merch_variants?select=id,sku,stock_on_hand,is_active,is_bucket&sku=eq.${sku}`))[0];
+  const onHand = async (sku: string) => (await bySku(sku))?.stock_on_hand;
+  const sizeOf = async (slug: string, size: string) => (await get(`merch_variants?select=id,merch_products!inner(slug)&size=eq.${encodeURIComponent(size)}&merch_products.slug=eq.${slug}`))[0];
+
+  // The sheet, as loaded by 20261026091000 (earlier sections never touch these pieces).
+  check("sheet: 11 hidden buckets, none on the shop", (await get("merch_variants?select=id,is_active&is_bucket=eq.true")).every((v: any) => !v.is_active) && (await get("merch_variants?select=id&is_bucket=eq.true")).length === 11);
+  check("sheet: white hoodie 6 − 2 sold − 4 marketing = 0; dust coat 15 − 2 = 13",
+    (await onHand("WHITE-HOODIE-MIXED")) === 0 && (await onHand("MEATSOKO-DUST-COAT-MIXED")) === 13);
+  check("sheet: Executive Polo 3, caps 3 + 4, tees 2/2/3, Hustle 1",
+    (await onHand("EXECUTIVE-POLO-MIXED")) === 3 && (await onHand("BMB-CAP-ONESIZE")) === 3 && (await onHand("MEATSOKO-CAP-ONESIZE")) === 4 &&
+    (await onHand("GREEN-T-SHIRT-MIXED")) === 2 && (await onHand("WHITE-T-SHIRT-MIXED")) === 3 && (await onHand("HUSTLE-GAME-21-HOODIE-MODEL-MIXED")) === 1);
+  const sheetSales = await get("merch_manual_sales?select=subtotal_kes,payment_method,merch_manual_sale_items(qty,unit_price_kes)&location=eq.Stock%20sheet&order=subtotal_kes");
+  check("sheet: two cash sales — 2 dust coats @ 1,500 and 2 white hoodies @ 8,000",
+    sheetSales.length === 2 && sheetSales.every((s: any) => s.payment_method === "cash") && Number(sheetSales[0].subtotal_kes) === 3000 && Number(sheetSales[1].subtotal_kes) === 16000);
+  check("sheet: stand-only caps are not in the shop catalogue", (await get("merch_products?select=is_active&slug=in.(bmb-cap,meatsoko-cap)")).every((p: any) => p.is_active === false));
+
+  // The website is unchanged: no size of a bucketed product is tracked or limited.
+  const av = await rpc("merch_availability", { p_slugs: ["white-hoodie", "executive-polo"] });
+  check("storefront: bucketed products still show every size, untracked, unlimited",
+    av.body.length === 10 && av.body.every((r: any) => r.tracked === false && r.available === null) && !av.body.some((r: any) => r.size === "Mixed sizes"), av.body);
+
+  // A website sale of a size comes off its product's bucket, even past zero (never refused or flagged).
+  let r: any = await call("checkout", { customer: { ...customer, phone: "0722000331", email: "bucket.buyer@example.test" }, delivery: { code: "event" }, lines: [{ slug: "white-hoodie", size: "M", qty: 1 }] }, ip());
+  const wRef = r.body?.reference;
+  r = await call("order", { reference: wRef });
+  check("web sale: paid, the white-hoodie bucket goes 0 -> −1 (owed), no flag", r.body?.payment_status === "paid" && (await onHand("WHITE-HOODIE-MIXED")) === -1, r.body);
+  const wOrder = (await get(`merch_orders?select=id,order_number,merch_order_items(id)&paystack_reference=eq.${wRef}`))[0];
+  const lines: any = await A("merch_sales_lines", { p_source: "web" });
+  check("web sale: the sales line says it moved stock", lines.body.some((l: any) => l.ref === wOrder.order_number && l.kind === "sale" && l.stock_tracked === true), lines.body.filter((l: any) => l.ref === wOrder.order_number));
+  const wm = (await get(`merch_stock_movements?select=note,variant_id&order_id=eq.${wOrder.id}`))[0];
+  check("web sale: the movement names the size sold", wm?.note === "Website sale, size M", wm);
+
+  // The stand stays strict on a bucket.
+  const whM = await sizeOf("white-hoodie", "M");
+  r = await A("merch_record_manual_sale", { p_sale: { payment_method: "cash", lines: [{ variant_id: whM.id, qty: 1, unit_price_kes: 8000 }] } });
+  check("stand: can't sell from an empty bucket (insufficient)", r.body?.result === "insufficient", r.body);
+  const rhM = await sizeOf("red-hoodie", "M"), rhL = await sizeOf("red-hoodie", "L");
+  r = await A("merch_record_manual_sale", { p_sale: { payment_method: "cash", lines: [{ variant_id: rhM.id, qty: 2, unit_price_kes: 8000 }, { variant_id: rhL.id, qty: 2, unit_price_kes: 8000 }] } });
+  check("stand: two sizes sharing a bucket of 3 can't take 4 together", r.body?.result === "insufficient" && (await onHand("RED-HOODIE-MIXED")) === 3, r.body);
+  r = await A("merch_record_manual_sale", { p_sale: { payment_method: "cash", lines: [{ variant_id: rhM.id, qty: 1, unit_price_kes: 8000 }, { variant_id: rhL.id, qty: 1, unit_price_kes: 8000 }] } });
+  const rhSale = r.body;
+  check("stand: M + L come off the red-hoodie bucket (3 -> 1), items keep their sizes", r.body?.result === "recorded" && (await onHand("RED-HOODIE-MIXED")) === 1 &&
+    (await get(`merch_manual_sale_items?select=size,stock_tracked&sale_id=eq.${rhSale.sale_id}&order=size`)).map((i: any) => `${i.size}:${i.stock_tracked}`).join(",") === "L:true,M:true", r.body);
+  r = await A("merch_void_manual_sale", { p_sale_id: rhSale.sale_id, p_reason: "Test" });
+  check("stand: voiding puts both back on the bucket (1 -> 3)", r.body?.result === "voided" && (await onHand("RED-HOODIE-MIXED")) === 3, r.body);
+
+  // The second Hustle Game 21 listing sells from the first one's count.
+  r = await call("checkout", { customer: { ...customer, phone: "0722000332", email: "hustle.buyer@example.test" }, delivery: { code: "event" }, lines: [{ slug: "hustle-game-21-hoodie-views", size: "L", qty: 1 }] }, ip());
+  r = await call("order", { reference: r.body?.reference });
+  check("linked listing: a 'views' hoodie sale comes off the 'model' count (1 -> 0)", r.body?.payment_status === "paid" && (await onHand("HUSTLE-GAME-21-HOODIE-MODEL-MIXED")) === 0, r.body);
+  // A same-style different colourway must never borrow a bucket.
+  const wpL = await sizeOf("white-polo", "L");
+  const polosBefore = [await onHand("RED-POLO-MIXED"), await onHand("GREEN-POLO-MIXED")];
+  r = await A("merch_record_manual_sale", { p_sale: { payment_method: "cash", lines: [{ variant_id: wpL.id, qty: 1, unit_price_kes: 1500 }] } });
+  check("no borrowing: a white polo sale leaves the red/green polo buckets alone", r.body?.result === "recorded" &&
+    (await onHand("RED-POLO-MIXED")) === polosBefore[0] && (await onHand("GREEN-POLO-MIXED")) === polosBefore[1] &&
+    (await get(`merch_manual_sale_items?select=stock_tracked&sale_id=eq.${r.body?.sale_id}`))[0]?.stock_tracked === false, r.body);
+
+  // Returns go back to the bucket.
+  r = await A("merch_record_return", { p_return: { source: "web", order_id: wOrder.id, reason: "Too big", refund_method: "paystack", lines: [{ item_id: wOrder.merch_order_items[0].id, qty: 1, refund_kes: 100, restock: true }] } });
+  check("return: the hoodie goes back on the white-hoodie bucket (−1 -> 0)", r.body?.result === "recorded" && (await onHand("WHITE-HOODIE-MIXED")) === 0, r.body);
+
+  // Test orders stay out of the numbers.
+  r = await call("checkout", { customer: { ...customer, phone: "0722000333", email: "tester@example.test" }, delivery: { code: "event" }, lines: [{ slug: "fuel-your-soul-water-bottle", size: "One size", qty: 1 }] }, ip());
+  const tRef = r.body?.reference;
+  await call("order", { reference: tRef });
+  const tOrder = (await get(`merch_orders?select=id,order_number,merch_order_items(id)&paystack_reference=eq.${tRef}`))[0];
+  await patch(`merch_orders?id=eq.${tOrder.id}`, { is_test: true });
+  const all: any = await A("merch_sales_lines", {});
+  check("test order: left out of the sales lines", !all.body.some((l: any) => l.ref === tOrder.order_number), all.body.length);
+  r = await A("merch_record_return", { p_return: { source: "web", order_id: tOrder.id, reason: "x", refund_method: "paystack", lines: [{ item_id: tOrder.merch_order_items[0].id, qty: 1, refund_kes: 1 }] } });
+  check("test order: takes no returns", r.body?.result === "not_returnable", r.body);
+
+  r = await rpc("merch_stock_target", { p_variant_id: whM.id });
+  check("bucket helper: closed to anon", r.body?.code === "42501", r.body);
+  r = await A("merch_stock_target", { p_variant_id: whM.id });
+  check("bucket helper: closed to admins too (internal)", r.body?.code === "42501", r.body);
+  const bad = await fetch(`http://supabase.test/rest/v1/merch_variants?sku=eq.WHITE-HOODIE-MIXED`, { method: "PATCH", headers: svc, body: JSON.stringify({ is_active: true }) });
+  check("bucket: can't be put on the shop", bad.status >= 400);
+  r = await A("merch_stock_check", {});
+  check("ledger: every count, buckets included, equals its history", Array.isArray(r.body) && r.body.length === 0, r.body);
+
+  // Reports (src/lib/reports.ts): the same builder the CSV and the printable page use.
+  const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2.45.4");
+  const { buildReport, reportToCsv } = await import("/src/lib/reports.ts");
+  const asAdmin = createClient("http://supabase.test", adminKey, { auth: { persistSession: false }, global: { headers: { Authorization: `Bearer ${adminKey}` } } });
+  const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Nairobi" }).format(new Date());
+  const f = { from: day, to: day, source: "", groupId: "", productId: "", includeUntracked: false };
+  const stockRep: any = await buildReport(asAdmin as any, "stock", f);
+  const row = (sku: string) => stockRep.sections[0].rows.find((x: any[]) => x[4] === sku);
+  check("report stock: counted lines only by default, buckets as 'Mixed sizes'", row("MEATSOKO-DUST-COAT-MIXED")?.[3] === "Mixed sizes" && row("MEATSOKO-DUST-COAT-MIXED")?.[6] === 13 && !row("BMB-HOODIE-BLUE-M"), row("MEATSOKO-DUST-COAT-MIXED"));
+  const withAll: any = await buildReport(asAdmin as any, "stock", { ...f, includeUntracked: true });
+  check("report stock: 'include sizes not counted yet' adds them, marked", withAll.sections[0].rows.some((x: any[]) => x[4] === "WHITE-HOODIE-S" && x[5] === "In mixed sizes") && withAll.sections[0].rows.some((x: any[]) => x[5] === "Not counted"));
+  const summary: any = await buildReport(asAdmin as any, "sales_summary", f);
+  const rep = await A("merch_report", { p_from: new Date(`${day}T00:00:00+03:00`).toISOString(), p_to: new Date(new Date(`${day}T00:00:00+03:00`).getTime() + 864e5).toISOString() });
+  check("report summary: net equals merch_report for the same day", summary.totals[0].value === `KSh ${Number(rep.body.totals.net_kes).toLocaleString("en-KE", { maximumFractionDigits: 2 })}`, { got: summary.totals[0].value, net: rep.body.totals.net_kes });
+  const manualRep: any = await buildReport(asAdmin as any, "manual_sales", f);
+  check("report manual sales: includes the stock-sheet sales", manualRep.sections[0].rows.filter((x: any[]) => x[7] === "Stock sheet").length === 2);
+  let leaks = false;
+  for (const t of ["stock", "movements", "sales_lines", "sales_summary", "manual_sales", "returns", "received"]) {
+    const rr: any = await buildReport(asAdmin as any, t as any, f);
+    const flat = JSON.stringify(reportToCsv(rr));
+    if (/@example\.test|2547\d{8}|07\d{8}/.test(flat)) leaks = true;
+  }
+  check("reports: no customer emails or phone numbers in any report", !leaks);
 }
 
 console.log(failures ? `\n${failures} FAILED` : "\nall passed");

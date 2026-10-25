@@ -45,7 +45,7 @@ docker run -d --rm --name "$REST" --network "$NET" \
 sleep 4
 # test.ts reaches PostgREST at http://mt-harness-rest:3000 (see its fetch shim).
 docker run --rm --network "$NET" -v "$APP/supabase/functions:/fns:ro" -v "$HERE:/harness:ro" -v "$APP/src:/src:ro" \
-  -w /harness denoland/deno:2.6.3 deno run --allow-net --allow-env --allow-read --no-check test.ts >"$LOG" 2>&1 || true
+  -w /harness denoland/deno:2.6.3 deno run --allow-net --allow-env --allow-read --no-check --sloppy-imports test.ts >"$LOG" 2>&1 || true
 
 ok=$(grep -cE '^ok' "$LOG" || true); fail=$(grep -cE '^FAIL' "$LOG" || true)
 grep -E '^FAIL' "$LOG" || true

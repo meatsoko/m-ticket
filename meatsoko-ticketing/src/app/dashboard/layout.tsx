@@ -13,7 +13,7 @@ export const metadata: Metadata = { title: "Dashboard · MeatSoko", robots: { in
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, supabase } = await requireAdmin();
   const { count } = await supabase.from("merch_orders").select("id", { count: "exact", head: true })
-    .eq("payment_status", "paid").not("fulfilment_status", "in", "(delivered,collected,cancelled)");
+    .eq("payment_status", "paid").eq("is_test", false).not("fulfilment_status", "in", "(delivered,collected,cancelled)");
   return (
     <div className="dash dash-shell">
       <aside className="dash-side">

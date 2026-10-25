@@ -25,7 +25,7 @@ const COPY: Record<Mode, { intro: string; input: string; save: string }> = {
     input: "Remove", save: "Remove from stock",
   },
   opening: {
-    intro: "For sizes not tracked yet: count everything on the shelf. Don't count units already packed for paid website orders (shown under each size). Save it as a draft, check it, then confirm — the size is tracked from that moment.",
+    intro: "For sizes not tracked yet: count everything on the shelf. Don't count units already packed for paid website orders (shown under each size). Save it as a draft, check it, then confirm — the size is tracked from that moment. Note: a counted size is also limited on the website (sold out at 0); products counted as “Mixed sizes” stay unlimited online.",
     input: "Counted", save: "Confirm opening count",
   },
 };
@@ -139,7 +139,7 @@ export default function StockGrid({ mode, groups, drafts = [], variants }: {
               <div className="stock-cells">
                 {p.variants.filter(editable).map((v) => (
                   <label key={v.id} className={`stock-cell${values[v.id]?.trim() ? " filled" : ""}`}>
-                    <span>{v.size}</span>
+                    <span>{v.is_bucket ? "Mixed sizes" : v.size}</span>
                     <input inputMode="numeric" aria-label={`${copy.input}: ${p.name} ${p.color} ${v.size}`}
                       value={values[v.id] ?? ""} placeholder={mode === "count" ? String(v.stock_on_hand) : mode === "opening" ? "—" : "0"}
                       onChange={(e) => { setValues({ ...values, [v.id]: e.target.value.replace(/[^\d]/g, "") }); setReview(false); }} />

@@ -6,6 +6,7 @@ import { downloadCsv, explain, kes, nairobiDay, nairobiStart, when, type InvGrou
 import { BestSellers, DailySalesChart, fillDays, type DayRow, type ProductRow } from "@/components/dashboard/sales/SalesCharts";
 import ManualSaleForm from "@/components/dashboard/sales/ManualSaleForm";
 import ReturnForm from "@/components/dashboard/ReturnForm";
+import ReportsDialog from "@/components/dashboard/ReportsDialog";
 
 // Dashboard → Sales. One report over every merchandise sale — website orders,
 // manual sales (event stand, office) and their returns — from merch_report and
@@ -86,7 +87,11 @@ export default function SalesBoard({ groups, fxRate, events, sales, people }: {
           <h1>Sales</h1>
           <p>Every merchandise sale in one place: website orders and sales recorded here (event stand, office), with refunds and returns taken off. Amounts are KSh.</p>
         </div>
-        {!form && <button type="button" className="dash-btn primary" onClick={() => setForm({ replacing: null })}>+ Record a sale</button>}
+        <div className="dash-toolbar-right">
+          <ReportsDialog initial="sales_summary" groups={groups.map((g) => ({ id: g.id, name: g.name }))}
+            products={groups.flatMap((g) => g.products.map((p) => ({ id: p.id, name: `${p.name} · ${p.color}`, groupId: g.id })))} />
+          {!form && <button type="button" className="dash-btn primary" onClick={() => setForm({ replacing: null })}>+ Record a sale</button>}
+        </div>
       </div>
 
       {form && <ManualSaleForm key={form.replacing?.id ?? "new"} groups={groups} fxRate={fxRate} events={events} replacing={form.replacing} onDone={() => setForm(null)} />}

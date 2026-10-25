@@ -9,7 +9,7 @@ export default async function OrdersPage() {
   const [{ data, error }, groups] = await Promise.all([
     supabase.from("merch_orders")
       .select(`id,order_number,created_at,paid_at,first_name,last_name,phone,email,delivery_code,delivery_address,
-               delivery_town,delivery_sacco,notes,total_usd,total_kes,delivery_fee_kes,refunded_kes,payment_status,fulfilment_status,refund_reason,
+               delivery_town,delivery_sacco,notes,total_usd,total_kes,delivery_fee_kes,refunded_kes,is_test,payment_status,fulfilment_status,refund_reason,
                paystack_reference,
                merch_delivery_options(label),merch_delivery_zones(name),
                merch_order_items(id,product_name,color,size,qty,unit_price_usd,unit_price_kes,line_total_kes),

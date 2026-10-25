@@ -36,7 +36,7 @@ export async function loadOverview(db: SupabaseClient, days: Range): Promise<Ove
     db.from("orders").select("amount_kes,paid_at").eq("status", "paid").gte("paid_at", prevStart),
     db.from("reservations").select("created_at").neq("status", "cancelled").gte("created_at", prevStart),
     db.from("merch_orders").select("id", { count: "exact", head: true })
-      .eq("payment_status", "paid").not("fulfilment_status", "in", "(delivered,collected,cancelled)"),
+      .eq("payment_status", "paid").eq("is_test", false).not("fulfilment_status", "in", "(delivered,collected,cancelled)"),
     db.from("events").select("id,name,slug,capacity").eq("status", "live")
       .gte("ends_at", new Date(now).toISOString()).order("starts_at").limit(1).maybeSingle(),
   ]);

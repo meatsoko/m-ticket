@@ -270,6 +270,34 @@ Migrations `20261025090000_merch_catalogue_sync.sql`, `20261025091000_merch_stoc
   build checked against a local copy of the database; all 26 product pages and `/returns`
   rendered the same visible text as the live site.
 
+## Real stock, website unchanged (branch `feat/merch-stock-sheet`, 2026-10-26)
+
+Migrations `20261026090000_merch_mixed_size_stock.sql` (logic) and
+`20261026091000_merch_stock_sheet_2026_10_25.sql` (the organiser's stock sheet). Read the headers.
+- The organiser wants **real inventory in the backend with the website's prices and
+  availability unchanged**. Counts were given per product (no sizes), so each counted product has
+  a hidden **"Mixed sizes" bucket** (`merch_variants.is_bucket`, inactive, `<SLUG>-MIXED`). Website
+  sizes stay untracked → the shop is unchanged (verified: every product page identical to live).
+- `merch_stock_target()`: a sale comes off the size if counted, else its product's bucket, else
+  the bucket of `merch_products.stock_product_id` (set only for `hustle-game-21-hoodie-views` →
+  `-model`; never match by `style_key`, which also groups different colourways).
+- Website sales never block; a bucket can go **negative** ("sold online, not in stock — owed").
+  Stand sales, removals and exchanges are strict.
+- Stock sheet 2026-10-25 (counts before sales): dust coat 15 (2 sold @ 1,500 → 13), Hustle 1,
+  red polo 2 (rough), green polo 2, white hoodie 6 (2 sold @ 8,000, 4 marketing → 0), green
+  hoodie 2, red hoodie 3, Executive Polo 3 (still "sold out" on the site), tees green 2 / red 2 /
+  white 3, stand-only products **BMB Cap 3** and **MeatSoko Cap 4** (inactive, unpriced). All
+  payments cash. Everything else stays untracked.
+- `merch_orders.is_test`: **MS-FEADKS** (KSh 10 beanie, 2026-09-29) is a test — out of sales lines,
+  reports, Overview, Orders revenue and the to-fulfil count.
+- **Reports button** (Inventory, Sales, Overview): choose report (current stock, movements,
+  sales summary, sales lines, manual sales, returns, stock received) and options (dates,
+  source, category/product, include uncounted sizes) → CSV or printable page
+  (`/dashboard/reports/print`). One builder: `src/lib/reports.ts`. No customer contacts.
+- Counting a real size later (opening count) **will** limit it on the website — the opening-count
+  screen says so.
+- Harness `ok: 751 FAIL: 0` (2026-10-26; `run.sh` now passes `--sloppy-imports`).
+
 ## Dashboard (`/dashboard`, store theme)
 
 Overview · Orders · Inventory · Sales · Events & tickets (Create event, Tickets — activity, passes,

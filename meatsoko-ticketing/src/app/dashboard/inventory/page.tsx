@@ -11,8 +11,8 @@ export default async function InventoryPage() {
   const [cat, avail, committed, batches, movements, staff, check] = await Promise.all([
     supabase.from("merch_groups")
       .select(`id,name,position,
-               merch_products(id,name,color,slug,price_usd,position,is_active,sold_out,
-                 merch_variants(id,size,sku,stock_on_hand,low_stock_at,position,is_active))`)
+               merch_products(id,name,color,slug,price_usd,position,is_active,sold_out,stock_product_id,
+                 merch_variants(id,size,sku,stock_on_hand,low_stock_at,position,is_active,is_bucket))`)
       .order("position"),
     supabase.rpc("merch_availability"),
     // Paid website orders not handed over yet: units that may sit packed on a shelf.
@@ -44,7 +44,7 @@ export default async function InventoryPage() {
     id: g.id, name: g.name, position: g.position,
     products: [...(g.merch_products ?? [])].sort((a: any, b: any) => a.position - b.position).map((p: any) => ({
       id: p.id, name: p.name, color: p.color, slug: p.slug, position: p.position,
-      price_usd: p.price_usd == null ? null : Number(p.price_usd), is_active: p.is_active, sold_out: p.sold_out,
+      price_usd: p.price_usd == null ? null : Number(p.price_usd), is_active: p.is_active, sold_out: p.sold_out, stock_product_id: p.stock_product_id,
       variants: [...(p.merch_variants ?? [])].sort((a: any, b: any) => a.position - b.position).map((v: any) => ({
         ...v, held: held.get(v.id) ?? 0, committed: owed.get(v.id) ?? 0,
       })),

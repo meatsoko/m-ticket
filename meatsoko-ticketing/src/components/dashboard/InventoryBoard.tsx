@@ -1,10 +1,11 @@
 "use client";
 import { useMemo, useState } from "react";
 import { formatPrice } from "@/lib/merchandise";
-import { available, isLow, type InvGroup, type InvProduct, type InvVariant } from "@/lib/inventory";
+import { available, isLow, stockTargets, type InvGroup, type InvProduct, type InvVariant } from "@/lib/inventory";
 import StockGrid from "@/components/dashboard/inventory/StockGrid";
 import StockImport from "@/components/dashboard/inventory/StockImport";
 import StockHistory from "@/components/dashboard/inventory/StockHistory";
+import ReportsDialog from "@/components/dashboard/ReportsDialog";
 
 // Dashboard → Inventory. Four quick ways to change stock, all writing to the one
 // ledger (merch_stock_movements) through merch_stock_apply():
@@ -50,14 +51,19 @@ export default function InventoryBoard({ groups, batches, movements, people, led
 
   return (
     <div className="dash-stack">
-      <div className="dash-title">
-        <h1>Inventory</h1>
-        <p>Stock for every product and size. Count, receive or remove stock below — every change is kept in the history with who made it and why. A size starts being counted once its opening count is confirmed; until then it sells to order with no limit.</p>
+      <div className="dash-title-row">
+        <div className="dash-title">
+          <h1>Inventory</h1>
+          <p>Stock for every product and size. Count, receive or remove stock below — every change is kept in the history with who made it and why. A size starts being counted once its opening count is confirmed; until then it sells to order with no limit.</p>
+        </div>
+        <ReportsDialog initial="stock" groups={groups.map((g) => ({ id: g.id, name: g.name }))}
+          products={groups.flatMap((g) => g.products.map((p) => ({ id: p.id, name: `${p.name} · ${p.color}`, groupId: g.id })))} />
       </div>
 
       <div className="dash-stats">
         <div><span>Sizes tracked</span><strong>{tracked.length} / {all.length}</strong></div>
-        <div><span>Units in stock</span><strong>{tracked.reduce((n, v) => n + (v.stock_on_hand ?? 0), 0).toLocaleString("en-KE")}</strong></div>
+        <div><span>Units in stock</span><strong>{tracked.reduce((n, v) => n + Math.max(0, v.stock_on_hand ?? 0), 0).toLocaleString("en-KE")}</strong></div>
+        {tracked.some((v) => v.stock_on_hand! < 0) && <div className="warn"><span>Sold online, not in stock</span><strong>{tracked.reduce((n, v) => n + Math.max(0, -(v.stock_on_hand ?? 0)), 0)}</strong></div>}
         <div className={tracked.some((v) => isLow(v) && v.stock_on_hand! > 0) ? "warn" : undefined}><span>Running low</span><strong>{tracked.filter((v) => isLow(v) && v.stock_on_hand! > 0).length}</strong></div>
         <div className={tracked.some((v) => v.stock_on_hand === 0) ? "warn" : undefined}><span>Sold out</span><strong>{tracked.filter((v) => v.stock_on_hand === 0).length}</strong></div>
         {drafts.length > 0 && <div className="warn"><span>Counts to confirm</span><strong>{drafts.length}</strong></div>}
@@ -86,8 +92,10 @@ function StockOverview({ groups, ledgerProblems }: { groups: InvGroup[]; ledgerP
   const [filter, setFilter] = useState<"all" | "low" | "untracked">("all");
   const [q, setQ] = useState("");
   const term = q.trim().toLowerCase();
-  const show = (v: InvVariant) =>
-    filter === "low" ? v.stock_on_hand != null && isLow(v) : filter === "untracked" ? v.stock_on_hand == null : true;
+  const targetOf = useMemo(() => stockTargets(groups), [groups]);
+  // Sizes of a product counted without sizes live in its "Mixed sizes" row.
+  const show = (p: InvProduct) => (v: InvVariant) =>
+    filter === "low" ? v.stock_on_hand != null && isLow(v) : filter === "untracked" ? !targetOf(p, v) : true;
 
   return (
     <>
@@ -105,7 +113,7 @@ function StockOverview({ groups, ledgerProblems }: { groups: InvGroup[]; ledgerP
         </p>
       )}
       {groups.map((g) => {
-        const products = g.products.filter((p) => (!term || `${p.name} ${p.color}`.toLowerCase().includes(term)) && p.variants.some(show));
+        const products = g.products.filter((p) => (!term || `${p.name} ${p.color}`.toLowerCase().includes(term)) && p.variants.some(show(p)));
         if (!products.length) return null;
         return (
           <section key={g.id} className="dash-group">
@@ -121,16 +129,22 @@ function StockOverview({ groups, ledgerProblems }: { groups: InvGroup[]; ledgerP
                     </small>
                   </header>
                   <div className="dash-sizes">
-                    {p.variants.filter(show).map((v) => {
-                      const state = v.stock_on_hand == null ? "untracked" : v.stock_on_hand === 0 ? "out" : isLow(v) ? "low" : "ok";
+                    {p.variants.filter(show(p)).map((v) => {
+                      const target = targetOf(p, v);
+                      const state = v.stock_on_hand == null ? (target ? "pooled" : "untracked")
+                        : v.stock_on_hand < 0 ? "out owed" : v.stock_on_hand === 0 ? "out" : isLow(v) ? "low" : "ok";
                       return (
                         <div key={v.id} className={`dash-size dash-size-row ${state}`}>
-                          <span className="dash-size-name">{v.size}</span>
+                          <span className="dash-size-name">{v.is_bucket ? "Mixed" : v.size}</span>
                           <span className="dash-size-count">
-                            {v.stock_on_hand == null ? "To order" : <><strong>{v.stock_on_hand}</strong> on hand</>}
+                            {v.stock_on_hand == null
+                              ? (target ? <small>counted in {target.is_bucket ? "mixed sizes" : target.size}</small> : "To order")
+                              : v.stock_on_hand < 0
+                                ? <><strong>{v.stock_on_hand}</strong> <small>sold online, not in stock</small></>
+                                : <><strong>{v.stock_on_hand}</strong> on hand</>}
                             {v.held > 0 && v.stock_on_hand != null && <small> · {v.held} held, {available(v)} free</small>}
                           </span>
-                          <small className="dash-size-state">{state === "untracked" ? "Not tracked" : state === "out" ? "Sold out" : state === "low" ? "Low" : "In stock"}</small>
+                          <small className="dash-size-state">{state === "untracked" ? "Not tracked" : state === "pooled" ? "" : state === "out owed" ? "Owed" : state === "out" ? "Sold out" : state === "low" ? "Low" : "In stock"}</small>
                         </div>
                       );
                     })}

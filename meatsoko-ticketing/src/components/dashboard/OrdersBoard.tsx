@@ -11,7 +11,7 @@ export type DashOrder = {
   first_name: string; last_name: string; phone: string; email: string;
   delivery_code: string; delivery_address: string | null; delivery_town: string | null;
   delivery_sacco: string | null; notes: string | null;
-  total_usd: number; total_kes: number; delivery_fee_kes: number; refunded_kes: number; paid_with: "paystack" | "mpesa";
+  total_usd: number; total_kes: number; delivery_fee_kes: number; refunded_kes: number; is_test: boolean; paid_with: "paystack" | "mpesa";
   payment_status: "pending" | "paid" | "failed" | "refunded" | "flagged";
   fulfilment_status: string; refund_reason: string | null;
   merch_delivery_options: { label: string } | null;
@@ -49,7 +49,8 @@ export default function OrdersBoard({ orders, groups }: { orders: DashOrder[]; g
   const [q, setQ] = useState("");
   const [open, setOpen] = useState<string | null>(null);
 
-  const paid = orders.filter((o) => o.payment_status === "paid");
+  // Test purchases (merch_orders.is_test) stay listed but out of the numbers.
+  const paid = orders.filter((o) => o.payment_status === "paid" && !o.is_test);
   const todo = paid.filter((o) => !DONE.includes(o.fulfilment_status));
   const revenue = paid.reduce((s, o) => s + Number(o.total_kes) - Number(o.refunded_kes ?? 0), 0);
   const flagged = orders.filter((o) => o.payment_status === "flagged").length;
@@ -57,7 +58,7 @@ export default function OrdersBoard({ orders, groups }: { orders: DashOrder[]; g
   const shown = useMemo(() => {
     const term = q.trim().toLowerCase();
     return orders.filter((o) => {
-      if (filter === "todo" && !(o.payment_status === "paid" && !DONE.includes(o.fulfilment_status)) && o.payment_status !== "flagged") return false;
+      if (filter === "todo" && (o.is_test || (!(o.payment_status === "paid" && !DONE.includes(o.fulfilment_status)) && o.payment_status !== "flagged"))) return false;
       if (filter === "done" && !(o.payment_status === "paid" && DONE.includes(o.fulfilment_status))) return false;
       if (filter === "refunded" && o.payment_status !== "refunded") return false;
       if (!term) return true;
@@ -187,6 +188,7 @@ function OrderRow({ order: o, groups, open, onToggle }: { order: DashOrder; grou
           {pay !== "paid" && <span className={`dash-badge pay-${pay}`}>{pay === "flagged" ? "Needs a look" : pay[0].toUpperCase() + pay.slice(1)}</span>}
           {pay === "paid" && <span className={`dash-badge ful-${o.fulfilment_status}`}>{STATUS_LABEL[o.fulfilment_status] ?? o.fulfilment_status}</span>}
           {pay === "paid" && refunded > 0 && <span className="dash-badge pay-flagged">Part refunded</span>}
+          {o.is_test && <span className="dash-badge pay-refunded">Test</span>}
         </span>
       </button>
 
@@ -220,7 +222,8 @@ function OrderRow({ order: o, groups, open, onToggle }: { order: DashOrder; grou
             </section>
           </div>
 
-          {pay === "paid" && (
+          {o.is_test && <p className="dash-note">Test purchase — not counted in sales, reports or stock.</p>}
+          {pay === "paid" && !o.is_test && (
             <div className="dash-actions">
               {next && <button type="button" className="dash-btn primary" disabled={busy} onClick={() => setStatus(next)}>Mark {STATUS_LABEL[next].toLowerCase()}</button>}
               <label className="dash-inline">Status

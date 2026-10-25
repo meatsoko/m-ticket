@@ -2439,3 +2439,20 @@ a.login-submit { display: grid; place-items: center; text-decoration: none; }
   .sale-line .sale-pick { grid-column: 1 / -1; }
   .sale-line-total { text-align: left; padding-bottom: 0; }
 }
+
+/* Dashboard → Reports (ReportsDialog, /dashboard/reports/print) */
+.report-panel { width: min(520px, 100%); }
+.report-types { display: grid; gap: 6px; margin: 0; padding: 0; border: 0; }
+.report-types legend { margin-bottom: 6px; font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--store-muted); }
+.report-type { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--store-line); border-radius: 12px; cursor: pointer; }
+.report-type.on { border-color: var(--store-ink); background: var(--store-cream); }
+.report-type input { margin-top: 3px; accent-color: var(--store-ink); }
+.report-type span { display: grid; gap: 2px; font-size: 14px; }
+.report-type small { color: var(--store-muted); font-size: 12px; }
+.report-options { display: grid; gap: 12px; }
+.report-table td.num { text-align: right; }
+@media print {
+  .report-print .dash-card { break-inside: auto; border: 0; padding: 0; }
+  .report-table { font-size: 11px; }
+  .report-table td { padding: 4px 6px; }
+}
