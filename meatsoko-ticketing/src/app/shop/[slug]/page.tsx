@@ -6,14 +6,22 @@ import { StoreShell } from "@/components/StoreChrome";
 import MerchandiseCard from "@/components/MerchandiseCard";
 import ProductPurchase from "@/components/store/ProductPurchase";
 import ProductTabs from "@/components/store/ProductTabs";
-import { allProducts, colourSiblings, formatPrice, getCategory, getProduct, relatedProducts } from "@/lib/merchandise";
+import { allProductsOf, colourSiblings, formatPrice, relatedProducts } from "@/lib/merchandise";
+import { loadCatalogue } from "@/lib/catalogue";
 
-export function generateStaticParams() {
-  return allProducts.map((p) => ({ slug: p.slug }));
+// Rendered on first visit and kept for a minute (the catalogue's own cache time),
+// so a product added in the database appears without a redeploy.
+export const revalidate = 60;
+
+async function find(slug: string) {
+  const { categories } = await loadCatalogue();
+  const all = allProductsOf(categories);
+  const product = all.find((p) => p.slug === slug) ?? null;
+  return { all, product, category: product ? categories.find((c) => c.id === product.categoryId) ?? null : null };
 }
 
-export function generateMetadata({ params }: { params: { slug: string } }): Metadata {
-  const p = getProduct(params.slug);
+export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
+  const { product: p } = await find(params.slug);
   if (!p) return {};
   return {
     title: `${p.name} — ${p.color} · MeatSoko`,
@@ -22,12 +30,11 @@ export function generateMetadata({ params }: { params: { slug: string } }): Meta
   };
 }
 
-export default function ProductPage({ params }: { params: { slug: string } }) {
-  const product = getProduct(params.slug);
+export default async function ProductPage({ params }: { params: { slug: string } }) {
+  const { all, product, category } = await find(params.slug);
   if (!product) notFound();
-  const category = getCategory(product.categoryId);
-  const siblings = colourSiblings(product);
-  const related = relatedProducts(product);
+  const siblings = colourSiblings(all, product);
+  const related = relatedProducts(all, product);
 
   return (
     <StoreShell>

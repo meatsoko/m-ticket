@@ -1,7 +1,6 @@
 import Link from "next/link";
 import type { Attendance, BestSeller, DayPoint, Kpi, Range } from "@/lib/dashboard-data";
 import { RANGES } from "@/lib/dashboard-data";
-import { formatPrice } from "@/lib/merchandise";
 
 // Server-rendered pieces of the Overview page. Plain SVG, no chart library.
 
@@ -137,7 +136,7 @@ export function AttendanceCard({ a }: { a: Attendance }) {
 export function BestSellers({ rows }: { rows: BestSeller[] }) {
   return (
     <div className="dash-card">
-      <div className="dash-card-head"><h2>Best-selling merchandise</h2><Link href="/dashboard/inventory" className="dash-link">Inventory</Link></div>
+      <div className="dash-card-head"><h2>Best-selling merchandise</h2><Link href="/dashboard/sales" className="dash-link">Sales report</Link></div>
       {rows.length === 0 ? <p className="dash-muted">No merchandise sold in this period yet.</p> : (
         <table className="dash-table">
           <thead><tr><th>#</th><th>Product</th><th>Sold</th><th>Revenue</th></tr></thead>
@@ -147,7 +146,7 @@ export function BestSellers({ rows }: { rows: BestSeller[] }) {
                 <td>{i + 1}</td>
                 <td><strong>{r.name}</strong><small>{r.color}</small></td>
                 <td>{r.sold}</td>
-                <td>{formatPrice(r.revenueUsd)}</td>
+                <td>{kes(r.revenueKes)}</td>
               </tr>
             ))}
           </tbody>

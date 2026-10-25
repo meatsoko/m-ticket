@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
-import { searchProducts } from "@/lib/merchandise";
+import { useCatalogue } from "@/components/store/CatalogueProvider";
 
 /**
  * Search icon that expands leftwards into a full search bar, with live product
@@ -18,7 +18,8 @@ export default function StoreSearch() {
   const input = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const listId = useId();
-  const results = searchProducts(q);
+  const { search } = useCatalogue();
+  const results = search(q);
 
   useEffect(() => {
     if (!open) return;

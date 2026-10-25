@@ -13,7 +13,7 @@ A merchandise-first store plus an events module, for the MeatSoko Ecosystem bran
 
 | Area | Routes | Notes |
 |---|---|---|
-| Store | `/`, `/shop`, `/shop/[slug]`, `/cart`, `/checkout`, `/checkout/complete`, `/order/[token]`, `/returns` | Catalogue in `src/lib/merchandise.ts` (USD prices; `null` = "Price coming soon", not buyable). Paystack checkout is gated by `NEXT_PUBLIC_MERCH_PAYMENTS=on` in Vercel |
+| Store | `/`, `/shop`, `/shop/[slug]`, `/cart`, `/checkout`, `/checkout/complete`, `/order/[token]`, `/returns` | Catalogue in **Supabase** (`merch_groups/products/variants`, delivery in `merch_delivery_*`), loaded by `src/lib/catalogue.ts` (60 s cache) — since branch `feat/merch-inventory`; before that, `src/lib/merchandise.ts` (USD prices; `null` = "Price coming soon", not buyable). Paystack checkout is gated by `NEXT_PUBLIC_MERCH_PAYMENTS=on` in Vercel |
 | Events | `/events` (line-up), `/e/[slug]`, `/ticket-terms` | Line-up = Up next (ticket card) · Coming soon (poster) · Past |
 | Passes | `/r/[token]` (reservation), `/t/[token]` (paid ticket), `/lookup` (emails passes, never shows tokens) | Tokens are bearer credentials |
 | Post-payment | `/upgrade/complete`, `/platters/complete`, `/vendor/complete` | Verify with Paystack on return |
@@ -228,9 +228,51 @@ per vendor; the vendor must accept the current rate). Confirmation only by
 - Admin: Dashboard → Events & tickets → **Cashless** (Vendors, Transactions, Overview,
   Payouts, Refunds, Reconciliation, Reports). Tickets stay on Daraja; `PAYHERO_PAYMENTS` off.
 
+## Merchandise inventory & sales (branch `feat/merch-inventory`, 2026-10-25 — NOT deployed)
+
+Migrations `20261025090000_merch_catalogue_sync.sql`, `20261025091000_merch_stock_reasons.sql`,
+`20261025100000_merch_inventory.sql` (read their headers). No Edge Function changes.
+- **Catalogue = Supabase.** The sync migration made the database match the live website
+  field for field (checked page by page on 2026-10-25): adds the two Hustle Game 21 hoodies
+  ($20) and the Executive Polo (shown sold out), renames the Kenya edition to
+  `bmb-hoodie-black-kenya-edition`, records the hand-set cap/beanie/overall/BMB-tee prices,
+  and adds `style_name`, `image_fit`, `sold_out` (checkout refuses sold-out pieces). The shop,
+  bag, search, checkout delivery options and `/returns` fees now read from the database
+  (`src/lib/catalogue.ts`, `catalogue-data.ts`, `CatalogueProvider`); `merchandise.ts` holds
+  types and helpers only. Edit products in Supabase; the shop shows changes within 60 s.
+- **One ledger:** every stock change goes through `merch_move_stock()` into
+  `merch_stock_movements` (now linked to its batch / manual sale / return).
+  `merch_stock_check()` proves cached stock = sum of movements. Batches, manual sales, returns
+  and movements are append-only (trigger; corrections are reversals/voids).
+- **Tracking starts only with a confirmed opening count** (`merch_stock_apply('opening')`,
+  optionally as a draft → `merch_stock_confirm`). Untracked sizes sell with no limit; their
+  sales are recorded with `stock_tracked = false` and move no stock. `merch_adjust_stock` no
+  longer starts tracking. As of 2026-10-25 **no size is tracked** — load the opening counts
+  (Inventory → Import or Opening count) before relying on stock.
+- **Stock updates** (Dashboard → Inventory): Stock-take (sends the count seen; a size that
+  changed meanwhile is a conflict, not overwritten), Receive (supplier, delivery note, unit
+  cost), Remove (damaged/giveaway/sample/staff use/lost/other), Opening count, spreadsheet
+  Import (template download → upload), History (batches, reverse, every movement, CSV).
+- **Manual sales** (Dashboard → Sales, admins only): `merch_record_manual_sale` — KSh, cash /
+  M-Pesa (10-char code, unique) / card / other; respects web checkout holds (on hand − held);
+  correction = void + re-entry in one call (`replaces_sale_id`); `merch_void_manual_sale`.
+- **Returns / refunds / exchanges** for web orders and manual sales: `merch_record_return`
+  (per-item qty, refund, restock; exchange items out; top-ups). Caps per item and per sale;
+  a web order becomes `refunded` when fully refunded. `merch_refund_order` (whole order) is a
+  wrapper. Money is refunded outside the system and recorded here.
+- **Reporting:** `merch_sales_lines` / `merch_report` (admins) — web + manual, net of refunds,
+  Nairobi days; Sales page (filters, KPIs, two SVG charts, best sellers, CSV). The Overview's
+  merchandise revenue and best sellers now use the same lines (manual sales included).
+- **Deploy order:** `supabase db push --linked` (the three migrations) **before** merging —
+  the new store code reads the new columns and fails without them. The old live frontend
+  keeps working once the migrations are applied. Then merge to `main`.
+- Harness: section 32 (catalogue + inventory), `ok: 724 FAIL: 0` on 2026-10-25. Production
+  build checked against a local copy of the database; all 26 product pages and `/returns`
+  rendered the same visible text as the live site.
+
 ## Dashboard (`/dashboard`, store theme)
 
-Overview · Orders · Inventory · Events & tickets (Create event, Tickets — activity, passes,
+Overview · Orders · Inventory · Sales · Events & tickets (Create event, Tickets — activity, passes,
 payments & refunds via `refund_event_order` — Event orders, Vendors, Investors) · Gate scanner (phones
 only). Admin accounts (2026-10-03): `meatsoko247@gmail.com` (the user's), a demo admin
 (`dem…@meatsokogroup.com`, **to delete**) and an `apn…@gmail.com` admin the user hasn't
@@ -362,7 +404,8 @@ user's say-so. Use `supabase db query --linked "<sql>"` for read-only checks.
 - Set the YouTube stream ID for online attendance.
 - Set `CELEBRATIONS_NOTIFY_EMAIL` (who gets new celebration requests).
 - `NEXT_PUBLIC_MERCH_PAYMENTS=on` + one small real merch purchase, if not done.
-- Price (and add to the merch database) the Hustle Game 21 hoodie.
+- Hustle Game 21 hoodies: in the merch database at $20 once `feat/merch-inventory` is deployed.
+- Load opening stock counts (Inventory → Import) after `feat/merch-inventory` is deployed.
 - Older docs (`LAUNCH_CHECKLIST.md`, `REMAINING_GAPS.md`, `REMAINING_WORK.md`) still
   describe the 27 Sep launch — rewrite or archive.
 - `assets/*.mp4` are local originals, not committed.
