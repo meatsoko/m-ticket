@@ -2405,7 +2405,7 @@ a.login-submit { display: grid; place-items: center; text-decoration: none; }
 .stock-draft summary { cursor: pointer; font-size: 14px; }
 
 /* Sales page */
-.dash-filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+.dash-filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
 .dash-filters label { display: grid; gap: 4px; font-size: 12px; font-weight: 700; color: #4f4b46; }
 .dash-filters input, .dash-filters select { padding: 8px 12px; border: 1px solid var(--store-line); border-radius: 10px; background: #fff; font-size: 13px; }
 .sales-legend .web::before { background: var(--store-red); }
