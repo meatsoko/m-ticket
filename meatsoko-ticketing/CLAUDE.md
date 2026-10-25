@@ -228,7 +228,7 @@ per vendor; the vendor must accept the current rate). Confirmation only by
 - Admin: Dashboard → Events & tickets → **Cashless** (Vendors, Transactions, Overview,
   Payouts, Refunds, Reconciliation, Reports). Tickets stay on Daraja; `PAYHERO_PAYMENTS` off.
 
-## Merchandise inventory & sales (branch `feat/merch-inventory`, 2026-10-25 — NOT deployed)
+## Merchandise inventory & sales (branch `feat/merch-inventory`, 2026-10-25 — migrations APPLIED to live 2026-10-25; frontend not merged)
 
 Migrations `20261025090000_merch_catalogue_sync.sql`, `20261025091000_merch_stock_reasons.sql`,
 `20261025100000_merch_inventory.sql` (read their headers). No Edge Function changes.
@@ -263,9 +263,9 @@ Migrations `20261025090000_merch_catalogue_sync.sql`, `20261025091000_merch_stoc
 - **Reporting:** `merch_sales_lines` / `merch_report` (admins) — web + manual, net of refunds,
   Nairobi days; Sales page (filters, KPIs, two SVG charts, best sellers, CSV). The Overview's
   merchandise revenue and best sellers now use the same lines (manual sales included).
-- **Deploy order:** `supabase db push --linked` (the three migrations) **before** merging —
-  the new store code reads the new columns and fails without them. The old live frontend
-  keeps working once the migrations are applied. Then merge to `main`.
+- **Deploy order:** the three migrations were applied to live on 2026-10-25 (user's go-ahead;
+  verified: 26 products, 0 tracked sizes, anon locked out of every new function, old site
+  still serving). Remaining: merge to `main`. The new store code needs those columns.
 - Harness: section 32 (catalogue + inventory), `ok: 724 FAIL: 0` on 2026-10-25. Production
   build checked against a local copy of the database; all 26 product pages and `/returns`
   rendered the same visible text as the live site.
