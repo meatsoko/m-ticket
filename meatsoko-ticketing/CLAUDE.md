@@ -302,7 +302,7 @@ Migrations `20261026090000_merch_mixed_size_stock.sql` (logic) and
 
 Migration `20261026120000_merch_prices_kes.sql`. The shop is priced in **KSh**: `merch_products.price_kes`
 is what the buyer pays (no FX conversion); `compare_at_kes` is the old price (old USD × 129.8479,
-to 50), shown crossed out with "X% off" (rounded down, only from 5 %) on the product page and as a
+to 50), shown as "X% off" (rounded down to a multiple of 5, only from 5 %; the old price itself is hidden) on the product page and as a
 badge on the cards. Delivery `fee_kes`: CBD 250, Greater Nairobi 400, major towns 650, rest of
 Kenya 900, matatu 400. Organiser's prices: every hoodie 4,500 (partnership hoodies too; Hustle
 was 2,600, so no badge), polos 2,200, Executive polo 2,500 (still sold out), tees 1,700, caps
