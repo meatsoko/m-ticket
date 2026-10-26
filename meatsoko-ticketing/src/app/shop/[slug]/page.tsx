@@ -64,7 +64,7 @@ export default async function ProductPage({ params }: { params: { slug: string }
               {product.priceKes != null ? (
                 <span className="price-now">
                   <strong>{formatPrice(product.priceKes)}</strong>
-                  {off != null && <><s aria-label={`Was ${formatPrice(product.compareAtKes!)}`}>{formatPrice(product.compareAtKes!)}</s><span className="price-off">{off}% off</span></>}
+                  {off != null && <span className="price-off">{off}% off</span>}
                 </span>
               ) : <><strong>Price coming soon</strong><small>Not available to buy yet.</small></>}
             </div>

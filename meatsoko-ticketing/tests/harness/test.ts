@@ -2623,7 +2623,7 @@ console.log("\n--- merch catalogue + inventory ---");
       k("red-polo") === "2200/2450" && k("executive-polo") === "2500/2550" && k("white-t-shirt") === "1700/2200" && k("bmb-t-shirt-blue") === "1700/1950" &&
       k("red-cap") === "1000/1550" && k("white-beanie") === "800/1550" && k("meatsoko-dust-coat") === "1200/2350" && k("meatsoko-overall") === "2500/2850" && k("fuel-your-soul-water-bottle") === "3000/");
     const { percentOff } = await import("/src/lib/merchandise.ts");
-    check("prices: % off rounded down, hidden under 5 %", percentOff({ priceKes: 4500, compareAtKes: 12350 }) === 63 && percentOff({ priceKes: 800, compareAtKes: 1550 }) === 48 &&
+    check("prices: % off rounded down to a multiple of 5, hidden under 5 %", percentOff({ priceKes: 4500, compareAtKes: 12350 }) === 60 && percentOff({ priceKes: 800, compareAtKes: 1550 }) === 45 && percentOff({ priceKes: 2200, compareAtKes: 2450 }) === 10 &&
       percentOff({ priceKes: 2500, compareAtKes: 2550 }) === null && percentOff({ priceKes: 4500, compareAtKes: null }) === null);
     const bad = await fetch(`http://supabase.test/rest/v1/merch_products?slug=eq.red-cap`, { method: "PATCH", headers: { apikey: SERVICE_KEY, authorization: `Bearer ${SERVICE_KEY}`, "content-type": "application/json" }, body: JSON.stringify({ compare_at_kes: 900 }) });
     check("prices: a was-price below the price is refused", bad.status === 400, bad.status);

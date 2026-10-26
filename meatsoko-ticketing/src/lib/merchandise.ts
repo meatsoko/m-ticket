@@ -105,9 +105,10 @@ export function deliveryFeeLabel(o: DeliveryOption, zones: DeliveryZone[], unset
 
 export const formatPrice = (kes: number) => `KSh ${Math.round(kes).toLocaleString("en-KE")}`;
 
-/** Whole percent off the earlier price, rounded down; null when not reduced or under 5 %. */
+/** Percent off the earlier price, rounded down to a multiple of 5 (a round figure that never
+ *  overstates the cut: 63 % shows as 60 %); null when not reduced or under 5 %. */
 export function percentOff(p: Pick<MerchandiseProduct, "priceKes" | "compareAtKes">) {
   if (p.priceKes == null || p.compareAtKes == null || p.compareAtKes <= p.priceKes) return null;
-  const pct = Math.floor((1 - p.priceKes / p.compareAtKes) * 100);
+  const pct = Math.floor((1 - p.priceKes / p.compareAtKes) * 20) * 5;
   return pct >= 5 ? pct : null;
 }
