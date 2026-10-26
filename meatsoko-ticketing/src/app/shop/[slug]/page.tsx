@@ -6,7 +6,7 @@ import { StoreShell } from "@/components/StoreChrome";
 import MerchandiseCard from "@/components/MerchandiseCard";
 import ProductPurchase from "@/components/store/ProductPurchase";
 import ProductTabs from "@/components/store/ProductTabs";
-import { allProductsOf, colourSiblings, formatPrice, relatedProducts } from "@/lib/merchandise";
+import { allProductsOf, colourSiblings, formatPrice, percentOff, relatedProducts } from "@/lib/merchandise";
 import { loadCatalogue } from "@/lib/catalogue";
 
 // Rendered on first visit and kept for a minute (the catalogue's own cache time),
@@ -35,6 +35,7 @@ export default async function ProductPage({ params }: { params: { slug: string }
   if (!product) notFound();
   const siblings = colourSiblings(all, product);
   const related = relatedProducts(all, product);
+  const off = percentOff(product);
 
   return (
     <StoreShell>
@@ -60,7 +61,12 @@ export default async function ProductPage({ params }: { params: { slug: string }
             {product.partner && <span className="product-partner">In partnership with {product.partner}</span>}
             <p className="product-lede">{product.summary}</p>
             <div className="product-price">
-              {product.priceUsd != null ? <strong>{formatPrice(product.priceUsd)}</strong> : <><strong>Price coming soon</strong><small>Not available to buy yet.</small></>}
+              {product.priceKes != null ? (
+                <span className="price-now">
+                  <strong>{formatPrice(product.priceKes)}</strong>
+                  {off != null && <><s aria-label={`Was ${formatPrice(product.compareAtKes!)}`}>{formatPrice(product.compareAtKes!)}</s><span className="price-off">{off}% off</span></>}
+                </span>
+              ) : <><strong>Price coming soon</strong><small>Not available to buy yet.</small></>}
             </div>
 
             <div className="product-option">

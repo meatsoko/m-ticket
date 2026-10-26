@@ -124,7 +124,7 @@ function StockOverview({ groups, ledgerProblems }: { groups: InvGroup[]; ledgerP
                   <header>
                     <strong>{p.name}</strong>
                     <small>
-                      {p.color} · {p.price_usd != null ? formatPrice(p.price_usd) : "No price"}
+                      {p.color} · {p.price_kes != null ? formatPrice(p.price_kes) : "No price"}
                       {p.sold_out ? " · shown sold out on the shop" : ""}{!p.is_active ? " · hidden from the shop" : ""}
                     </small>
                   </header>

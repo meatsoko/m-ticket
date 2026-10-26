@@ -6,32 +6,32 @@ import { PAYMENT_METHODS, available, explain, kes, stockTargets, type InvGroup, 
 import type { ManualSale } from "@/components/dashboard/sales/SalesBoard";
 
 // Record a sale made outside the website (event stand, office). Prices are KSh —
-// what the buyer actually paid — pre-filled from the catalogue's USD price at
-// today's rate. Tracked sizes can only sell what is free (on hand minus what web
-// checkouts are holding); untracked sizes are recorded without moving stock.
+// what the buyer actually paid — pre-filled from the catalogue's KSh price.
+// Tracked sizes can only sell what is free (on hand minus what web checkouts are
+// holding); untracked sizes are recorded without moving stock.
 // Correcting a sale voids it and records this one in the same step.
 
 type Line = { key: number; variantId: string; qty: string; price: string };
 // target: where the sale comes off — the size, or its product's "Mixed sizes" count (null = not counted).
-type Pick = { v: InvVariant; product: string; color: string; priceUsd: number | null; target: InvVariant | null };
+type Pick = { v: InvVariant; product: string; color: string; priceKes: number | null; target: InvVariant | null };
 
 const nowLocal = () => {
   const d = new Date(Date.now() + 3 * 3600_000);   // Nairobi is UTC+3 all year
   return d.toISOString().slice(0, 16);
 };
 
-export default function ManualSaleForm({ groups, fxRate, events, replacing, onDone }: {
-  groups: InvGroup[]; fxRate: number | null; events: { id: string; name: string }[];
+export default function ManualSaleForm({ groups, events, replacing, onDone }: {
+  groups: InvGroup[]; events: { id: string; name: string }[];
   replacing?: ManualSale | null; onDone: () => void;
 }) {
   const router = useRouter();
   const picks = useMemo(() => {
     const targetOf = stockTargets(groups);
     const m = new Map<string, Pick>();
-    for (const g of groups) for (const p of g.products) for (const v of p.variants) m.set(v.id, { v, product: p.name, color: p.color, priceUsd: p.price_usd, target: targetOf(p, v) });
+    for (const g of groups) for (const p of g.products) for (const v of p.variants) m.set(v.id, { v, product: p.name, color: p.color, priceKes: p.price_kes, target: targetOf(p, v) });
     return m;
   }, [groups]);
-  const listPrice = (id: string) => { const p = picks.get(id); return p?.priceUsd != null && fxRate ? String(Math.round(p.priceUsd * fxRate)) : ""; };
+  const listPrice = (id: string) => { const p = picks.get(id); return p?.priceKes != null ? String(p.priceKes) : ""; };
 
   let k = 0;
   const [lines, setLines] = useState<Line[]>(() => replacing
@@ -120,7 +120,7 @@ export default function ManualSaleForm({ groups, fxRate, events, replacing, onDo
           );
         })}
         <button type="button" className="dash-btn ghost small" onClick={() => setLines([...lines, { key: Date.now(), variantId: "", qty: "1", price: "" }])}>+ Add another item</button>
-        {fxRate && <p className="dash-muted">Prices start at the shop price × {fxRate.toFixed(2)} KSh/USD — change them to what the buyer paid.</p>}
+        <p className="dash-muted">Prices start at the shop price — change them to what the buyer paid.</p>
       </div>
 
       <div className="dash-chips" role="radiogroup" aria-label="Paid with">

@@ -71,20 +71,19 @@ export async function verifyAndConfirmMerch(reference: string, db: Db = serviceC
 }
 
 const kes = (n: number) => `KSh ${Math.round(Number(n)).toLocaleString("en-KE")}`;
-const usd = (n: number) => `$${Number(n).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
 
 type OrderForMail = {
   order_number: string; access_token: string; first_name: string; last_name: string; email: string; phone: string;
-  total_kes: number; total_usd: number; subtotal_usd: number; delivery_fee_usd: number;
+  total_kes: number; subtotal_kes: number; delivery_fee_kes: number;
   delivery_code: string; delivery_address: string | null; delivery_town: string | null; delivery_sacco: string | null; notes: string | null;
   merch_delivery_options: { label: string; blurb: string | null } | null;
   merch_zone: { name: string } | null;
-  merch_order_items: { product_name: string; color: string; size: string; qty: number; unit_price_usd: number }[];
+  merch_order_items: { product_name: string; color: string; size: string; qty: number; unit_price_kes: number }[];
 };
 
 async function loadOrder(db: Db, orderId: string): Promise<OrderForMail | null> {
   const { data } = await db.from("merch_orders")
-    .select("order_number,access_token,first_name,last_name,email,phone,total_kes,total_usd,subtotal_usd,delivery_fee_usd,delivery_code,delivery_address,delivery_town,delivery_sacco,notes,merch_delivery_options(label,blurb),merch_zone:merch_delivery_zones(name),merch_order_items(product_name,color,size,qty,unit_price_usd)")
+    .select("order_number,access_token,first_name,last_name,email,phone,total_kes,subtotal_kes,delivery_fee_kes,delivery_code,delivery_address,delivery_town,delivery_sacco,notes,merch_delivery_options(label,blurb),merch_zone:merch_delivery_zones(name),merch_order_items(product_name,color,size,qty,unit_price_kes)")
     .eq("id", orderId).maybeSingle();
   return (data as any) ?? null;
 }
@@ -92,8 +91,7 @@ async function loadOrder(db: Db, orderId: string): Promise<OrderForMail | null> 
 /**
  * Buyer's confirmation, in the same shape as the reservation pass email (card,
  * reference block, one button) so every MeatSoko email reads as one family.
- * Prices in USD; one line gives the KES Paystack charged, which is what appears
- * on the buyer's M-Pesa or card statement.
+ * Prices in KSh, as charged (since 2026-10-26 the shop is priced in KSh).
  */
 export async function sendMerchOrderEmail(db: Db, orderId: string): Promise<{ sent: boolean; reason?: string }> {
   const appUrl = (Deno.env.get("APP_URL") ?? "").trim().replace(/\/+$/, "");
@@ -103,10 +101,10 @@ export async function sendMerchOrderEmail(db: Db, orderId: string): Promise<{ se
 
   const url = `${appUrl}/order/${o.access_token}`;
   const delivery = o.merch_delivery_options?.label ?? o.delivery_code;
-  const deliveryFee = Number(o.delivery_fee_usd) ? usd(o.delivery_fee_usd) : "Free";
+  const deliveryFee = Number(o.delivery_fee_kes) ? kes(o.delivery_fee_kes) : "Free";
   const rows = o.merch_order_items.map((i) => `<tr>
       <td style="padding:6px 0">${i.qty} × ${esc(i.product_name)}<br><span style="color:#77736e;font-size:12px">${esc(i.color)} · ${esc(i.size)}</span></td>
-      <td style="padding:6px 0;text-align:right;vertical-align:top">${usd(i.unit_price_usd * i.qty)}</td></tr>`).join("");
+      <td style="padding:6px 0;text-align:right;vertical-align:top">${kes(i.unit_price_kes * i.qty)}</td></tr>`).join("");
 
   const html = `<div style="font-family:system-ui,-apple-system,sans-serif;max-width:520px;color:#171717">
   <h2 style="margin:0 0 2px">MeatSoko merchandise</h2>
@@ -124,9 +122,8 @@ export async function sendMerchOrderEmail(db: Db, orderId: string): Promise<{ se
     <table style="width:100%;border-collapse:collapse;font-size:14px;margin-top:6px">${rows}
       <tr><td style="padding:6px 0">${esc(delivery)}</td><td style="padding:6px 0;text-align:right">${deliveryFee}</td></tr>
       <tr><td style="padding-top:8px;border-top:1px solid #dedbd4"><strong>Total</strong></td>
-      <td style="padding-top:8px;border-top:1px solid #dedbd4;text-align:right"><strong>${usd(o.total_usd)}</strong></td></tr>
+      <td style="padding-top:8px;border-top:1px solid #dedbd4;text-align:right"><strong>${kes(o.total_kes)}</strong></td></tr>
     </table>
-    <p style="font-size:12px;color:#77736e;margin:8px 0 0">Charged by Paystack as ${kes(o.total_kes)}.</p>
   </div>
 
   ${o.merch_delivery_options?.blurb ? `<p style="font-size:14px;color:#4f4b46">${esc(o.merch_delivery_options.blurb)}</p>` : ""}
@@ -145,9 +142,9 @@ export async function sendMerchOrderEmail(db: Db, orderId: string): Promise<{ se
   const text = [
     "MeatSoko merchandise — order confirmation", "",
     `Hi ${o.first_name}, thank you — your order ${o.order_number} is confirmed.`, "",
-    ...o.merch_order_items.map((i) => `  ${i.qty} x ${i.product_name} (${i.color}, ${i.size}): ${usd(i.unit_price_usd * i.qty)}`),
+    ...o.merch_order_items.map((i) => `  ${i.qty} x ${i.product_name} (${i.color}, ${i.size}): ${kes(i.unit_price_kes * i.qty)}`),
     `  ${delivery}: ${deliveryFee}`,
-    `  Total: ${usd(o.total_usd)} (charged by Paystack as ${kes(o.total_kes)})`, "",
+    `  Total: ${kes(o.total_kes)}`, "",
     `Track your order: ${url}`,
     `Questions? Call or WhatsApp ${SUPPORT.display}`,
   ].join("\n");
@@ -179,7 +176,7 @@ export async function notifyMerchOrder(db: Db, orderId: string): Promise<{ sent:
     ...(o.delivery_town ? [`Town:      ${o.delivery_town}`] : []),
     ...(o.delivery_sacco ? [`Sacco:     ${o.delivery_sacco}`] : []),
     ...(o.notes ? ["", `Notes:     ${o.notes}`] : []), "",
-    `Total:     ${usd(o.total_usd)} (paid ${kes(o.total_kes)} via Paystack)`,
+    `Total:     ${kes(o.total_kes)} (paid)`,
   ];
   return sendEmail({
     to,

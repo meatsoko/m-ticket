@@ -95,15 +95,14 @@ export default function CheckoutForm() {
 
   // Standard delivery is priced by area; everything else has one fee.
   const fee = delivery === "standard"
-    ? deliveryZones.find((z) => z.name === f.zone)?.feeUsd ?? null
-    : option.feeUsd;
+    ? deliveryZones.find((z) => z.name === f.zone)?.feeKes ?? null
+    : option.feeKes;
   const feeLabel = fee === 0 ? "Free" : fee != null ? formatPrice(fee) : delivery === "standard" ? "Choose your area" : "TBC";
   const total = subtotal != null && fee != null ? subtotal + fee : null;
-  // Everything on the site is in US dollars. The KSh conversion happens server-side
-  // at payment time (merch-checkout refreshes the rate) and is shown only by Paystack.
+  // Prices are in KSh and are what gets charged; the server re-prices every line.
   const blocker =
     subtotal == null ? "Prices for these pieces are being finalised — you’ll be able to pay as soon as they’re set."
-    : delivery !== "standard" && option.feeUsd == null ? `The ${option.label.toLowerCase()} fee is being finalised. Choose a pickup option, or check back soon.`
+    : delivery !== "standard" && option.feeKes == null ? `The ${option.label.toLowerCase()} fee is being finalised. Choose a pickup option, or check back soon.`
     : !PAYMENT_CONNECTED && !MPESA_CONNECTED ? PAYMENT_PAUSED_MESSAGE
     : null;
 
@@ -202,7 +201,7 @@ export default function CheckoutForm() {
             {delivery === "standard" && (
               <div className="field-grid two delivery-fields">
                 <label className="store-field"><span>Area *</span>
-                  <select value={f.zone} onChange={set("zone")}><option value="">Select your area</option>{deliveryZones.map((z) => <option key={z.name} value={z.name}>{z.name} — {z.feeUsd != null ? formatPrice(z.feeUsd) : "Fee TBC"}</option>)}</select>{err("zone")}
+                  <select value={f.zone} onChange={set("zone")}><option value="">Select your area</option>{deliveryZones.map((z) => <option key={z.name} value={z.name}>{z.name} — {z.feeKes != null ? formatPrice(z.feeKes) : "Fee TBC"}</option>)}</select>{err("zone")}
                 </label>
                 <label className="store-field"><span>Street address or landmark *</span><input value={f.street} onChange={set("street")} autoComplete="street-address" placeholder="House, street, estate" />{err("street")}</label>
               </div>
@@ -242,7 +241,7 @@ export default function CheckoutForm() {
               <li key={`${l.slug}:${l.size}`}>
                 <span className="summary-thumb"><Image src={l.product.image} alt="" fill sizes="60px" /><b>{l.qty}</b></span>
                 <span><strong>{l.product.name}</strong><small>{l.product.color} · {l.size}</small></span>
-                <span>{l.product.priceUsd != null ? formatPrice(l.product.priceUsd * l.qty) : "TBC"}</span>
+                <span>{l.product.priceKes != null ? formatPrice(l.product.priceKes * l.qty) : "TBC"}</span>
               </li>
             ))}
           </ul>
@@ -271,7 +270,7 @@ export default function CheckoutForm() {
             <>
               {PAYMENT_CONNECTED && <div className="pay-or">or</div>}
               <MpesaPay amountKes={null} defaultPhone={f.phone}
-                cta={total != null ? `Pay ${formatPrice(total)} with M-Pesa (in KSh)` : "Pay with M-Pesa"}
+                cta={total != null ? `Pay ${formatPrice(total)} with M-Pesa` : "Pay with M-Pesa"}
                 body={() => {
                   setTouched(true);
                   if (Object.keys(errors).length) return null;
@@ -288,7 +287,6 @@ export default function CheckoutForm() {
           )}
           {blocker && <p className="summary-blocker" id="checkout-blocker">{blocker}</p>}
           {submitError && <p className="summary-blocker error" role="alert">{submitError}</p>}
-          {!blocker && <p className="summary-rate">Prices are in US dollars. {PAYMENT_CONNECTED ? "Paystack charges" : "M-Pesa is charged"} the equivalent in Kenya shillings at today’s rate.</p>}
           <Link href="/cart" className="store-back-link">← Back to your bag</Link>
         </aside>
       </form>

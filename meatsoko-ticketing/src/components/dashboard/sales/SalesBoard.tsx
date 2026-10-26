@@ -38,8 +38,8 @@ const KIND_LABEL: Record<string, string> = {
 const METHOD_LABEL: Record<string, string> = { cash: "Cash", mpesa: "M-Pesa", card: "Card", other: "Other", paystack: "Paystack", unknown: "—" };
 const PRESETS = [{ id: 7, label: "7 days" }, { id: 30, label: "30 days" }, { id: 90, label: "90 days" }];
 
-export default function SalesBoard({ groups, fxRate, events, sales, people }: {
-  groups: InvGroup[]; fxRate: number | null; events: { id: string; name: string }[]; sales: ManualSale[]; people: Record<string, string>;
+export default function SalesBoard({ groups, events, sales, people }: {
+  groups: InvGroup[]; events: { id: string; name: string }[]; sales: ManualSale[]; people: Record<string, string>;
 }) {
   const today = nairobiDay(new Date());
   const [from, setFrom] = useState(nairobiDay(new Date(Date.now() - 29 * 864e5)));
@@ -94,7 +94,7 @@ export default function SalesBoard({ groups, fxRate, events, sales, people }: {
         </div>
       </div>
 
-      {form && <ManualSaleForm key={form.replacing?.id ?? "new"} groups={groups} fxRate={fxRate} events={events} replacing={form.replacing} onDone={() => setForm(null)} />}
+      {form && <ManualSaleForm key={form.replacing?.id ?? "new"} groups={groups} events={events} replacing={form.replacing} onDone={() => setForm(null)} />}
 
       <div className="dash-filters" role="group" aria-label="Filters">
         <div className="dash-chips">{PRESETS.map((p) => <button key={p.id} type="button" onClick={() => preset(p.id)} className={from === nairobiDay(new Date(Date.now() - (p.id - 1) * 864e5)) && to === today ? "on" : undefined}>{p.label}</button>)}</div>

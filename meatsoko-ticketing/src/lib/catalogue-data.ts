@@ -29,7 +29,8 @@ export function toCatalogue(groups: Row[], options: Row[], zones: Row[]): StoreC
           color: p.color,
           swatch: p.swatch,
           image: p.image_path,
-          priceUsd: num(p.price_usd),
+          priceKes: num(p.price_kes),
+          compareAtKes: num(p.compare_at_kes),
           sizes: [...(p.merch_variants ?? [])].sort((a: Row, b: Row) => a.position - b.position).map((v: Row) => v.size),
           summary: p.summary ?? "",
           details: p.details ?? [],
@@ -44,12 +45,12 @@ export function toCatalogue(groups: Row[], options: Row[], zones: Row[]): StoreC
   const deliveryOptions: DeliveryOption[] = [...options]
     .sort((a, b) => a.position - b.position)
     .map((o) => ({
-      id: o.code, label: o.label, blurb: o.blurb ?? "", feeUsd: num(o.fee_usd),
+      id: o.code, label: o.label, blurb: o.blurb ?? "", feeKes: num(o.fee_kes),
       needsZone: !!o.needs_zone, needsAddress: !!o.needs_address, needsTown: !!o.needs_town,
     }));
   const deliveryZones: DeliveryZone[] = [...zones]
     .sort((a, b) => a.position - b.position)
-    .map((z) => ({ name: z.name, feeUsd: num(z.fee_usd) }));
+    .map((z) => ({ name: z.name, feeKes: num(z.fee_kes) }));
 
   return { categories, delivery: { options: deliveryOptions, zones: deliveryZones } };
 }
@@ -57,10 +58,10 @@ export function toCatalogue(groups: Row[], options: Row[], zones: Row[]): StoreC
 export async function fetchCatalogue(db: SupabaseClient): Promise<StoreCatalogue> {
   const [groups, options, zones] = await Promise.all([
     db.from("merch_groups").select(`slug,name,eyebrow,description,position,
-      merch_products(slug,style_name,name,color,swatch,image_path,price_usd,summary,details,partner,sold_out,image_fit,position,
+      merch_products(slug,style_name,name,color,swatch,image_path,price_kes,compare_at_kes,summary,details,partner,sold_out,image_fit,position,
         merch_variants(size,position))`),
-    db.from("merch_delivery_options").select("code,label,blurb,fee_usd,needs_zone,needs_address,needs_town,position"),
-    db.from("merch_delivery_zones").select("name,fee_usd,position,option_code"),
+    db.from("merch_delivery_options").select("code,label,blurb,fee_kes,needs_zone,needs_address,needs_town,position"),
+    db.from("merch_delivery_zones").select("name,fee_kes,position,option_code"),
   ]);
   const error = groups.error ?? options.error ?? zones.error;
   if (error) throw new Error(`catalogue unavailable: ${error.message}`);

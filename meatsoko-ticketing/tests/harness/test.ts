@@ -167,30 +167,30 @@ check("second quote within 6 h reuses it (no refetch, despite a 20 h-old feed ti
 // 2. refusals
 r = await call("checkout", { customer: { ...customer, phone: "12345" }, delivery: { code: "event" }, lines: [{ slug: "green-hoodie", size: "M", qty: 1 }] });
 check("bad phone -> 400 invalid_phone", r.status === 400 && r.body?.error === "invalid_phone", r);
-// Every catalogue piece is priced since 20261025090000; unprice the cap for this check.
-const setCapPrice = (price: number | null) => fetch(`http://supabase.test/rest/v1/merch_products?slug=eq.white-cap`, { method: "PATCH", headers: { apikey: SERVICE_KEY, authorization: `Bearer ${SERVICE_KEY}`, "content-type": "application/json" }, body: JSON.stringify({ price_usd: price }) });
-await setCapPrice(null);
+// Every catalogue piece is priced (KSh since 20261026120000); unprice the cap for this check.
+const setCapPrice = (price: number | null, was: number | null) => fetch(`http://supabase.test/rest/v1/merch_products?slug=eq.white-cap`, { method: "PATCH", headers: { apikey: SERVICE_KEY, authorization: `Bearer ${SERVICE_KEY}`, "content-type": "application/json" }, body: JSON.stringify({ price_kes: price, compare_at_kes: was }) });
+await setCapPrice(null, null);
 r = await call("checkout", { customer, delivery: { code: "event" }, lines: [{ slug: "white-cap", size: "One size", qty: 1 }] });
 check("unpriced cap -> 409 unpriced", r.status === 409 && r.body?.error === "unpriced", r);
-await setCapPrice(12);
+await setCapPrice(1000, 1550);
 r = await call("checkout", { customer, delivery: { code: "event" }, lines: [{ slug: "green-hoodie", size: "XXXL", qty: 1 }] });
 check("unknown size -> 409 unavailable_item", r.status === 409 && r.body?.error === "unavailable_item", r);
 r = await call("checkout", { customer, delivery: { code: "standard", zone: "Nairobi CBD", address: "Moi Avenue" }, lines: [{ slug: "red-t-shirt", size: "L", qty: 1 }] });
-check("standard delivery charges the area fee (Nairobi CBD +$2)", r.status === 200 && r.body?.total_usd === 19, r);
+check("standard delivery charges the area fee (KSh 1,700 tee + Nairobi CBD 250)", r.status === 200 && Number(r.body?.total_kes) === 1950, r);
 
-// 3. happy path: 2 x green hoodie M ($90) + 1 x red tee L ($17) at 129.50, collect at NyamaFest
+// 3. happy path: 2 x green hoodie M (KSh 4,500) + 1 x red tee L (KSh 1,700), collect at NyamaFest
 r = await call("checkout", { customer, delivery: { code: "event" }, lines: [{ slug: "green-hoodie", size: "M", qty: 2 }, { slug: "red-t-shirt", size: "L", qty: 1 }] });
 check("checkout opens Paystack", r.status === 200 && !!r.body?.authorizationUrl, r);
 const ref: string = r.body?.reference;
 check("reference is MS + 32 hex", /^MS[a-f0-9]{32}$/.test(ref ?? ""), ref);
-check("Paystack asked for KSh 25,512 in cents, currency KES", paystack.get(ref)?.amount === 2551200 && paystack.get(ref)?.currency === "KES", paystack.get(ref));
+check("Paystack asked for KSh 10,700 in cents, currency KES (KSh prices, no FX)", paystack.get(ref)?.amount === 1070000 && paystack.get(ref)?.currency === "KES", paystack.get(ref));
 
 r = await call("order", { reference: ref });
 check("return page verifies and confirms (paid)", r.status === 200 && r.body?.payment_status === "paid", r.body);
 check("order response carries no phone/email", !JSON.stringify(r.body).includes("amina@") && !JSON.stringify(r.body).includes("254712"), r.body);
 const buyerMail = sentEmails.find((m) => m.to?.[0] === "amina@example.test");
 const orgMail = sentEmails.find((m) => m.to?.includes("orders@example.test"));
-check("buyer confirmation sent, in USD with one KSh line", !!buyerMail && /MS-/.test(buyerMail.subject) && buyerMail.html.includes("$197") && buyerMail.html.includes("KSh 25,512"), buyerMail?.subject);
+check("buyer confirmation sent, in KSh (lines and total), no dollars", !!buyerMail && /MS-/.test(buyerMail.subject) && buyerMail.html.includes("KSh 9,000") && buyerMail.html.includes("KSh 10,700") && !buyerMail.html.includes("$"), buyerMail?.subject);
 check("organiser alert sent to both MERCH_NOTIFY_EMAIL addresses with phone + sizes", !!orgMail && orgMail.to.length === 2 && orgMail.text.includes("254712345678") && orgMail.text.includes("size M"), orgMail);
 check("exactly two emails for the order", sentEmails.length === 2, sentEmails.length);
 const token: string = r.body?.access_token;
@@ -218,7 +218,7 @@ check("rate older than 6 h -> refreshed on the next quote", r.status === 200 && 
 
 // 5. order page by token
 r = await call("order", { access_token: token });
-check("order page by access_token", r.status === 200 && r.body?.order_number && r.body?.items?.length === 2 && Number(r.body?.total_kes) === 25512, r.body);
+check("order page by access_token", r.status === 200 && r.body?.order_number && r.body?.items?.length === 2 && Number(r.body?.total_kes) === 10700 && Number(r.body?.subtotal_kes) === 10700 && Number(r.body?.items?.[0]?.unit_price_kes) > 0, r.body);
 r = await call("order", { access_token: "0".repeat(32) });
 check("unknown token -> 404", r.status === 404, r);
 
@@ -2605,7 +2605,7 @@ console.log("\n--- merch catalogue + inventory ---");
 {
   // Catalogue: the database now says what the website said.
   // Website products only (the stock sheet added two stand-only caps, inactive); sizes without the hidden buckets.
-  const prods: any[] = await get("merch_products?select=slug,price_usd,sold_out,image_fit,position,style_name,merch_variants(size)&is_active=eq.true&merch_variants.is_bucket=eq.false");
+  const prods: any[] = await get("merch_products?select=slug,price_usd,price_kes,compare_at_kes,sold_out,image_fit,position,style_name,merch_variants(size)&is_active=eq.true&merch_variants.is_bucket=eq.false");
   const bySlug = new Map(prods.map((p) => [p.slug, p]));
   check("catalogue: 26 products, as on the website", prods.length === 26, prods.length);
   check("catalogue: Kenya edition at its website address", bySlug.has("bmb-hoodie-black-kenya-edition") && !bySlug.has("bmb-hoodie-kenya-edition"));
@@ -2613,6 +2613,21 @@ console.log("\n--- merch catalogue + inventory ---");
   check("catalogue: Executive Polo shown sold out at $19.50", bySlug.get("executive-polo")?.sold_out === true && Number(bySlug.get("executive-polo")?.price_usd) === 19.5);
   check("catalogue: Buja hoodie whole photo, after the Hustle Game hoodies", bySlug.get("buja-hoodie-green")?.image_fit === "whole" && bySlug.get("buja-hoodie-green")?.position === 8);
   check("catalogue: caps, beanies, overall and BMB tee priced as on the site", Number(bySlug.get("green-beanie")?.price_usd) === 12 && Number(bySlug.get("meatsoko-overall")?.price_usd) === 22 && Number(bySlug.get("bmb-t-shirt-blue")?.price_usd) === 15);
+  {
+    // The organiser's KSh prices of 2026-10-26 (20261026120000); was = the old USD price at 129.8479, to 50.
+    const k = (slug: string) => [bySlug.get(slug)?.price_kes, bySlug.get(slug)?.compare_at_kes].join("/");
+    check("prices: every product has a KSh price", prods.every((p) => p.price_kes > 0), prods.filter((p) => !(p.price_kes > 0)).map((p) => p.slug));
+    check("prices: hoodies 4,500 (was 12,350 / 11,700 / 10,150; Hustle not reduced)",
+      k("white-hoodie") === "4500/12350" && k("green-hoodie") === "4500/11700" && k("bmb-hoodie-blue") === "4500/11700" && k("buja-hoodie-green") === "4500/10150" && k("hustle-game-21-hoodie-views") === "4500/");
+    check("prices: polo 2,200, Executive 2,500, tee 1,700, cap 1,000, beanie 800, dust coat 1,200, overall 2,500, bottle 3,000",
+      k("red-polo") === "2200/2450" && k("executive-polo") === "2500/2550" && k("white-t-shirt") === "1700/2200" && k("bmb-t-shirt-blue") === "1700/1950" &&
+      k("red-cap") === "1000/1550" && k("white-beanie") === "800/1550" && k("meatsoko-dust-coat") === "1200/2350" && k("meatsoko-overall") === "2500/2850" && k("fuel-your-soul-water-bottle") === "3000/");
+    const { percentOff } = await import("/src/lib/merchandise.ts");
+    check("prices: % off rounded down, hidden under 5 %", percentOff({ priceKes: 4500, compareAtKes: 12350 }) === 63 && percentOff({ priceKes: 800, compareAtKes: 1550 }) === 48 &&
+      percentOff({ priceKes: 2500, compareAtKes: 2550 }) === null && percentOff({ priceKes: 4500, compareAtKes: null }) === null);
+    const bad = await fetch(`http://supabase.test/rest/v1/merch_products?slug=eq.red-cap`, { method: "PATCH", headers: { apikey: SERVICE_KEY, authorization: `Bearer ${SERVICE_KEY}`, "content-type": "application/json" }, body: JSON.stringify({ compare_at_kes: 900 }) });
+    check("prices: a was-price below the price is refused", bad.status === 400, bad.status);
+  }
   check("catalogue: every product has a display style name", prods.every((p) => !!p.style_name) && bySlug.get("bmb-hoodie-blue")?.style_name === "BMB Hoodie");
   {
     // The shop's loader (src/lib/catalogue-data.ts) with the public anon key, as the site reads it.
@@ -2625,7 +2640,7 @@ console.log("\n--- merch catalogue + inventory ---");
     check("shop catalogue: six categories in order, 26 products, as the website listed them",
       cat.categories.map((c: any) => c.id).join(",") === "hoodies,polos,t-shirts,headwear,workwear,partnerships" && all.length === 26, cat.categories.map((c: any) => [c.id, c.products.length]));
     check("shop catalogue: polos keep their order with the Executive Polo last, shown sold out",
-      cat.categories[1].products.map((x: any) => x.slug).join(",") === "red-polo,white-polo,green-polo,executive-polo" && p("executive-polo")?.outOfStock === true && p("executive-polo")?.priceUsd === 19.5);
+      cat.categories[1].products.map((x: any) => x.slug).join(",") === "red-polo,white-polo,green-polo,executive-polo" && p("executive-polo")?.outOfStock === true && p("executive-polo")?.priceKes === 2500 && p("white-hoodie")?.compareAtKes === 12350);
     check("shop catalogue: partnerships in the website's order",
       cat.categories[5].products.map((x: any) => x.slug).join(",") === "bmb-hoodie-black,bmb-hoodie-black-kenya-edition,bmb-hoodie-blue,fuel-your-soul-water-bottle,bmb-t-shirt-blue,hustle-game-21-hoodie-model,hustle-game-21-hoodie-views,buja-hoodie-green",
       cat.categories[5].products.map((x: any) => x.slug));
@@ -2633,8 +2648,8 @@ console.log("\n--- merch catalogue + inventory ---");
       p("green-hoodie")?.style === "NyamaFest Hoodie" && p("green-hoodie")?.sizes.join(",") === "S,M,L,XL,2XL" && p("white-cap")?.sizes.join(",") === "One size" &&
       p("bmb-hoodie-black-kenya-edition")?.swatch.startsWith("linear-gradient") && p("buja-hoodie-green")?.fit === "whole" && p("bmb-hoodie-blue")?.partner === "Brian Munyolo Boxing");
     check("shop catalogue: delivery options and areas as checkout charges them",
-      cat.delivery.options.map((o: any) => o.id).join(",") === "event,pickup,standard,matatu" && cat.delivery.options[3].feeUsd === 3 && cat.delivery.options[2].needsZone === true &&
-      cat.delivery.zones.map((z: any) => `${z.name}:${z.feeUsd}`).join(",") === "Nairobi CBD:2,Greater Nairobi:3,Major towns:5,Rest of Kenya:7", cat.delivery);
+      cat.delivery.options.map((o: any) => o.id).join(",") === "event,pickup,standard,matatu" && cat.delivery.options[3].feeKes === 400 && cat.delivery.options[0].feeKes === 0 && cat.delivery.options[2].needsZone === true &&
+      cat.delivery.zones.map((z: any) => `${z.name}:${z.feeKes}`).join(",") === "Nairobi CBD:250,Greater Nairobi:400,Major towns:650,Rest of Kenya:900", cat.delivery);
   }
   let r: any = await call("checkout", { customer: { ...customer, phone: "0722000301" }, delivery: { code: "event" }, lines: [{ slug: "executive-polo", size: "M", qty: 1 }] }, ip());
   check("catalogue: a sold-out piece can't be bought (409 sold_out)", r.status === 409 && r.body?.error === "sold_out", r.body);

@@ -2456,3 +2456,9 @@ a.login-submit { display: grid; place-items: center; text-decoration: none; }
   .report-table { font-size: 11px; }
   .report-table td { padding: 4px 6px; }
 }
+
+/* ---- Reduced prices (merch_products.compare_at_kes, 2026-10-26) ---- */
+.product-price .price-now { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
+.product-price .price-now s { color: var(--store-muted); font-size: 15px; }
+.price-off { display: inline-block; padding: 3px 8px; background: var(--store-red); color: #fff; font-size: 12px; font-weight: 700; letter-spacing: .02em; }
+.merch-off-badge { position: absolute; z-index: 1; top: 10px; left: 10px; padding: 4px 9px; background: var(--store-red); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .03em; }

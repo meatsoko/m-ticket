@@ -298,6 +298,19 @@ Migrations `20261026090000_merch_mixed_size_stock.sql` (logic) and
   screen says so.
 - Harness `ok: 751 FAIL: 0` (2026-10-26; `run.sh` now passes `--sloppy-imports`).
 
+## Prices in KSh (branch `feat/merch-prices-kes`, 2026-10-26)
+
+Migration `20261026120000_merch_prices_kes.sql`. The shop is priced in **KSh**: `merch_products.price_kes`
+is what the buyer pays (no FX conversion); `compare_at_kes` is the old price (old USD × 129.8479,
+to 50), shown crossed out with "X% off" (rounded down, only from 5 %) on the product page and as a
+badge on the cards. Delivery `fee_kes`: CBD 250, Greater Nairobi 400, major towns 650, rest of
+Kenya 900, matatu 400. Organiser's prices: every hoodie 4,500 (partnership hoodies too; Hustle
+was 2,600, so no badge), polos 2,200, Executive polo 2,500 (still sold out), tees 1,700, caps
+1,000, beanies 800, dust coat 1,200, overall 2,500, bottle 3,000 (converted), stand-only caps
+1,000. `price_usd` stays for history only; orders still fill `*_usd` (KSh / rate). Order pages,
+receipts, emails and the dashboard show the `*_kes` columns. Manual sales prefill `price_kes`.
+Harness `ok: 756 FAIL: 0`.
+
 ## Dashboard (`/dashboard`, store theme)
 
 Overview · Orders · Inventory · Sales · Events & tickets (Create event, Tickets — activity, passes,

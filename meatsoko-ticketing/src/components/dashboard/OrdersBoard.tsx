@@ -2,7 +2,6 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { formatPrice } from "@/lib/merchandise";
 import type { InvGroup } from "@/lib/inventory";
 import ReturnForm from "@/components/dashboard/ReturnForm";
 
@@ -183,7 +182,7 @@ function OrderRow({ order: o, groups, open, onToggle }: { order: DashOrder; grou
       <button type="button" className="dash-order-head" onClick={onToggle} aria-expanded={open}>
         <span className="dash-order-id"><strong>{o.order_number}</strong><small>{when(o.created_at)}</small></span>
         <span className="dash-order-who"><strong>{o.first_name} {o.last_name}</strong><small>{items} item{items === 1 ? "" : "s"} · {o.merch_delivery_options?.label ?? o.delivery_code}</small></span>
-        <span className="dash-order-total"><strong>{formatPrice(Number(o.total_usd))}</strong><small>{kes(o.total_kes)}</small></span>
+        <span className="dash-order-total"><strong>{kes(o.total_kes)}</strong></span>
         <span className="dash-order-badges">
           {pay !== "paid" && <span className={`dash-badge pay-${pay}`}>{pay === "flagged" ? "Needs a look" : pay[0].toUpperCase() + pay.slice(1)}</span>}
           {pay === "paid" && <span className={`dash-badge ful-${o.fulfilment_status}`}>{STATUS_LABEL[o.fulfilment_status] ?? o.fulfilment_status}</span>}
@@ -199,7 +198,7 @@ function OrderRow({ order: o, groups, open, onToggle }: { order: DashOrder; grou
               <h3>Items</h3>
               <ul className="dash-items">
                 {o.merch_order_items.map((i, n) => (
-                  <li key={n}><span>{i.qty} × {i.product_name} <small>{i.color} · {i.size}</small></span><span>{formatPrice(i.unit_price_usd * i.qty)}</span></li>
+                  <li key={n}><span>{i.qty} × {i.product_name} <small>{i.color} · {i.size}</small></span><span>{kes(Number(i.unit_price_kes) * i.qty)}</span></li>
                 ))}
               </ul>
             </section>

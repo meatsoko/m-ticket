@@ -68,8 +68,8 @@ export function EventOrderPrint({ token }: { token: string }) {
 type Merch = {
   order_number: string; first_name: string; payment_status: string; created_at: string; paid_at: string | null;
   delivery: { label: string; town: string | null };
-  items: { product_name: string; color: string; size: string; qty: number; unit_price_usd: number }[];
-  subtotal_usd: number; delivery_fee_usd: number; total_usd: number; total_kes: number;
+  items: { product_name: string; color: string; size: string; qty: number; unit_price_kes: number }[];
+  subtotal_kes: number; delivery_fee_kes: number; total_kes: number;
 };
 
 export function MerchOrderPrint({ token }: { token: string }) {
@@ -91,16 +91,16 @@ export function MerchOrderPrint({ token }: { token: string }) {
         <h1 className="sale-receipt-vendor">Order {o.order_number}</h1>
         <p className="sale-receipt-small">{o.first_name} · {o.delivery.label}{o.delivery.town ? `, ${o.delivery.town}` : ""}</p>
         <div className="sale-receipt-lines">
-          {o.items.map((i, n) => <div key={n}><span>{i.qty}× {i.product_name} ({i.color}, {i.size})</span><span>{formatPrice(Number(i.unit_price_usd) * i.qty)}</span></div>)}
-          {Number(o.delivery_fee_usd) > 0 && <div><span>Delivery</span><span>{formatPrice(Number(o.delivery_fee_usd))}</span></div>}
-          <div className="total"><span>Total</span><span>{formatPrice(Number(o.total_usd))}</span></div>
+          {o.items.map((i, n) => <div key={n}><span>{i.qty}× {i.product_name} ({i.color}, {i.size})</span><span>{formatPrice(Number(i.unit_price_kes) * i.qty)}</span></div>)}
+          {Number(o.delivery_fee_kes) > 0 && <div><span>Delivery</span><span>{formatPrice(Number(o.delivery_fee_kes))}</span></div>}
+          <div className="total"><span>Total</span><span>{formatPrice(Number(o.total_kes))}</span></div>
         </div>
         <p className="sale-receipt-amount">{kes(o.total_kes)}</p>
         <p className="sale-receipt-paid">PAID</p>
         <dl className="sale-receipt-facts">
           <div><dt>Date</dt><dd>{when(o.paid_at ?? o.created_at)}</dd></div>
         </dl>
-        <p className="sale-receipt-small">Charged in Kenya shillings. Keep this receipt and your order number for pickup or delivery.</p>
+        <p className="sale-receipt-small">Keep this receipt and your order number for pickup or delivery.</p>
         <p className="sale-receipt-thanks">Thank you</p>
       </section>
       <ReceiptPrint />

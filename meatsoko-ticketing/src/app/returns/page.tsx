@@ -3,6 +3,7 @@ import Link from "next/link";
 import { StoreShell } from "@/components/StoreChrome";
 import { SUPPORT } from "@/lib/support";
 import { loadCatalogue } from "@/lib/catalogue";
+import { formatPrice } from "@/lib/merchandise";
 
 export const metadata: Metadata = {
   title: "Delivery, returns & exchanges · MeatSoko",
@@ -14,7 +15,7 @@ export const revalidate = 60;
 export default async function ReturnsPage() {
   // Fees as checkout charges them (merch_delivery_zones / _options).
   const { delivery } = await loadCatalogue();
-  const fee = (usd: number | null) => (usd == null ? "fee to be confirmed" : `$${usd}`);
+  const fee = (kes: number | null) => (kes == null ? "fee to be confirmed" : formatPrice(kes));
   const matatu = delivery.options.find((o) => o.id === "matatu");
   return (
     <StoreShell>
@@ -30,10 +31,10 @@ export default async function ReturnsPage() {
           <ul>
             <li><strong>Collect at NyamaFest</strong> — free, from the merchandise stand on event day (17 October).</li>
             <li><strong>Collect at a MeatSoko franchise</strong> — free. We call or WhatsApp you when your order is ready and confirm which franchise.</li>
-            <li><strong>Standard delivery</strong> — to your door: {delivery.zones.map((z) => `${z.name} ${fee(z.feeUsd)}`).join(" · ")}. Usually 1–3 working days in Nairobi and 2–5 elsewhere.</li>
-            <li><strong>Matatu / Sacco</strong> — {fee(matatu?.feeUsd ?? null)} to your chosen Sacco office. You pay the Sacco any onward fare when you collect.</li>
+            <li><strong>Standard delivery</strong> — to your door: {delivery.zones.map((z) => `${z.name} ${fee(z.feeKes)}`).join(" · ")}. Usually 1–3 working days in Nairobi and 2–5 elsewhere.</li>
+            <li><strong>Matatu / Sacco</strong> — {fee(matatu?.feeKes ?? null)} to your chosen Sacco office. You pay the Sacco any onward fare when you collect.</li>
           </ul>
-          <p>Prices are in US dollars and charged in Kenyan shillings at checkout. Orders not collected within 30 days of the “ready” message may be cancelled and refunded, less any delivery fee.</p>
+          <p>Prices are in Kenyan shillings. Orders not collected within 30 days of the “ready” message may be cancelled and refunded, less any delivery fee.</p>
         </section>
 
         <section>
