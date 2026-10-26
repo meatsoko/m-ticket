@@ -32,9 +32,9 @@ export default function CartView() {
                 <tr key={`${l.slug}:${l.size}`}>
                   <td className="cart-thumb"><Link href={`/shop/${l.slug}`}><Image src={l.product.image} alt="" fill sizes="96px" /></Link></td>
                   <td><Link href={`/shop/${l.slug}`}><strong>{l.product.name}</strong></Link><small>{l.product.color} · Size {l.size}</small></td>
-                  <td>{l.product.priceUsd != null ? formatPrice(l.product.priceUsd) : "TBC"}</td>
+                  <td>{l.product.priceKes != null ? formatPrice(l.product.priceKes) : "TBC"}</td>
                   <td><QtyStepper value={l.qty} onChange={(q) => setQty(l.slug, l.size, q)} small /></td>
-                  <td><strong>{l.product.priceUsd != null ? formatPrice(l.product.priceUsd * l.qty) : "TBC"}</strong></td>
+                  <td><strong>{l.product.priceKes != null ? formatPrice(l.product.priceKes * l.qty) : "TBC"}</strong></td>
                   <td><button type="button" className="cart-remove" onClick={() => remove(l.slug, l.size)} aria-label={`Remove ${l.product.name} ${l.product.color}, size ${l.size}`}>×</button></td>
                 </tr>
               ))}

@@ -37,7 +37,7 @@ Deno.serve(async (req) => {
   }
 
   const { data: o } = await db.from("merch_orders")
-    .select("order_number,access_token,first_name,payment_status,fulfilment_status,flag_reason,total_kes,subtotal_usd,delivery_fee_usd,total_usd,created_at,paid_at,dispatched_at,completed_at,delivery_code,delivery_town,merch_delivery_options(label,blurb),merch_order_items(product_name,color,size,sku,qty,unit_price_usd)")
+    .select("order_number,access_token,first_name,payment_status,fulfilment_status,flag_reason,total_kes,subtotal_kes,delivery_fee_kes,subtotal_usd,delivery_fee_usd,total_usd,created_at,paid_at,dispatched_at,completed_at,delivery_code,delivery_town,merch_delivery_options(label,blurb),merch_order_items(product_name,color,size,sku,qty,unit_price_usd,unit_price_kes)")
     .eq(byReference ? "paystack_reference" : "access_token", byReference ? reference : access_token)
     .maybeSingle();
   if (!o) return json({ error: "not_found" }, 404);
@@ -53,7 +53,10 @@ Deno.serve(async (req) => {
     fulfilment_status: o.fulfilment_status,
     delivery: { code: o.delivery_code, label: opt?.label ?? o.delivery_code, blurb: opt?.blurb ?? null, town: o.delivery_town },
     items: (o as any).merch_order_items ?? [],
-    // Prices are shown in USD; total_kes is what Paystack actually charged (for the receipt line).
+    // Shown in KSh (what was charged; every order stores it). The USD fields stay for
+    // pages built before 2026-10-26 that may still be cached in a browser.
+    subtotal_kes: o.subtotal_kes,
+    delivery_fee_kes: o.delivery_fee_kes,
     subtotal_usd: o.subtotal_usd,
     delivery_fee_usd: o.delivery_fee_usd,
     total_usd: o.total_usd,

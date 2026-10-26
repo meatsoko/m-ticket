@@ -9,9 +9,8 @@ export const dynamic = "force-dynamic";
 // the website. Read with the admin's session; every write is a checked function.
 export default async function SalesPage() {
   const supabase = createClient();
-  const [groups, fx, events, sales, staff] = await Promise.all([
+  const [groups, events, sales, staff] = await Promise.all([
     loadInvGroups(supabase),
-    supabase.rpc("merch_current_fx"),
     supabase.from("events").select("id,name,starts_at").order("starts_at", { ascending: false }).limit(20),
     supabase.from("merch_manual_sales")
       .select(`id,sale_number,sold_at,payment_method,mpesa_code,payment_ref,buyer_name,location,event_id,note,subtotal_kes,refunded_kes,
@@ -24,11 +23,9 @@ export default async function SalesPage() {
     supabase.rpc("staff_directory"),
   ]);
   if (sales.error) return <p className="dash-error">Couldn&apos;t load sales: {sales.error.message}</p>;
-  const rate = ((fx.data ?? []) as any[])[0]?.rate;
   return (
     <SalesBoard
       groups={groups}
-      fxRate={rate != null ? Number(rate) : null}
       events={(events.data ?? []) as { id: string; name: string; starts_at: string }[]}
       sales={(sales.data ?? []) as unknown as ManualSale[]}
       people={Object.fromEntries(((staff.data ?? []) as any[]).map((s) => [s.user_id, s.email]))}

@@ -15,7 +15,7 @@ export type InvVariant = {
 };
 export type InvProduct = {
   id: string; name: string; color: string; slug: string; position: number;
-  price_usd: number | null; is_active: boolean; sold_out: boolean; variants: InvVariant[];
+  price_kes: number | null; is_active: boolean; sold_out: boolean; variants: InvVariant[];
   /** Another product whose mixed-sizes count this one sells from (a second listing of the same item). */
   stock_product_id: string | null;
 };

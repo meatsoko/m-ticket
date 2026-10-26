@@ -5,7 +5,8 @@
 // (migration 20261025090000 moved it there; before that this file held a copy
 // that had drifted from what checkout charged).
 //
-// Prices are in US dollars, as supplied by the organiser. A null price is
+// Prices are in Kenyan shillings (merch_products.price_kes, since migration
+// 20261026120000; before that they were USD converted at checkout). A null price is
 // deliberate: that piece has not been priced yet and must never be guessed — the
 // UI says "Price coming soon", and checkout stays closed while any bag line is
 // unpriced. The server re-prices every line itself; nothing the browser sends is
@@ -22,7 +23,9 @@ export type MerchandiseProduct = {
   /** CSS background for the colour swatch. */
   swatch: string;
   image: string;
-  priceUsd: number | null;
+  priceKes: number | null;
+  /** The earlier, higher price, shown crossed out with the % off (null = not reduced). */
+  compareAtKes?: number | null;
   sizes: string[];
   summary: string;
   details: string[];
@@ -47,13 +50,13 @@ export type DeliveryOption = {
   id: string;
   label: string;
   blurb: string;
-  feeUsd: number | null;
+  feeKes: number | null;
   needsZone: boolean;
   needsAddress: boolean;
   needsTown: boolean;
 };
 
-export type DeliveryZone = { name: string; feeUsd: number | null };
+export type DeliveryZone = { name: string; feeKes: number | null };
 
 export type StoreCatalogue = {
   categories: MerchandiseCategory[];
@@ -62,9 +65,9 @@ export type StoreCatalogue = {
 
 export const allProductsOf = (categories: MerchandiseCategory[]) => categories.flatMap((c) => c.products);
 
-/** Cheapest priced zone, for "From $2" on standard delivery; null if none is priced. */
-export function standardFromUsd(zones: DeliveryZone[]) {
-  const fees = zones.map((z) => z.feeUsd).filter((f): f is number => f != null);
+/** Cheapest priced zone, for "From KSh 250" on standard delivery; null if none is priced. */
+export function standardFromKes(zones: DeliveryZone[]) {
+  const fees = zones.map((z) => z.feeKes).filter((f): f is number => f != null);
   return fees.length ? Math.min(...fees) : null;
 }
 
@@ -94,10 +97,17 @@ export function searchProducts(categories: MerchandiseCategory[], query: string,
 /** How a delivery option's fee reads before an area is chosen. */
 export function deliveryFeeLabel(o: DeliveryOption, zones: DeliveryZone[], unset = "Fee confirmed at checkout") {
   if (o.needsZone) {
-    const from = standardFromUsd(zones);
+    const from = standardFromKes(zones);
     return from != null ? `From ${formatPrice(from)}` : unset;
   }
-  return o.feeUsd === 0 ? "Free" : o.feeUsd != null ? formatPrice(o.feeUsd) : unset;
+  return o.feeKes === 0 ? "Free" : o.feeKes != null ? formatPrice(o.feeKes) : unset;
 }
 
-export const formatPrice = (usd: number) => `$${usd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+export const formatPrice = (kes: number) => `KSh ${Math.round(kes).toLocaleString("en-KE")}`;
+
+/** Whole percent off the earlier price, rounded down; null when not reduced or under 5 %. */
+export function percentOff(p: Pick<MerchandiseProduct, "priceKes" | "compareAtKes">) {
+  if (p.priceKes == null || p.compareAtKes == null || p.compareAtKes <= p.priceKes) return null;
+  const pct = Math.floor((1 - p.priceKes / p.compareAtKes) * 100);
+  return pct >= 5 ? pct : null;
+}

@@ -60,7 +60,7 @@ export default function BagDrawer() {
                       <button type="button" className="bag-remove" onClick={() => remove(l.slug, l.size)} tabIndex={drawerOpen ? 0 : -1}>Remove</button>
                     </div>
                   </div>
-                  <span className="bag-line-price">{l.product.priceUsd != null ? formatPrice(l.product.priceUsd * l.qty) : "Price TBC"}</span>
+                  <span className="bag-line-price">{l.product.priceKes != null ? formatPrice(l.product.priceKes * l.qty) : "Price TBC"}</span>
                 </li>
               ))}
             </ul>
