@@ -624,7 +624,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .shop-category-heading p { margin: 0; }
   .merch-product-grid, .featured-product-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 11px; }
   .merch-product-image { aspect-ratio: 1.08 / 1; }
-  .merch-checkout-button { bottom: 8px; max-width: calc(100% - 16px); min-height: 37px; padding: 0 14px; opacity: 1; transform: translate(-50%, 0); font-size: 10px; }
+  .merch-checkout-button { bottom: 8px; max-width: calc(100% - 16px); min-height: 37px; padding: 0 14px; font-size: 10px; }
   .merch-product-info { padding: 10px; }
   .merch-product-info h3 { font-size: 11px; line-height: 1.35; }
   .merch-product-info span { font-size: 10px; }
