@@ -15,7 +15,7 @@ export function StoreHeader() {
           <Link href="/shop">Shop all merchandise <span>↗</span></Link>
           <Link href="/shop#partnerships">Partnerships <span>↗</span></Link>
           <Link href="/#collections">Collections <span>↗</span></Link>
-          <Link href="/events">Events and tickets <span>↗</span></Link>
+          <Link href="/celebrations">Events <span>↗</span></Link>
           <Link href="/investors">Investors <span>↗</span></Link>
           <Link href="/lookup">My tickets <span>↗</span></Link>
           <Link href="/cart">Your bag <span>↗</span></Link>
@@ -27,7 +27,7 @@ export function StoreHeader() {
       <nav className="store-nav" aria-label="Main navigation">
         <Link href="/shop">Shop</Link>
         <Link href="/#collections">Collections</Link>
-        <Link href="/events">Events</Link>
+        <Link href="/celebrations">Events</Link>
         <Link href="/investors">Investors</Link>
       </nav>
       <div className="store-actions">
